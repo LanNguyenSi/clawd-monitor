@@ -25,6 +25,7 @@ export function AgentSwitcher() {
   const { activeAgentId, setActiveAgentId } = useActiveAgent()
   const [open, setOpen] = useState(false)
   const [agents, setAgents] = useState<AgentEntry[]>([])
+  const [removing, setRemoving] = useState<string | null>(null)
 
   // Poll agent list every 5s
   useEffect(() => {
@@ -53,6 +54,23 @@ export function AgentSwitcher() {
     if (id) localStorage.setItem(STORAGE_KEY, id)
     else localStorage.removeItem(STORAGE_KEY)
     setOpen(false)
+  }
+
+  async function removeAgent(e: React.MouseEvent, agentId: string) {
+    e.stopPropagation()
+    setRemoving(agentId)
+    try {
+      const token = localStorage.getItem('clawd-monitor:token') ?? ''
+      await fetch(`/api/agents/${agentId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      // If this was the active agent, deselect
+      if (activeAgentId === agentId) select(null)
+      setAgents((prev) => prev.filter((a) => a.agentId !== agentId))
+    } finally {
+      setRemoving(null)
+    }
   }
 
   const activeAgent = agents.find((a) => a.agentId === activeAgentId)
@@ -93,21 +111,35 @@ export function AgentSwitcher() {
           {agents.length > 0 && <div className="border-t border-zinc-800 my-1" />}
 
           {agents.map((agent) => (
-            <button
+            <div
               key={agent.agentId}
-              onClick={() => select(agent.agentId)}
-              className={`w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-zinc-800 transition-colors ${activeAgentId === agent.agentId ? 'bg-zinc-800/60' : ''}`}
+              className={`flex items-center gap-1 px-3 py-2 text-xs hover:bg-zinc-800 transition-colors ${activeAgentId === agent.agentId ? 'bg-zinc-800/60' : ''}`}
             >
-              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${agent.online ? 'bg-green-500' : 'bg-zinc-600'}`} />
-              <div className="flex-1 min-w-0">
-                <div className={`truncate ${activeAgentId === agent.agentId ? 'text-indigo-300' : 'text-zinc-300'}`}>
-                  {agent.name}
+              <button
+                onClick={() => select(agent.agentId)}
+                className="flex items-center gap-2 flex-1 min-w-0 text-left"
+              >
+                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${agent.online ? 'bg-green-500' : 'bg-zinc-600'}`} />
+                <div className="flex-1 min-w-0">
+                  <div className={`truncate ${activeAgentId === agent.agentId ? 'text-indigo-300' : 'text-zinc-300'}`}>
+                    {agent.name}
+                  </div>
+                  <div className="text-zinc-600 text-xs">
+                    {agent.online ? `online · ${formatAge(agent.lastSnapshotAt)}` : `offline · ${formatAge(agent.lastSnapshotAt)}`}
+                  </div>
                 </div>
-                <div className="text-zinc-600 text-xs">
-                  {agent.online ? `online · ${formatAge(agent.lastSnapshotAt)}` : `offline · ${formatAge(agent.lastSnapshotAt)}`}
-                </div>
-              </div>
-            </button>
+              </button>
+              {!agent.online && (
+                <button
+                  onClick={(e) => void removeAgent(e, agent.agentId)}
+                  disabled={removing === agent.agentId}
+                  title="Remove offline agent"
+                  className="shrink-0 text-zinc-700 hover:text-red-400 transition-colors px-1 disabled:opacity-40"
+                >
+                  {removing === agent.agentId ? '…' : '✕'}
+                </button>
+              )}
+            </div>
           ))}
 
           {agents.length === 0 && (
