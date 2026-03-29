@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { AgentSwitcher } from './AgentSwitcher'
 import { AddWidgetMenu } from './AddWidgetMenu'
 import type { ColCount } from '@/types'
@@ -81,12 +82,13 @@ export function Navbar({ cols, onColsChange, onInstanceSwitch, onToggleTheme, th
         </button>
       )}
 
-      <a
+      <Link
         href="/settings"
         className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
+        title="Settings"
       >
-        ⚙
-      </a>
+        ⚙️
+      </Link>
 
       <button
         onClick={handleLogout}
