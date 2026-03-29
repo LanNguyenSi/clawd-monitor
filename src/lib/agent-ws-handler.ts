@@ -1,8 +1,11 @@
 import type WebSocket from 'ws'
 import type { IncomingMessage } from 'http'
+import bcrypt from 'bcryptjs'
 import { registry, type AgentSnapshot } from './agent-registry.js'
+import { readTokens } from './data-store.js'
 
-const AGENT_TOKENS = (process.env.AGENT_TOKENS ?? '')
+// Static tokens from env (for backward compat + default setup)
+const STATIC_TOKENS = (process.env.AGENT_TOKENS ?? '')
   .split(',')
   .map((t) => t.trim())
   .filter(Boolean)
@@ -24,7 +27,7 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
   let agentId: string | null = null
   let authenticated = false
 
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let msg: WsMsg
     try {
       msg = JSON.parse(raw.toString()) as WsMsg
@@ -39,8 +42,21 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
         return
       }
 
-      // Validate token
-      if (!AGENT_TOKENS.includes(msg.token)) {
+      // Validate token — check static env tokens first, then persisted tokens.json
+      let tokenValid = STATIC_TOKENS.includes(msg.token)
+      if (!tokenValid) {
+        const persistedTokens = readTokens()
+        for (const entry of persistedTokens) {
+          try {
+            if (await bcrypt.compare(msg.token, entry.tokenHash)) {
+              tokenValid = true
+              break
+            }
+          } catch {}
+        }
+      }
+
+      if (!tokenValid) {
         console.warn(`[agent-ws] Auth failed for agentId=${msg.agentId} — invalid token`)
         send(ws, { type: 'auth_error', message: 'Invalid token' })
         ws.close()
