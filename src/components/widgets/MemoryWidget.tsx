@@ -64,7 +64,12 @@ export function MemoryWidget() {
       <div className="flex-1 overflow-y-auto px-3 py-2">
         {isLoading && <div className="text-xs text-zinc-600 animate-pulse">Loading…</div>}
         {(error || data?.error) && (
-          <div className="text-xs text-red-400">{data?.error ?? 'Failed to load'}</div>
+          <div className="flex flex-col gap-1.5 text-xs">
+            <p className="text-zinc-500">{data?.error ?? 'Failed to load'}</p>
+            <p className="text-zinc-600">
+              Set <code className="font-mono bg-zinc-800 px-1 rounded">CLAWD_DIR</code> in your .env to the correct workspace path.
+            </p>
+          </div>
         )}
         {data?.content && !data.error && (
           <div className="prose prose-invert prose-xs max-w-none text-xs [&>*]:text-zinc-300 [&>h1]:text-sm [&>h2]:text-xs [&>h3]:text-xs [&_code]:text-xs [&_pre]:text-xs">
