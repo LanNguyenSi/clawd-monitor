@@ -1,0 +1,24 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.clawd-monitor.rule=Host(`clawd-monitor.opentriologue.ai`)"
+      - "traefik.http.routers.clawd-monitor.entrypoints=websecure"
+      - "traefik.http.routers.clawd-monitor.tls=true"
+      - "traefik.http.routers.clawd-monitor.tls.certresolver=letsencrypt"
+      - "traefik.http.services.clawd-monitor.loadbalancer.server.port=3000"
+    networks:
+      - traefik-public
+
+networks:
+  traefik-public:
+    external: true
