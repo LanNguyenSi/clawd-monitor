@@ -49,6 +49,8 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
 
 interface SnapshotResponse {
   snapshot?: { metrics?: SystemMetrics; timestamp?: number }
+  online?: boolean
+  lastSnapshotAt?: number
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -113,6 +115,18 @@ export function MetricsWidget() {
     : 0
 
   const memBarColor = memPct >= 80 ? 'bg-red-500' : memPct >= 60 ? 'bg-yellow-500' : 'bg-green-500'
+
+  if (activeAgentId && snapshotData && !snapshotData.online) {
+    const lastSeen = snapshotData.lastSnapshotAt ? (() => { const s = Math.floor((Date.now() - snapshotData.lastSnapshotAt!) / 1000); return s < 60 ? `${s}s ago` : `${Math.floor(s/60)}m ago` })() : '—'
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-1 px-4">
+        <div className="w-2 h-2 rounded-full bg-zinc-600" />
+        <span className="text-xs text-zinc-500">Agent offline</span>
+        <span className="text-xs text-zinc-700">last seen {lastSeen}</span>
+        {metrics && <span className="text-xs text-zinc-700 mt-1">last: CPU {metrics.cpu}% · RAM {Math.round((metrics.memUsed / metrics.memTotal) * 100)}%</span>}
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full px-3 py-2 gap-3">

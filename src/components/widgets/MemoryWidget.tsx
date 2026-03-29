@@ -31,6 +31,7 @@ interface AgentSnapshotResponse {
     timestamp?: number
   }
   online?: boolean
+  lastSnapshotAt?: number
 }
 
 const fetcher = async (url: string) => {
@@ -88,6 +89,18 @@ export function MemoryWidget() {
     content = proxyData?.content
     updatedAt = proxyData?.updatedAt
     errorMsg = proxyData?.error ?? (proxyError ? 'Not available on this host' : undefined)
+  }
+
+  // Offline banner
+  if (activeAgentId && snapshotData && !snapshotData.online) {
+    const lastSeen = snapshotData.lastSnapshotAt ? (() => { const s = Math.floor((Date.now() - snapshotData.lastSnapshotAt!) / 1000); return s < 60 ? `${s}s ago` : `${Math.floor(s/60)}m ago` })() : '—'
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-1 px-4">
+        <div className="w-2 h-2 rounded-full bg-zinc-600" />
+        <span className="text-xs text-zinc-500">Agent offline</span>
+        <span className="text-xs text-zinc-700">last seen {lastSeen}</span>
+      </div>
+    )
   }
 
   return (

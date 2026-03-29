@@ -5,7 +5,7 @@ import { useActiveAgent } from '@/lib/active-agent'
 import type { CronJob } from '@/types'
 
 interface CronResponse { jobs?: CronJob[]; error?: string }
-interface SnapshotResponse { snapshot?: { cronJobs?: CronJob[] } }
+interface SnapshotResponse { snapshot?: { cronJobs?: CronJob[] }; online?: boolean; lastSnapshotAt?: number }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -47,10 +47,11 @@ export function CronWidget() {
   const snapshotUrl = activeAgentId ? `/api/agents/${activeAgentId}/snapshot` : null
   const proxyUrl = !activeAgentId ? '/api/proxy/cron' : null
 
-  const { data: snapshotData, isLoading: snLoading, mutate: mutateSn } = useSWR<SnapshotResponse>(snapshotUrl, fetcher, { refreshInterval: 10_000, revalidateOnFocus: false })
+  const { data: snapshotData, isLoading: snLoading, mutate: mutateSn } = useSWR<SnapshotResponse>(snapshotUrl, fetcher, { refreshInterval: 5_000, revalidateOnFocus: false })
   const { data: proxyData, isLoading: prLoading, mutate: mutateProxy } = useSWR<CronResponse>(proxyUrl, fetcher, { refreshInterval: 30_000 })
 
   const isLoading = activeAgentId ? snLoading : prLoading
+  const agentOffline = activeAgentId && snapshotData && !snapshotData.online
   const jobs: CronJob[] = activeAgentId
     ? (snapshotData?.snapshot?.cronJobs ?? [])
     : (proxyData?.jobs ?? [])
@@ -63,6 +64,17 @@ export function CronWidget() {
       body: JSON.stringify({ jobId }),
     })
     void (activeAgentId ? mutateSn() : mutateProxy())
+  }
+
+  if (agentOffline) {
+    const lastSeen = snapshotData?.lastSnapshotAt ? (() => { const s = Math.floor((Date.now() - snapshotData.lastSnapshotAt!) / 1000); return s < 60 ? `${s}s ago` : `${Math.floor(s/60)}m ago` })() : '—'
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-1 px-4">
+        <div className="w-2 h-2 rounded-full bg-zinc-600" />
+        <span className="text-xs text-zinc-500">Agent offline</span>
+        <span className="text-xs text-zinc-700">last seen {lastSeen}</span>
+      </div>
+    )
   }
 
   return (
