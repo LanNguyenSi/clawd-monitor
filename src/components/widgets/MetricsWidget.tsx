@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import useSWR from 'swr'
+import { useActiveAgent } from '@/lib/active-agent'
 import type { SystemMetrics } from '@/types'
 
 const MAX_POINTS = 60
@@ -45,19 +47,53 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
   )
 }
 
+interface SnapshotResponse {
+  snapshot?: { metrics?: SystemMetrics; timestamp?: number }
+}
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
 export function MetricsWidget() {
+  const { activeAgentId } = useActiveAgent()
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null)
   const [cpuHistory, setCpuHistory] = useState<number[]>([])
   const [status, setStatus] = useState<'connecting' | 'connected' | 'error'>('connecting')
   const esRef = useRef<EventSource | null>(null)
 
+  // Agent snapshot mode
+  const { data: snapshotData } = useSWR<SnapshotResponse>(
+    activeAgentId ? `/api/agents/${activeAgentId}/snapshot` : null,
+    fetcher,
+    { refreshInterval: 5_000, revalidateOnFocus: false }
+  )
+
   useEffect(() => {
+    if (activeAgentId && snapshotData?.snapshot?.metrics) {
+      const m = snapshotData.snapshot.metrics
+      // Agent uses cpuPercent/memUsedBytes naming, local SSE uses cpu/memUsed
+      const agentMetrics = m as unknown as { cpuPercent?: number; memUsedBytes?: number; memTotalBytes?: number; cpu?: number; memUsed?: number; memTotal?: number }
+      setMetrics({
+        cpu: agentMetrics.cpuPercent ?? agentMetrics.cpu ?? 0,
+        memUsed: agentMetrics.memUsedBytes ?? agentMetrics.memUsed ?? 0,
+        memTotal: agentMetrics.memTotalBytes ?? agentMetrics.memTotal ?? 0,
+        timestamp: snapshotData.snapshot.timestamp ?? Date.now(),
+      })
+      setStatus('connected')
+      setCpuHistory((prev) => {
+        const cpuVal = (m as any).cpuPercent ?? (m as any).cpu ?? 0
+        const next = [...prev, cpuVal]
+        return next.length > MAX_POINTS ? next.slice(next.length - MAX_POINTS) : next
+      })
+    }
+  }, [activeAgentId, snapshotData])
+
+  // Local SSE mode (no agent selected)
+  useEffect(() => {
+    if (activeAgentId) return  // handled above
     const es = new EventSource('/api/stream/metrics')
     esRef.current = es
-
     es.onopen = () => setStatus('connected')
     es.onerror = () => setStatus('error')
-
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data) as SystemMetrics
@@ -69,9 +105,8 @@ export function MetricsWidget() {
         })
       } catch {}
     }
-
-    return () => es.close()
-  }, [])
+    return () => { es.close(); esRef.current = null }
+  }, [activeAgentId])
 
   const memPct = metrics && metrics.memTotal > 0
     ? Math.round((metrics.memUsed / metrics.memTotal) * 100)

@@ -1,35 +1,38 @@
 'use client'
 
 import useSWR from 'swr'
+import { useActiveAgent } from '@/lib/active-agent'
 
 interface DockerContainer {
-  id: string
-  name: string
-  image: string
-  status: string
+  id: string; name: string; image: string
   state: 'running' | 'exited' | 'paused' | 'restarting' | 'unknown'
-  uptime: string
-  restarts: number
+  restarts: number; uptime: string
 }
 
-interface DockerResponse {
-  containers?: DockerContainer[]
-  error?: string
-}
+interface DockerResponse { containers?: DockerContainer[]; error?: string }
+interface SnapshotResponse { snapshot?: { containers?: DockerContainer[] } }
 
 const STATE_DOT: Record<string, string> = {
-  running:    'bg-green-500',
-  restarting: 'bg-yellow-500 animate-pulse',
-  paused:     'bg-zinc-500',
-  exited:     'bg-red-500',
-  unknown:    'bg-zinc-700',
+  running: 'bg-green-500', restarting: 'bg-yellow-500 animate-pulse',
+  paused: 'bg-zinc-500', exited: 'bg-red-500', unknown: 'bg-zinc-700',
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 export function DockerWidget() {
-  const { data, isLoading } = useSWR<DockerResponse>('/api/proxy/docker', fetcher, { refreshInterval: 15_000 })
-  const containers = data?.containers ?? []
+  const { activeAgentId } = useActiveAgent()
+
+  const snapshotUrl = activeAgentId ? `/api/agents/${activeAgentId}/snapshot` : null
+  const proxyUrl = !activeAgentId ? '/api/proxy/docker' : null
+
+  const { data: snapshotData, isLoading: snLoading } = useSWR<SnapshotResponse>(snapshotUrl, fetcher, { refreshInterval: 15_000, revalidateOnFocus: false })
+  const { data: proxyData, isLoading: prLoading } = useSWR<DockerResponse>(proxyUrl, fetcher, { refreshInterval: 15_000 })
+
+  const isLoading = activeAgentId ? snLoading : prLoading
+  const containers: DockerContainer[] = activeAgentId
+    ? (snapshotData?.snapshot?.containers as DockerContainer[] ?? [])
+    : (proxyData?.containers ?? [])
+  const errorMsg = !activeAgentId && proxyData?.error
 
   return (
     <div className="flex flex-col h-full">
@@ -39,9 +42,12 @@ export function DockerWidget() {
         </div>
       )}
 
-      {data?.error && !isLoading && containers.length === 0 && (
+      {!isLoading && errorMsg && containers.length === 0 && (
         <div className="flex items-center justify-center h-full px-4">
-          <span className="text-xs text-zinc-600 text-center">{data.error}</span>
+          <div className="text-center">
+            <p className="text-xs text-zinc-600">{errorMsg}</p>
+            <p className="text-xs text-zinc-700 mt-1">Select an agent to view Docker containers</p>
+          </div>
         </div>
       )}
 
@@ -53,9 +59,7 @@ export function DockerWidget() {
                 <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATE_DOT[c.state] ?? STATE_DOT.unknown}`} />
                 <span className="text-xs font-medium text-zinc-200 truncate flex-1">{c.name}</span>
                 {c.restarts > 0 && (
-                  <span className="text-xs text-orange-400 shrink-0" title={`${c.restarts} restarts`}>
-                    ↺{c.restarts}
-                  </span>
+                  <span className="text-xs text-orange-400 shrink-0" title={`${c.restarts} restarts`}>↺{c.restarts}</span>
                 )}
               </div>
               <div className="flex gap-3 mt-0.5 text-xs text-zinc-600 ml-3.5">
