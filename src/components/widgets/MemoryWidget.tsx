@@ -20,7 +20,12 @@ interface MemoryResponse {
   error?: string
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+const fetcher = async (url: string) => {
+  const res = await fetch(url)
+  const data = await res.json()
+  if (!res.ok) throw Object.assign(new Error(data.error ?? 'Not found'), { status: res.status })
+  return data
+}
 
 export function MemoryWidget() {
   const [selectedFile, setSelectedFile] = useState<MemFile>('current')
@@ -28,12 +33,16 @@ export function MemoryWidget() {
   const { data, error, isLoading, mutate } = useSWR<MemoryResponse>(
     `/api/proxy/memory?file=${selectedFile}`,
     fetcher,
-    { refreshInterval: 30_000, onErrorRetry: (err, _key, _cfg, revalidate, { retryCount }) => {
-      // Don't retry on 404 — file simply doesn't exist on this host
-      if (err?.status === 404) return
-      if (retryCount >= 2) return
-      setTimeout(() => revalidate({ retryCount }), 5000)
-    }}
+    {
+      refreshInterval: 60_000,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      onErrorRetry: (err, _key, _cfg, revalidate, { retryCount }) => {
+        if ((err as any)?.status === 404) return  // file doesn't exist — never retry
+        if (retryCount >= 2) return
+        setTimeout(() => revalidate({ retryCount }), 10_000)
+      },
+    }
   )
 
   return (
