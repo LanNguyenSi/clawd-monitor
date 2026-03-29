@@ -50,9 +50,10 @@ function defaultLayouts(cols: ColCount): Layout[] {
 interface Props {
   cols: ColCount
   editMode?: boolean
+  onLayoutChange?: (widgetIds: string[]) => void
 }
 
-export function WidgetGrid({ cols, editMode = true }: Props) {
+export function WidgetGrid({ cols, editMode = true, onLayoutChange }: Props) {
   const [layouts, setLayouts] = useState<Layout[]>([])
   const [mounted, setMounted] = useState(false)
 
@@ -74,10 +75,11 @@ export function WidgetGrid({ cols, editMode = true }: Props) {
     setMounted(true)
   }, [cols])
 
-  const onLayoutChange = useCallback((newLayout: Layout[]) => {
+  const handleLayoutChange = useCallback((newLayout: Layout[]) => {
     setLayouts(newLayout)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newLayout))
-  }, [])
+    onLayoutChange?.(newLayout.map((l) => l.i))
+  }, [onLayoutChange])
 
   if (!mounted) return null
 
@@ -90,7 +92,7 @@ export function WidgetGrid({ cols, editMode = true }: Props) {
       cols={colsMap}
       rowHeight={150}
       breakpoints={{ lg: 1200, md: 768, sm: 480, xs: 320, xxs: 0 }}
-      onLayoutChange={(layout) => onLayoutChange(layout)}
+      onLayoutChange={(layout) => handleLayoutChange(layout)}
       draggableHandle=".cursor-grab"
       isResizable={editMode}
       isDraggable={editMode}

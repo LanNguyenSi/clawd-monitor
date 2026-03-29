@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { InstanceSwitcher } from './InstanceSwitcher'
+import { AddWidgetMenu } from './AddWidgetMenu'
 import type { ColCount } from '@/types'
 
 interface Props {
@@ -12,9 +13,11 @@ interface Props {
   theme?: 'dark' | 'light'
   editMode?: boolean
   onToggleEditMode?: () => void
+  onAddWidget?: (widgetId: string) => void
+  activeWidgetIds?: string[]
 }
 
-export function Navbar({ cols, onColsChange, onInstanceSwitch, onToggleTheme, theme, editMode, onToggleEditMode }: Props) {
+export function Navbar({ cols, onColsChange, onInstanceSwitch, onToggleTheme, theme, editMode, onToggleEditMode, onAddWidget, activeWidgetIds = [] }: Props) {
   const router = useRouter()
 
   function handleLogout() {
@@ -62,6 +65,9 @@ export function Navbar({ cols, onColsChange, onInstanceSwitch, onToggleTheme, th
         ))}
       </div>
 
+      {onAddWidget && (
+        <AddWidgetMenu onAdd={onAddWidget} activeWidgetIds={activeWidgetIds} />
+      )}
       <InstanceSwitcher onSwitch={onInstanceSwitch ?? (() => {})} />
 
       {/* Theme toggle */}

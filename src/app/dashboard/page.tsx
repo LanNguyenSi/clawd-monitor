@@ -6,6 +6,8 @@ import { Navbar } from '@/components/Nav/Navbar'
 import { WidgetGrid } from '@/components/Grid/WidgetGrid'
 import { KeyboardShortcuts } from '@/components/KeyboardShortcuts'
 import { ActiveAgentProvider } from '@/lib/active-agent'
+import { AddWidgetMenu } from '@/components/Nav/AddWidgetMenu'
+import { WIDGET_REGISTRY } from '@/lib/widgets'
 import type { ColCount } from '@/types'
 
 const COLS_KEY = 'clawd-monitor:cols'
@@ -18,6 +20,7 @@ export default function DashboardPage() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [editMode, setEditMode] = useState(true)
   const [gridKey, setGridKey] = useState(0)
+  const [activeWidgetIds, setActiveWidgetIds] = useState<string[]>([])
   const dashboardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -57,6 +60,20 @@ export default function DashboardPage() {
     setGridKey((k) => k + 1)
   }, [])
 
+  const handleAddWidget = useCallback((widgetId: string) => {
+    const STORAGE_KEY = 'clawd-monitor:layouts'
+    const widget = WIDGET_REGISTRY.find((w) => w.id === widgetId)
+    if (!widget) return
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      const layouts = saved ? JSON.parse(saved) as { i: string; x: number; y: number; w: number; h: number }[] : []
+      const maxY = layouts.reduce((max, l) => Math.max(max, l.y + l.h), 0)
+      layouts.push({ i: widgetId, x: 0, y: maxY, w: widget.defaultW, h: widget.defaultH })
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(layouts))
+      setGridKey((k) => k + 1) // force re-render
+    } catch {}
+  }, [])
+
   const handleScreenshot = useCallback(async () => {
     try {
       const { default: html2canvas } = await import('html2canvas' as any)
@@ -91,9 +108,16 @@ export default function DashboardPage() {
         theme={theme}
         editMode={editMode}
         onToggleEditMode={handleToggleEditMode}
+        onAddWidget={handleAddWidget}
+        activeWidgetIds={activeWidgetIds}
       />
       <div className="flex-1 overflow-auto p-2">
-        <WidgetGrid key={gridKey} cols={cols} editMode={editMode} />
+        <WidgetGrid
+          key={gridKey}
+          cols={cols}
+          editMode={editMode}
+          onLayoutChange={setActiveWidgetIds}
+        />
       </div>
 
       <KeyboardShortcuts
