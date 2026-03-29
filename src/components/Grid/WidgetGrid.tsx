@@ -13,10 +13,10 @@ const WIDGET_COMPONENTS: Record<string, React.LazyExoticComponent<() => React.Re
   MetricsWidget:       lazy(() => import('@/components/widgets/MetricsWidget').then((m) => ({ default: m.MetricsWidget }))),
   MemoryWidget:        lazy(() => import('@/components/widgets/MemoryWidget').then((m) => ({ default: m.MemoryWidget }))),
   AgentStatusWidget:   lazy(() => import('@/components/widgets/AgentStatusWidget').then((m) => ({ default: m.AgentStatusWidget }))),
-  CronWidget:          lazy(() => import('@/components/widgets/PlaceholderWidget').then((m) => ({ default: () => m.PlaceholderWidget({ id: 'cron', title: 'Cron Jobs — coming in Wave 3' }) }))),
-  DockerWidget:        lazy(() => import('@/components/widgets/PlaceholderWidget').then((m) => ({ default: () => m.PlaceholderWidget({ id: 'docker', title: 'Docker — coming in Wave 3' }) }))),
-  HeartbeatWidget:     lazy(() => import('@/components/widgets/PlaceholderWidget').then((m) => ({ default: () => m.PlaceholderWidget({ id: 'heartbeat', title: 'Heartbeat — coming in Wave 3' }) }))),
-  ServiceHealthWidget: lazy(() => import('@/components/widgets/PlaceholderWidget').then((m) => ({ default: () => m.PlaceholderWidget({ id: 'service-health', title: 'Service Health — coming in Wave 3' }) }))),
+  CronWidget:          lazy(() => import('@/components/widgets/CronWidget').then((m) => ({ default: m.CronWidget }))),
+  DockerWidget:        lazy(() => import('@/components/widgets/DockerWidget').then((m) => ({ default: m.DockerWidget }))),
+  HeartbeatWidget:     lazy(() => import('@/components/widgets/HeartbeatWidget').then((m) => ({ default: m.HeartbeatWidget }))),
+  ServiceHealthWidget: lazy(() => import('@/components/widgets/ServiceHealthWidget').then((m) => ({ default: m.ServiceHealthWidget }))),
 }
 
 const ResponsiveGrid = WidthProvider(Responsive)

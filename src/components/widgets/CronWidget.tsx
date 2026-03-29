@@ -1,0 +1,111 @@
+'use client'
+
+import useSWR from 'swr'
+import type { CronJob } from '@/types'
+
+interface CronResponse {
+  jobs?: CronJob[]
+  error?: string
+}
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
+function formatNext(ms?: number): string {
+  if (!ms) return '—'
+  const diff = ms - Date.now()
+  if (diff < 0) return 'overdue'
+  const s = Math.floor(diff / 1000)
+  if (s < 60) return `in ${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `in ${m}m`
+  const h = Math.floor(m / 60)
+  return `in ${h}h`
+}
+
+function formatLast(ms?: number): string {
+  if (!ms) return '—'
+  const diff = Date.now() - ms
+  const s = Math.floor(diff / 1000)
+  if (s < 60) return `${s}s ago`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  return `${h}h ago`
+}
+
+function scheduleLabel(job: CronJob): string {
+  const s = job.schedule
+  if (s.kind === 'cron') return s.expr ?? 'cron'
+  if (s.kind === 'every' && s.everyMs) {
+    const m = Math.round(s.everyMs / 60000)
+    if (m < 60) return `every ${m}m`
+    return `every ${Math.round(m / 60)}h`
+  }
+  if (s.kind === 'at') return 'one-shot'
+  return s.kind
+}
+
+export function CronWidget() {
+  const { data, isLoading, mutate } = useSWR<CronResponse>('/api/proxy/cron', fetcher, { refreshInterval: 30_000 })
+  const jobs = data?.jobs ?? []
+
+  async function triggerJob(jobId: string) {
+    await fetch('/api/proxy/cron', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId }),
+    })
+    void mutate()
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {isLoading && (
+        <div className="flex items-center justify-center h-full">
+          <span className="text-xs text-zinc-600 animate-pulse">Loading…</span>
+        </div>
+      )}
+
+      {data?.error && !isLoading && (
+        <div className="flex items-center justify-center h-full">
+          <span className="text-xs text-zinc-600">{data.error}</span>
+        </div>
+      )}
+
+      {!isLoading && jobs.length === 0 && !data?.error && (
+        <div className="flex items-center justify-center h-full">
+          <span className="text-xs text-zinc-600">No cron jobs</span>
+        </div>
+      )}
+
+      {jobs.length > 0 && (
+        <div className="overflow-y-auto divide-y divide-zinc-800/50 flex-1">
+          {jobs.map((job) => (
+            <div key={job.id} className="px-3 py-2 hover:bg-zinc-800/20 transition-colors">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${job.enabled ? 'bg-green-500' : 'bg-zinc-600'}`} />
+                  <span className="text-xs text-zinc-200 truncate">
+                    {job.name ?? job.id.slice(0, 12)}
+                  </span>
+                </div>
+                <button
+                  onClick={() => void triggerJob(job.id)}
+                  className="text-xs text-zinc-600 hover:text-indigo-400 shrink-0 transition-colors"
+                  title="Trigger now"
+                >
+                  ▶
+                </button>
+              </div>
+              <div className="flex items-center gap-3 mt-0.5 text-xs text-zinc-600">
+                <span className="font-mono">{scheduleLabel(job)}</span>
+                <span>next: {formatNext(job.state?.nextRunAtMs)}</span>
+                <span>last: {formatLast(job.state?.lastRunAtMs)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
