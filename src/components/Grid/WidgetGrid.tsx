@@ -27,7 +27,7 @@ const ResponsiveGrid = WidthProvider(Responsive)
 const STORAGE_KEY = 'clawd-monitor:layouts'
 const COLS_KEY = 'clawd-monitor:cols'
 
-const DEFAULT_WIDGET_IDS = ['log-tail', 'metrics', 'memory', 'agent-status']
+const DEFAULT_WIDGET_IDS = ['agent-list', 'metrics', 'agent-status', 'heartbeat']
 
 function defaultLayouts(cols: ColCount): Layout[] {
   return DEFAULT_WIDGET_IDS.map((id, i) => {
