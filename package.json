@@ -4,13 +4,14 @@
   "description": "Web-based monitoring dashboard for OpenClaw instances",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "tsx server.ts",
+    "build": "next build && tsc --project tsconfig.server.json",
+    "start": "node dist/server.js",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@types/ws": "^8.18.1",
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
     "next": "^15.0.0",
@@ -18,7 +19,9 @@
     "react-dom": "^19.0.0",
     "react-grid-layout": "^1.5.0",
     "react-markdown": "^9.0.0",
-    "swr": "^2.3.0"
+    "swr": "^2.3.0",
+    "tsx": "^4.21.0",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

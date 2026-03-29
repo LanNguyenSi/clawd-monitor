@@ -11,6 +11,7 @@ export const WIDGET_REGISTRY: Widget[] = [
   { id: 'service-health', title: 'Service Health',     component: 'ServiceHealthWidget', defaultW: 1, defaultH: 2, minW: 1, minH: 1 },
   { id: 'github-prs',     title: 'GitHub PRs',         component: 'GitHubPRWidget',      defaultW: 2, defaultH: 2, minW: 1, minH: 2 },
   { id: 'alert-history',  title: 'Alert History',      component: 'AlertHistoryWidget',  defaultW: 1, defaultH: 2, minW: 1, minH: 1 },
+  { id: 'agent-list',    title: 'Connected Agents',   component: 'AgentListWidget',     defaultW: 2, defaultH: 2, minW: 1, minH: 1 },
 ]
 
 export function getWidget(id: string): Widget | undefined {

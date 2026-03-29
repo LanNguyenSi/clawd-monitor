@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Navbar } from '@/components/Nav/Navbar'
 import { WidgetGrid } from '@/components/Grid/WidgetGrid'
 import { KeyboardShortcuts } from '@/components/KeyboardShortcuts'
+import { ActiveAgentProvider } from '@/lib/active-agent'
 import type { ColCount } from '@/types'
 
 const COLS_KEY = 'clawd-monitor:cols'
@@ -77,6 +78,7 @@ export default function DashboardPage() {
   if (!ready) return null
 
   return (
+    <ActiveAgentProvider>
     <div
       ref={dashboardRef}
       className={`flex flex-col h-screen ${theme === 'dark' ? 'bg-zinc-950' : 'bg-zinc-100'}`}
@@ -106,5 +108,6 @@ export default function DashboardPage() {
         Press <kbd className="bg-zinc-900 border border-zinc-800 rounded px-1">?</kbd> for shortcuts
       </div>
     </div>
+    </ActiveAgentProvider>
   )
 }
