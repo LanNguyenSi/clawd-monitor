@@ -1,14 +1,14 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { InstanceSwitcher } from './InstanceSwitcher'
+import { AgentSwitcher } from './AgentSwitcher'
 import { AddWidgetMenu } from './AddWidgetMenu'
 import type { ColCount } from '@/types'
 
 interface Props {
   cols: ColCount
   onColsChange: (cols: ColCount) => void
-  onInstanceSwitch?: () => void
+  onInstanceSwitch?: () => void  // kept for backward compat
   onToggleTheme?: () => void
   theme?: 'dark' | 'light'
   editMode?: boolean
@@ -68,7 +68,7 @@ export function Navbar({ cols, onColsChange, onInstanceSwitch, onToggleTheme, th
       {onAddWidget && (
         <AddWidgetMenu onAdd={onAddWidget} activeWidgetIds={activeWidgetIds} />
       )}
-      <InstanceSwitcher onSwitch={onInstanceSwitch ?? (() => {})} />
+      <AgentSwitcher />
 
       {/* Theme toggle */}
       {onToggleTheme && (
