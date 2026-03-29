@@ -5,6 +5,9 @@ services:
       dockerfile: Dockerfile
     environment:
       - NODE_ENV=production
+      - CLAWD_MONITOR_DATA_DIR=/data
+    volumes:
+      - clawd_monitor_data:/data
     env_file:
       - path: .env
         required: false
@@ -22,3 +25,6 @@ services:
 networks:
   traefik-public:
     external: true
+
+volumes:
+  clawd_monitor_data:

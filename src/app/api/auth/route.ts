@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { generateToken } from '@/lib/auth'
+import { readPasswordConfig } from '@/lib/data-store'
 
 export async function POST(req: NextRequest) {
   let body: { password?: string }
@@ -15,22 +16,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Password required' }, { status: 400 })
   }
 
-  const hash = process.env.ADMIN_PASSWORD_HASH
-  const adminPassword = process.env.ADMIN_PASSWORD // plaintext fallback
+  // Check persisted password (UI change-password) first, then env vars, then dev default
+  const persisted = readPasswordConfig()
+  const envHash = process.env.ADMIN_PASSWORD_HASH
+  const envPlain = process.env.ADMIN_PASSWORD
 
-  if (!hash && !adminPassword) {
-    return NextResponse.json({ error: 'Server misconfigured — set ADMIN_PASSWORD or ADMIN_PASSWORD_HASH' }, { status: 500 })
+  let valid = false
+  if (persisted.hash) {
+    valid = await bcrypt.compare(password, persisted.hash)
+  } else if (envHash) {
+    valid = await bcrypt.compare(password, envHash)
+  } else if (envPlain) {
+    valid = password === envPlain
+  } else {
+    // Dev default — no password configured
+    valid = password === 'admin'
   }
 
-  if (hash) {
-    const valid = await bcrypt.compare(password, hash)
-    if (!valid) {
-      return NextResponse.json({ error: 'Invalid password' }, { status: 401 })
-    }
-  } else if (adminPassword) {
-    if (password !== adminPassword) {
-      return NextResponse.json({ error: 'Invalid password' }, { status: 401 })
-    }
+  if (!valid) {
+    return NextResponse.json({ error: 'Invalid password' }, { status: 401 })
   }
 
   const token = generateToken({ sub: 'admin' })
@@ -40,7 +44,7 @@ export async function POST(req: NextRequest) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24, // 24h
+    maxAge: 60 * 60 * 24,
     path: '/',
   })
 
