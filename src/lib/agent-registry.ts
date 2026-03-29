@@ -92,7 +92,9 @@ class AgentRegistry {
   }
 }
 
-// Singleton — persists across Next.js hot reloads in dev
+// Singleton — always stored on globalThis so both custom server and API routes share the same instance
 const globalForRegistry = globalThis as unknown as { agentRegistry?: AgentRegistry }
-export const registry = globalForRegistry.agentRegistry ?? new AgentRegistry()
-if (process.env.NODE_ENV !== 'production') globalForRegistry.agentRegistry = registry
+if (!globalForRegistry.agentRegistry) {
+  globalForRegistry.agentRegistry = new AgentRegistry()
+}
+export const registry = globalForRegistry.agentRegistry
