@@ -25,10 +25,27 @@ export function writeDataFile(filename: string, data: unknown): void {
   writeFileSync(path, JSON.stringify(data, null, 2), { mode: 0o600 })
 }
 
+// Token management
+export interface TokenEntry {
+  id: string
+  name: string
+  tokenHash: string   // bcrypt hash of the actual token
+  createdAt: string
+  lastUsedAt?: string
+}
+
+export function readTokens(): TokenEntry[] {
+  return readDataFile<TokenEntry[]>('tokens.json', [])
+}
+
+export function writeTokens(tokens: TokenEntry[]): void {
+  writeDataFile('tokens.json', tokens)
+}
+
 // Password management
 export interface PasswordConfig {
-  hash?: string        // bcrypt hash
-  plaintext?: string   // dev fallback (plaintext)
+  hash?: string
+  plaintext?: string
 }
 
 export function readPasswordConfig(): PasswordConfig {
