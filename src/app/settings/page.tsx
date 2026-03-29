@@ -25,6 +25,9 @@ export default function SettingsPage() {
   const [tokenName, setTokenName] = useState('')
   const [newToken, setNewToken] = useState<{ token: string; name: string } | null>(null)
   const [tokenLoading, setTokenLoading] = useState(false)
+  // Inline name editing
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
 
   const loadTokens = useCallback(async () => {
     const res = await fetch('/api/settings/tokens')
@@ -83,6 +86,22 @@ export default function SettingsPage() {
     await loadTokens()
   }
 
+  function startEdit(t: TokenEntry) {
+    setEditingId(t.id)
+    setEditName(t.name)
+  }
+
+  async function saveEdit(id: string) {
+    if (!editName.trim()) { setEditingId(null); return }
+    await fetch(`/api/settings/tokens/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editName.trim() }),
+    })
+    setEditingId(null)
+    await loadTokens()
+  }
+
   function copyToClipboard(text: string) {
     navigator.clipboard.writeText(text).catch(() => {})
   }
@@ -137,16 +156,39 @@ export default function SettingsPage() {
                   <div key={t.id} className="flex items-center gap-3 px-5 py-3">
                     <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-zinc-200">{t.name}</div>
+                      {editingId === t.id ? (
+                        <form onSubmit={(e) => { e.preventDefault(); void saveEdit(t.id) }} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            autoFocus
+                            className="bg-zinc-800 border border-indigo-500 rounded px-2 py-0.5 text-sm text-zinc-100 focus:outline-none w-40"
+                          />
+                          <button type="submit" className="text-xs text-indigo-400 hover:text-indigo-200 px-1.5">Save</button>
+                          <button type="button" onClick={() => setEditingId(null)} className="text-xs text-zinc-600 hover:text-zinc-300 px-1.5">Cancel</button>
+                        </form>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <div className="text-sm text-zinc-200">{t.name}</div>
+                          <button
+                            onClick={() => startEdit(t)}
+                            className="text-xs text-zinc-700 hover:text-zinc-400 transition-colors"
+                            title="Edit name"
+                          >✏️</button>
+                        </div>
+                      )}
                       <div className="text-xs text-zinc-600">
                         Created {new Date(t.createdAt).toLocaleDateString()}
                         {t.lastUsedAt && ` · Last used ${new Date(t.lastUsedAt).toLocaleDateString()}`}
                       </div>
                     </div>
-                    <button onClick={() => void handleRevokeToken(t.id)}
-                      className="text-xs text-zinc-600 hover:text-red-400 transition-colors px-2 py-1 rounded border border-zinc-800 hover:border-red-800">
-                      Revoke
-                    </button>
+                    {editingId !== t.id && (
+                      <button onClick={() => void handleRevokeToken(t.id)}
+                        className="text-xs text-zinc-600 hover:text-red-400 transition-colors px-2 py-1 rounded border border-zinc-800 hover:border-red-800">
+                        Revoke
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
