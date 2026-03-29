@@ -11,6 +11,8 @@ interface SessionsResponse {
 
 interface SnapshotResponse {
   snapshot?: { sessions?: GatewaySession[]; timestamp?: number }
+  online?: boolean
+  lastSnapshotAt?: number
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -24,6 +26,14 @@ function formatAge(iso?: string): string {
   if (m < 60) return `${m}m ago`
   const h = Math.floor(m / 60)
   return `${h}h ago`
+}
+
+function formatMs(ms: number): string {
+  const s = Math.floor((Date.now() - ms) / 1000)
+  if (s < 60) return `${s}s ago`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ago`
+  return `${Math.floor(m / 60)}h ago`
 }
 
 function ModelBadge({ model }: { model?: string }) {
@@ -42,10 +52,26 @@ export function AgentStatusWidget() {
   const snapshotUrl = activeAgentId ? `/api/agents/${activeAgentId}/snapshot` : null
   const proxyUrl = !activeAgentId ? '/api/proxy/sessions' : null
 
-  const { data: snapshotData, isLoading: snLoading } = useSWR<SnapshotResponse>(snapshotUrl, fetcher, { refreshInterval: 10_000, revalidateOnFocus: false })
+  const { data: snapshotData, isLoading: snLoading } = useSWR<SnapshotResponse>(snapshotUrl, fetcher, { refreshInterval: 5_000, revalidateOnFocus: false })
   const { data: proxyData, isLoading: prLoading } = useSWR<SessionsResponse>(proxyUrl, fetcher, { refreshInterval: 10_000 })
 
   const isLoading = activeAgentId ? snLoading : prLoading
+
+  // Agent offline banner
+  if (activeAgentId && snapshotData && !snapshotData.online) {
+    const lastSeen = snapshotData.lastSnapshotAt ? formatMs(snapshotData.lastSnapshotAt) : '—'
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-1 px-4">
+        <div className="w-2 h-2 rounded-full bg-zinc-600" />
+        <span className="text-xs text-zinc-500">Agent offline</span>
+        <span className="text-xs text-zinc-700">last seen {lastSeen}</span>
+        {(snapshotData.snapshot?.sessions?.length ?? 0) > 0 && (
+          <span className="text-xs text-zinc-700 mt-1">showing last known data</span>
+        )}
+      </div>
+    )
+  }
+
   const sessions: GatewaySession[] = activeAgentId
     ? (snapshotData?.snapshot?.sessions as GatewaySession[] ?? [])
     : (proxyData?.sessions ?? [])

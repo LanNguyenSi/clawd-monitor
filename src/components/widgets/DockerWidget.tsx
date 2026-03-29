@@ -10,7 +10,7 @@ interface DockerContainer {
 }
 
 interface DockerResponse { containers?: DockerContainer[]; error?: string }
-interface SnapshotResponse { snapshot?: { containers?: DockerContainer[] } }
+interface SnapshotResponse { snapshot?: { containers?: DockerContainer[] }; online?: boolean; lastSnapshotAt?: number }
 
 const STATE_DOT: Record<string, string> = {
   running: 'bg-green-500', restarting: 'bg-yellow-500 animate-pulse',
@@ -25,7 +25,7 @@ export function DockerWidget() {
   const snapshotUrl = activeAgentId ? `/api/agents/${activeAgentId}/snapshot` : null
   const proxyUrl = !activeAgentId ? '/api/proxy/docker' : null
 
-  const { data: snapshotData, isLoading: snLoading } = useSWR<SnapshotResponse>(snapshotUrl, fetcher, { refreshInterval: 15_000, revalidateOnFocus: false })
+  const { data: snapshotData, isLoading: snLoading } = useSWR<SnapshotResponse>(snapshotUrl, fetcher, { refreshInterval: 5_000, revalidateOnFocus: false })
   const { data: proxyData, isLoading: prLoading } = useSWR<DockerResponse>(proxyUrl, fetcher, { refreshInterval: 15_000 })
 
   const isLoading = activeAgentId ? snLoading : prLoading
@@ -33,6 +33,17 @@ export function DockerWidget() {
     ? (snapshotData?.snapshot?.containers as DockerContainer[] ?? [])
     : (proxyData?.containers ?? [])
   const errorMsg = !activeAgentId && proxyData?.error
+
+  if (activeAgentId && snapshotData && !snapshotData.online) {
+    const lastSeen = snapshotData.lastSnapshotAt ? (() => { const s = Math.floor((Date.now() - snapshotData.lastSnapshotAt!) / 1000); return s < 60 ? `${s}s ago` : `${Math.floor(s/60)}m ago` })() : '—'
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-1 px-4">
+        <div className="w-2 h-2 rounded-full bg-zinc-600" />
+        <span className="text-xs text-zinc-500">Agent offline</span>
+        <span className="text-xs text-zinc-700">last seen {lastSeen}</span>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full">
