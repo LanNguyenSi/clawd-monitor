@@ -81,6 +81,13 @@ export function Navbar({ cols, onColsChange, onInstanceSwitch, onToggleTheme, th
         </button>
       )}
 
+      <a
+        href="/settings"
+        className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
+      >
+        ⚙
+      </a>
+
       <button
         onClick={handleLogout}
         className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
