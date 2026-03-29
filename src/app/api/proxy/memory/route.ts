@@ -41,6 +41,19 @@ export async function GET(req: NextRequest) {
   else if (file === 'yesterday') filePath = yesterdayFile()
   else filePath = FILES[file] ?? FILES.memory
 
+  // If CLAWD_DIR doesn't exist on this host, return graceful empty response
+  try {
+    statSync(CLAWD_DIR)
+  } catch {
+    return NextResponse.json({
+      file,
+      path: filePath,
+      content: `> Memory not available — clawd-monitor is running on a different host than the OpenClaw workspace.\n>\n> Set \`CLAWD_DIR\` to the correct path, or use the Gateway API integration (coming soon).`,
+      updatedAt: new Date().toISOString(),
+      unavailable: true,
+    })
+  }
+
   try {
     const content = readFileSync(filePath, 'utf-8')
     const stat = statSync(filePath)
@@ -51,6 +64,11 @@ export async function GET(req: NextRequest) {
       updatedAt: stat.mtime.toISOString(),
     })
   } catch {
-    return NextResponse.json({ error: `File not found: ${filePath}` }, { status: 404 })
+    return NextResponse.json({
+      file,
+      path: filePath,
+      content: `> File not found: \`${filePath}\``,
+      updatedAt: new Date().toISOString(),
+    })
   }
 }
