@@ -28,7 +28,12 @@ export function MemoryWidget() {
   const { data, error, isLoading, mutate } = useSWR<MemoryResponse>(
     `/api/proxy/memory?file=${selectedFile}`,
     fetcher,
-    { refreshInterval: 30_000 }
+    { refreshInterval: 30_000, onErrorRetry: (err, _key, _cfg, revalidate, { retryCount }) => {
+      // Don't retry on 404 — file simply doesn't exist on this host
+      if (err?.status === 404) return
+      if (retryCount >= 2) return
+      setTimeout(() => revalidate({ retryCount }), 5000)
+    }}
   )
 
   return (
