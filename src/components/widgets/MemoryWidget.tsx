@@ -28,7 +28,7 @@ export function MemoryWidget() {
   const { data, error, isLoading, mutate } = useSWR<MemoryResponse>(
     `/api/proxy/memory?file=${selectedFile}`,
     fetcher,
-    { refreshInterval: 30_000 }
+    { refreshInterval: 30_000, shouldRetryOnError: false }
   )
 
   return (
