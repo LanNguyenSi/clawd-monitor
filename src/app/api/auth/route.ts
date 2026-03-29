@@ -16,17 +16,19 @@ export async function POST(req: NextRequest) {
   }
 
   const hash = process.env.ADMIN_PASSWORD_HASH
-  if (!hash) {
-    // Dev fallback: accept "admin" if no hash configured
-    if (process.env.NODE_ENV === 'production') {
-      return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
-    }
-    if (password !== 'admin') {
-      return NextResponse.json({ error: 'Invalid password' }, { status: 401 })
-    }
-  } else {
+  const adminPassword = process.env.ADMIN_PASSWORD // plaintext fallback
+
+  if (!hash && !adminPassword) {
+    return NextResponse.json({ error: 'Server misconfigured — set ADMIN_PASSWORD or ADMIN_PASSWORD_HASH' }, { status: 500 })
+  }
+
+  if (hash) {
     const valid = await bcrypt.compare(password, hash)
     if (!valid) {
+      return NextResponse.json({ error: 'Invalid password' }, { status: 401 })
+    }
+  } else if (adminPassword) {
+    if (password !== adminPassword) {
       return NextResponse.json({ error: 'Invalid password' }, { status: 401 })
     }
   }
