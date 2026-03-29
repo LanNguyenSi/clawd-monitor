@@ -17,6 +17,8 @@ const WIDGET_COMPONENTS: Record<string, React.LazyExoticComponent<() => React.Re
   DockerWidget:        lazy(() => import('@/components/widgets/DockerWidget').then((m) => ({ default: m.DockerWidget }))),
   HeartbeatWidget:     lazy(() => import('@/components/widgets/HeartbeatWidget').then((m) => ({ default: m.HeartbeatWidget }))),
   ServiceHealthWidget: lazy(() => import('@/components/widgets/ServiceHealthWidget').then((m) => ({ default: m.ServiceHealthWidget }))),
+  GitHubPRWidget:      lazy(() => import('@/components/widgets/GitHubPRWidget').then((m) => ({ default: m.GitHubPRWidget }))),
+  AlertHistoryWidget:  lazy(() => import('@/components/widgets/AlertHistoryWidget').then((m) => ({ default: m.AlertHistoryWidget }))),
 }
 
 const ResponsiveGrid = WidthProvider(Responsive)
@@ -46,9 +48,10 @@ function defaultLayouts(cols: ColCount): Layout[] {
 
 interface Props {
   cols: ColCount
+  editMode?: boolean
 }
 
-export function WidgetGrid({ cols }: Props) {
+export function WidgetGrid({ cols, editMode = true }: Props) {
   const [layouts, setLayouts] = useState<Layout[]>([])
   const [mounted, setMounted] = useState(false)
 
@@ -88,8 +91,8 @@ export function WidgetGrid({ cols }: Props) {
       breakpoints={{ lg: 1200, md: 768, sm: 480, xs: 320, xxs: 0 }}
       onLayoutChange={(layout) => onLayoutChange(layout)}
       draggableHandle=".cursor-grab"
-      isResizable
-      isDraggable
+      isResizable={editMode}
+      isDraggable={editMode}
       margin={[8, 8]}
     >
       {layouts.map((layout) => {
