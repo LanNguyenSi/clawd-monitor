@@ -1,21 +1,22 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { Responsive, WidthProvider } from 'react-grid-layout'
 import type { Layout } from 'react-grid-layout'
 import { GridItem } from './GridItem'
 import { WIDGET_REGISTRY } from '@/lib/widgets'
-import type { ColCount, GridLayout } from '@/types'
+import type { ColCount } from '@/types'
 
-// Placeholder widgets until real ones are built
-function PlaceholderWidget({ id, title }: { id: string; title: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-2 text-zinc-600">
-      <span className="text-2xl">📦</span>
-      <span className="text-xs">{title}</span>
-      <span className="text-xs text-zinc-700 font-mono">{id}</span>
-    </div>
-  )
+// Lazy-load widgets to keep initial bundle small
+const WIDGET_COMPONENTS: Record<string, React.LazyExoticComponent<() => React.ReactElement>> = {
+  LogTailWidget:       lazy(() => import('@/components/widgets/LogTailWidget').then((m) => ({ default: m.LogTailWidget }))),
+  MetricsWidget:       lazy(() => import('@/components/widgets/MetricsWidget').then((m) => ({ default: m.MetricsWidget }))),
+  MemoryWidget:        lazy(() => import('@/components/widgets/MemoryWidget').then((m) => ({ default: m.MemoryWidget }))),
+  AgentStatusWidget:   lazy(() => import('@/components/widgets/AgentStatusWidget').then((m) => ({ default: m.AgentStatusWidget }))),
+  CronWidget:          lazy(() => import('@/components/widgets/PlaceholderWidget').then((m) => ({ default: () => m.PlaceholderWidget({ id: 'cron', title: 'Cron Jobs — coming in Wave 3' }) }))),
+  DockerWidget:        lazy(() => import('@/components/widgets/PlaceholderWidget').then((m) => ({ default: () => m.PlaceholderWidget({ id: 'docker', title: 'Docker — coming in Wave 3' }) }))),
+  HeartbeatWidget:     lazy(() => import('@/components/widgets/PlaceholderWidget').then((m) => ({ default: () => m.PlaceholderWidget({ id: 'heartbeat', title: 'Heartbeat — coming in Wave 3' }) }))),
+  ServiceHealthWidget: lazy(() => import('@/components/widgets/PlaceholderWidget').then((m) => ({ default: () => m.PlaceholderWidget({ id: 'service-health', title: 'Service Health — coming in Wave 3' }) }))),
 }
 
 const ResponsiveGrid = WidthProvider(Responsive)
@@ -31,7 +32,15 @@ function defaultLayouts(cols: ColCount): Layout[] {
     const defaultW = Math.min(w?.defaultW ?? 2, cols)
     const x = (i * defaultW) % cols
     const y = Math.floor((i * defaultW) / cols) * (w?.defaultH ?? 2)
-    return { i: id, x, y, w: defaultW, h: w?.defaultH ?? 2, minW: w?.minW, minH: w?.minH }
+    return {
+      i: id,
+      x,
+      y,
+      w: defaultW,
+      h: w?.defaultH ?? 2,
+      minW: w?.minW,
+      minH: w?.minH,
+    }
   })
 }
 
@@ -47,8 +56,11 @@ export function WidgetGrid({ cols }: Props) {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
-        const parsed = JSON.parse(saved) as GridLayout[]
-        setLayouts(parsed as unknown as Layout[])
+        const parsed = JSON.parse(saved) as Layout[]
+        // Validate that saved layouts contain known widget ids
+        const validIds = new Set(WIDGET_REGISTRY.map((w) => w.id))
+        const valid = parsed.filter((l) => validIds.has(l.i))
+        setLayouts(valid.length > 0 ? valid : defaultLayouts(cols))
       } else {
         setLayouts(defaultLayouts(cols))
       }
@@ -65,7 +77,7 @@ export function WidgetGrid({ cols }: Props) {
 
   if (!mounted) return null
 
-  const colsMap = { lg: cols, md: cols, sm: 2, xs: 1, xxs: 1 }
+  const colsMap = { lg: cols, md: Math.min(cols, 4), sm: 2, xs: 1, xxs: 1 }
 
   return (
     <ResponsiveGrid
@@ -83,9 +95,18 @@ export function WidgetGrid({ cols }: Props) {
       {layouts.map((layout) => {
         const widget = WIDGET_REGISTRY.find((w) => w.id === layout.i)
         if (!widget) return null
+
+        const WidgetComp = WIDGET_COMPONENTS[widget.component]
+
         return (
           <GridItem key={layout.i} title={widget.title}>
-            <PlaceholderWidget id={widget.id} title={widget.title} />
+            <Suspense fallback={
+              <div className="flex items-center justify-center h-full">
+                <span className="text-xs text-zinc-700 animate-pulse">Loading…</span>
+              </div>
+            }>
+              {WidgetComp ? <WidgetComp /> : null}
+            </Suspense>
           </GridItem>
         )
       })}
