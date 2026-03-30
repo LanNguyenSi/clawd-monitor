@@ -9,20 +9,17 @@ import type { ColCount } from '@/types'
 interface Props {
   cols: ColCount
   onColsChange: (cols: ColCount) => void
-  onToggleTheme?: () => void
-  theme?: 'dark' | 'light'
   editMode?: boolean
   onToggleEditMode?: () => void
   onAddWidget?: (widgetId: string) => void
   activeWidgetIds?: string[]
 }
 
-export function Navbar({ cols, onColsChange, onToggleTheme, theme, editMode, onToggleEditMode, onAddWidget, activeWidgetIds = [] }: Props) {
+export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWidget, activeWidgetIds = [] }: Props) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   return (
     <nav className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 shrink-0">
-      {/* Main bar */}
       <div className="h-12 flex items-center px-4 gap-3">
         <div className="flex items-center gap-2">
           <span className="text-sm">🐾</span>
@@ -70,11 +67,7 @@ export function Navbar({ cols, onColsChange, onToggleTheme, theme, editMode, onT
         </div>
 
         <AgentSwitcher />
-
-        {/* User menu (desktop + mobile) */}
-        {onToggleTheme && theme && (
-          <UserMenu theme={theme} onToggleTheme={onToggleTheme} />
-        )}
+        <UserMenu />
 
         {/* Mobile menu toggle for layout controls */}
         <button

@@ -6,17 +6,17 @@ import { Navbar } from '@/components/Nav/Navbar'
 import { WidgetGrid } from '@/components/Grid/WidgetGrid'
 import { KeyboardShortcuts } from '@/components/KeyboardShortcuts'
 import { ActiveAgentProvider } from '@/lib/active-agent'
+import { ThemeProvider, useTheme } from '@/lib/theme'
 import { WIDGET_REGISTRY } from '@/lib/widgets'
 import type { ColCount } from '@/types'
 
 const COLS_KEY = 'clawd-monitor:cols'
-const THEME_KEY = 'clawd-monitor:theme'
 
-export default function DashboardPage() {
+function DashboardInner() {
   const router = useRouter()
+  const { toggleTheme } = useTheme()
   const [cols, setCols] = useState<ColCount>(4)
   const [ready, setReady] = useState(false)
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [editMode, setEditMode] = useState(true)
   const [gridKey, setGridKey] = useState(0)
   const [activeWidgetIds, setActiveWidgetIds] = useState<string[]>([])
@@ -31,28 +31,12 @@ export default function DashboardPage() {
       setCols(parseInt(savedCols) as ColCount)
     }
 
-    const savedTheme = localStorage.getItem(THEME_KEY) as 'dark' | 'light' | null
-    if (savedTheme) setTheme(savedTheme)
-
     setReady(true)
   }, [router])
-
-  // Apply theme to html element
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark')
-  }, [theme])
 
   const handleColsChange = useCallback((newCols: ColCount) => {
     setCols(newCols)
     localStorage.setItem(COLS_KEY, String(newCols))
-  }, [])
-
-  const handleToggleTheme = useCallback(() => {
-    setTheme((t) => {
-      const next = t === 'dark' ? 'light' : 'dark'
-      localStorage.setItem(THEME_KEY, next)
-      return next
-    })
   }, [])
 
   const handleRefresh = useCallback(() => {
@@ -69,7 +53,7 @@ export default function DashboardPage() {
       const maxY = layouts.reduce((max, l) => Math.max(max, l.y + l.h), 0)
       layouts.push({ i: widgetId, x: 0, y: maxY, w: widget.defaultW, h: widget.defaultH })
       localStorage.setItem(STORAGE_KEY, JSON.stringify(layouts))
-      setGridKey((k) => k + 1) // force re-render
+      setGridKey((k) => k + 1)
     } catch {}
   }, [])
 
@@ -82,7 +66,6 @@ export default function DashboardPage() {
       link.href = canvas.toDataURL()
       link.click()
     } catch {
-      // html2canvas not installed — fallback
       console.warn('Screenshot: html2canvas not available')
     }
   }, [])
@@ -94,7 +77,6 @@ export default function DashboardPage() {
   if (!ready) return null
 
   return (
-    <ActiveAgentProvider>
     <div
       ref={dashboardRef}
       className="flex flex-col h-screen bg-zinc-100 dark:bg-zinc-950"
@@ -102,8 +84,6 @@ export default function DashboardPage() {
       <Navbar
         cols={cols}
         onColsChange={handleColsChange}
-        onToggleTheme={handleToggleTheme}
-        theme={theme}
         editMode={editMode}
         onToggleEditMode={handleToggleEditMode}
         onAddWidget={handleAddWidget}
@@ -121,7 +101,7 @@ export default function DashboardPage() {
       <KeyboardShortcuts
         onRefresh={handleRefresh}
         onScreenshot={handleScreenshot}
-        onToggleTheme={handleToggleTheme}
+        onToggleTheme={toggleTheme}
         onToggleEditMode={handleToggleEditMode}
       />
 
@@ -130,6 +110,15 @@ export default function DashboardPage() {
         Press <kbd className="bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded px-1">?</kbd> for shortcuts
       </div>
     </div>
-    </ActiveAgentProvider>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <ThemeProvider>
+      <ActiveAgentProvider>
+        <DashboardInner />
+      </ActiveAgentProvider>
+    </ThemeProvider>
   )
 }

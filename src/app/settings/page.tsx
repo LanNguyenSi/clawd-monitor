@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { ThemeProvider, useTheme } from '@/lib/theme'
 
 interface TokenEntry {
   id: string
@@ -11,12 +12,10 @@ interface TokenEntry {
   lastUsedAt?: string
 }
 
-const THEME_KEY = 'clawd-monitor:theme'
-
-export default function SettingsPage() {
+function SettingsInner() {
   const router = useRouter()
+  const { theme, setTheme } = useTheme()
   const [ready, setReady] = useState(false)
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
 
   // Password change
   const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' })
@@ -40,8 +39,6 @@ export default function SettingsPage() {
   useEffect(() => {
     const token = localStorage.getItem('clawd-monitor:token')
     if (!token) { router.replace('/login'); return }
-    const savedTheme = localStorage.getItem(THEME_KEY) as 'dark' | 'light' | null
-    if (savedTheme) setTheme(savedTheme)
     setReady(true)
     void loadTokens()
   }, [router, loadTokens])
@@ -136,11 +133,7 @@ export default function SettingsPage() {
               </div>
               <div className="flex items-center gap-0.5 bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-lg p-0.5">
                 <button
-                  onClick={() => {
-                    setTheme('light')
-                    localStorage.setItem(THEME_KEY, 'light')
-                    document.documentElement.classList.remove('dark')
-                  }}
+                  onClick={() => setTheme('light')}
                   className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                     theme === 'light'
                       ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-100'
@@ -150,11 +143,7 @@ export default function SettingsPage() {
                   ☀️ Light
                 </button>
                 <button
-                  onClick={() => {
-                    setTheme('dark')
-                    localStorage.setItem(THEME_KEY, 'dark')
-                    document.documentElement.classList.add('dark')
-                  }}
+                  onClick={() => setTheme('dark')}
                   className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                     theme === 'dark'
                       ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-100'
@@ -261,7 +250,7 @@ export default function SettingsPage() {
           {newToken && (
             <div className="mt-4 bg-indigo-50 border border-indigo-200 dark:bg-zinc-900 dark:border-indigo-700/50 rounded-xl p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-indigo-700 dark:text-indigo-300">Token generated for "{newToken.name}"</h3>
+                <h3 className="text-sm font-medium text-indigo-700 dark:text-indigo-300">Token generated for &ldquo;{newToken.name}&rdquo;</h3>
                 <button onClick={() => setNewToken(null)} className="text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 text-sm">✕</button>
               </div>
               <p className="text-xs text-yellow-600 dark:text-yellow-500">⚠ Copy this token now — it won't be shown again.</p>
@@ -295,5 +284,13 @@ clawd-monitor-agent \\
         </section>
       </div>
     </div>
+  )
+}
+
+export default function SettingsPage() {
+  return (
+    <ThemeProvider>
+      <SettingsInner />
+    </ThemeProvider>
   )
 }

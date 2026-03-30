@@ -3,14 +3,11 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useTheme } from '@/lib/theme'
 
-interface Props {
-  theme: 'dark' | 'light'
-  onToggleTheme: () => void
-}
-
-export function UserMenu({ theme, onToggleTheme }: Props) {
+export function UserMenu() {
   const router = useRouter()
+  const { theme, toggleTheme } = useTheme()
   const [open, setOpen] = useState(false)
 
   function handleLogout() {
@@ -37,7 +34,7 @@ export function UserMenu({ theme, onToggleTheme }: Props) {
           <div className="absolute top-full mt-1 right-0 w-48 bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700 rounded-lg shadow-xl z-50 py-1">
             {/* Theme toggle */}
             <button
-              onClick={() => { onToggleTheme(); setOpen(false) }}
+              onClick={() => { toggleTheme(); setOpen(false) }}
               className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
               <span className="w-4 text-center">{theme === 'dark' ? '☀️' : '🌙'}</span>
