@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthenticated } from '@/lib/auth'
 import { registry } from '@/lib/agent-registry'
+import { spawn } from 'child_process'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,41 +15,97 @@ export async function GET(req: NextRequest, { params }: Props) {
   const { agentId } = await params
   const agent = registry.agents.get(agentId)
 
-  if (!agent) {
-    return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
-  }
-  if (!agent.online) {
-    return NextResponse.json({ error: 'Agent offline' }, { status: 503 })
-  }
-  if (!agent.gatewayUrl) {
-    return NextResponse.json({ error: 'Agent did not provide gatewayUrl' }, { status: 503 })
-  }
+  if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+  if (!agent.online) return NextResponse.json({ error: 'Agent offline' }, { status: 503 })
 
-  // Build upstream URL: proxy to agent's gateway /logs/stream
   const source = req.nextUrl.searchParams.get('source') ?? 'openclaw'
   const container = req.nextUrl.searchParams.get('container') ?? ''
-  const upstreamParams = new URLSearchParams({ source })
-  if (container) upstreamParams.set('container', container)
 
-  const upstreamUrl = `${agent.gatewayUrl.replace(/\/$/, '')}/logs/stream?${upstreamParams}`
+  const encoder = new TextEncoder()
 
-  const headers: Record<string, string> = { Accept: 'text/event-stream' }
-  if (agent.gatewayToken) headers['Authorization'] = `Bearer ${agent.gatewayToken}`
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      function send(line: string) {
+        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(line)}\n\n`)) }
+        catch { /* connection closed */ }
+      }
 
-  let upstream: Response
-  try {
-    upstream = await fetch(upstreamUrl, { headers, signal: req.signal })
-  } catch (err) {
-    return NextResponse.json({ error: `Cannot reach agent gateway: ${err}` }, { status: 502 })
-  }
+      let child: ReturnType<typeof spawn> | null = null
 
-  if (!upstream.ok || !upstream.body) {
-    return NextResponse.json({ error: `Agent gateway returned ${upstream.status}` }, { status: 502 })
-  }
+      const abort = () => {
+        try { child?.kill() } catch { /* ignore */ }
+        try { controller.close() } catch { /* ignore */ }
+      }
 
-  // Stream SSE back to client
-  return new NextResponse(upstream.body, {
-    status: 200,
+      req.signal.addEventListener('abort', abort)
+
+      if (source === 'docker') {
+        const name = container || 'openclaw'
+        child = spawn('docker', ['logs', '--tail', '50', '--follow', name], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
+        child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
+        child.stderr?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
+        child.on('error', () => send('[error] docker not available'))
+
+      } else if (source === 'system') {
+        child = spawn('journalctl', ['-f', '-n', '50', '--no-pager', '--output=short'], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
+        child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
+        child.on('error', () => {
+          child = spawn('tail', ['-f', '-n', '50', '/var/log/syslog'], { stdio: ['ignore', 'pipe', 'pipe'] })
+          child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
+          child.on('error', () => send('[error] no system log available'))
+        })
+
+      } else {
+        // openclaw: try gateway /logs/stream, then fall back to journalctl on agent's host
+        if (agent.gatewayUrl) {
+          const headers: Record<string, string> = {}
+          if (agent.gatewayToken) headers['Authorization'] = `Bearer ${agent.gatewayToken}`
+
+          fetch(`${agent.gatewayUrl.replace(/\/$/, '')}/logs/stream?source=${source}`, {
+            headers,
+            signal: req.signal,
+          }).then(async (res) => {
+            if (!res.ok || !res.body) {
+              // Gateway doesn't have /logs/stream — fall back to journalctl (server-side)
+              spawnJournalctl()
+              return
+            }
+            const reader = res.body.getReader()
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              new TextDecoder().decode(value).split('\n').filter(Boolean).forEach(send)
+            }
+          }).catch(() => spawnJournalctl())
+        } else {
+          spawnJournalctl()
+        }
+
+        function spawnJournalctl() {
+          // Read openclaw service logs via journalctl on this server
+          child = spawn('journalctl', ['-f', '-n', '100', '--no-pager', '-u', 'openclaw', '--output=short'], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+          })
+          child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
+          child.stderr?.on('data', () => {
+            // unit not found — try generic follow
+            child = spawn('journalctl', ['-f', '-n', '100', '--no-pager', '--output=short'], {
+              stdio: ['ignore', 'pipe', 'pipe'],
+            })
+            child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
+            child.on('error', () => send('[info] No log stream available on this host'))
+          })
+          child.on('error', () => send('[info] journalctl not available'))
+        }
+      }
+    }
+  })
+
+  return new NextResponse(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
