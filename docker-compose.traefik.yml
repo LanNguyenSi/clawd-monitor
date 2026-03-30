@@ -14,7 +14,7 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.clawd-monitor.rule=Host(`clawd-monitor.opentriologue.ai`)"
+      - "traefik.http.routers.clawd-monitor.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.clawd-monitor.entrypoints=websecure"
       - "traefik.http.routers.clawd-monitor.tls=true"
       - "traefik.http.routers.clawd-monitor.tls.certresolver=letsencrypt"
