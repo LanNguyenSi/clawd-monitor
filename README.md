@@ -3,36 +3,45 @@
 ![CI](https://github.com/LanNguyenSi/clawd-monitor/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 
-Web-based monitoring dashboard for [OpenClaw](https://openclaw.ai) instances.
-
-Live widgets in a configurable drag-and-drop grid. Connect multiple OpenClaw agents — each pushes live snapshots every 5 seconds. No inbound ports required on agent hosts.
+Monitoring dashboard for [OpenClaw](https://openclaw.ai) instances. Connect multiple agents — each pushes live snapshots every 5 seconds via WebSocket. No inbound ports required on agent hosts.
 
 **Live:** [clawd-monitor.opentriologue.ai](https://clawd-monitor.opentriologue.ai)
 
 ---
 
-## Features
+## Widgets
 
-- **Push-based agent model** — agents connect outbound, no exposed ports
-- **10 live widgets** — CPU/RAM, Sessions, Cron Jobs, Docker Containers, Log Tail, Heartbeat, Service Health, GitHub PRs, Alert History, Connected Agents
-- **Drag & drop layout** — 2/4/8 column grid, persisted to localStorage
-- **Agent switcher in Navbar** — switch between Ice, Lava, any connected OpenClaw host
-- **Token management** — generate, revoke, install-snippet per agent
-- **Settings page** — change password, manage tokens
-- **Keyboard shortcuts** — `r` refresh, `s` screenshot, `t` dark/light, `e` edit layout, `?` help
+| Widget | Description |
+|--------|-------------|
+| CPU + RAM | Live metrics with sparklines |
+| Agent Status | Active sessions + model info |
+| Connected Agents | All connected agents with online/offline status |
+| Session Log | Last 5 messages per session (embedded in snapshot) |
+| Memory Viewer | Read MEMORY.md / CURRENT.md / today's log from agent |
+| Cron Jobs | Scheduled jobs with next/last run times |
+| Docker Containers | Container status, restarts, uptime |
+| Log Tail | Live log stream (local server) |
+| GitHub PRs | Open PRs with CI status |
+| Heartbeat Pulse | Agent heartbeat health check |
+| Service Health | HTTP health checks for configured services |
+| Alert History | Recent alerts from the last 7 days |
+
+All widgets support **agent switching** — select an agent in the navbar to view its data.
 
 ---
 
 ## Architecture
 
 ```
-OpenClaw Host (Ice VPS)               Stone VPS
-┌─────────────────────┐               ┌──────────────────────┐
-│  clawd-monitor-     │               │  clawd-monitor       │
-│  agent              │──WebSocket──▶ │  (this repo)         │
-│  pushes snapshots   │               │  shows dashboard     │
-└─────────────────────┘               └──────────────────────┘
+OpenClaw Host (any VPS)               clawd-monitor server
+┌──────────────────────┐               ┌──────────────────────┐
+│  clawd-monitor-agent │──WebSocket──▶ │  Next.js + WS server │
+│  pushes snapshots    │               │  serves dashboard    │
+│  every 5 seconds     │               │                      │
+└──────────────────────┘               └──────────────────────┘
 ```
+
+Snapshots include: sessions, cron jobs, metrics, memory files, Docker containers, and recent session messages. All data is pushed from the agent — the server never needs to reach back to the agent host.
 
 Agent repo: [clawd-monitor-agent](https://github.com/LanNguyenSi/clawd-monitor-agent)
 
@@ -53,14 +62,17 @@ docker compose -f docker-compose.traefik.yml up -d
 
 Open `https://your-domain/` → login → Settings → generate an agent token.
 
-### 2. Connect an agent (on each OpenClaw host)
+### 2. Connect an agent
+
+On each OpenClaw host you want to monitor:
 
 ```bash
 npm install -g clawd-monitor-agent
 clawd-monitor-agent \
   --server https://your-clawd-monitor-domain \
   --token <token-from-settings> \
-  --name "My OpenClaw Host"
+  --name "My OpenClaw Host" \
+  --gateway http://localhost:18789
 ```
 
 Or copy the install snippet directly from the Settings page.
@@ -71,16 +83,13 @@ Or copy the install snippet directly from the Settings page.
 
 ```env
 # Required
-ADMIN_PASSWORD=             # or ADMIN_PASSWORD_HASH (bcrypt)
+ADMIN_PASSWORD=             # plaintext, or use ADMIN_PASSWORD_HASH (bcrypt)
 JWT_SECRET=                 # random 32+ char string
 
-# Agent tokens (comma-separated, for backward compat)
-AGENT_TOKENS=token1,token2  # also manageable via Settings UI
-
 # Optional
-NEXT_PUBLIC_DEFAULT_GATEWAY_URL=http://localhost:9500
-CLAWD_MONITOR_DATA_DIR=/data   # persistent storage (tokens, password)
-CLAWD_DIR=/root/.openclaw/workspace  # for Memory Viewer (if running locally)
+AGENT_TOKENS=token1,token2  # static tokens (also manageable via Settings UI)
+NEXT_PUBLIC_DEFAULT_GATEWAY_URL=http://localhost:18789
+CLAWD_MONITOR_DATA_DIR=/data   # persistent storage for tokens + password hash
 GITHUB_TOKEN=               # for GitHub PR widget
 ```
 
@@ -96,22 +105,27 @@ npm run dev
 
 ---
 
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `r` | Refresh |
+| `e` | Toggle edit mode (drag/resize/close widgets) |
+| `t` | Toggle dark/light mode |
+| `s` | Screenshot |
+| `?` | Show shortcuts |
+
+---
+
 ## Stack
 
-- [Next.js 15](https://nextjs.org) (App Router, custom server for WebSocket)
+- [Next.js 15](https://nextjs.org) — App Router + custom WebSocket server
 - [TypeScript](https://www.typescriptlang.org) strict mode
-- [Tailwind CSS](https://tailwindcss.com)
-- [react-grid-layout](https://github.com/react-grid-layout/react-grid-layout)
-- [SWR](https://swr.vercel.app) for data fetching
+- [Tailwind CSS](https://tailwindcss.com) with dark mode
+- [react-grid-layout](https://github.com/react-grid-layout/react-grid-layout) — drag & drop grid
+- [SWR](https://swr.vercel.app) — data fetching
 - Docker + Traefik for deployment
 
 ---
 
-## Contributing
-
-PRs welcome. Branch naming: `feat/<task-id>-<name>`. Build must pass before opening PR.
-
----
-
-*Built by Ice 🧊 (spec/review/deploy) + Lava 🌋 (implementation)*  
-*A tool for the [OpenClaw](https://openclaw.ai) ecosystem*
+*Built by Ice 🧊 + Lava 🌋 for the [OpenClaw](https://openclaw.ai) ecosystem*
