@@ -64,8 +64,9 @@ export function SessionLogWidget() {
 
   // Auto-select first session when list loads
   useEffect(() => {
-    if (sessions.length > 0 && !selectedSession) {
-      setSelectedSession(sessions[0].sessionKey)
+    const first = sessions.find((s) => s.sessionKey)
+    if (first && !selectedSession) {
+      setSelectedSession(first.sessionKey)
     }
   }, [sessions, selectedSession])
 
@@ -120,9 +121,9 @@ export function SessionLogWidget() {
           className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 flex-1 min-w-0"
         >
           {sessions.length === 0 && <option value="">No sessions</option>}
-          {sessions.map((s) => (
+          {sessions.filter((s) => s.sessionKey).map((s) => (
             <option key={s.sessionKey} value={s.sessionKey}>
-              {s.sessionKey.replace('agent:', '').slice(0, 32)}
+              {(s.sessionKey ?? '').replace('agent:', '').slice(0, 32) || s.sessionKey}
             </option>
           ))}
         </select>
