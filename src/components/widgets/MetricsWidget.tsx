@@ -16,9 +16,9 @@ function formatBytes(bytes: number): string {
 }
 
 function cpuColor(pct: number): string {
-  if (pct >= 80) return 'text-red-400'
-  if (pct >= 60) return 'text-yellow-400'
-  return 'text-green-400'
+  if (pct >= 80) return 'text-red-500 dark:text-red-400'
+  if (pct >= 60) return 'text-yellow-500 dark:text-yellow-400'
+  return 'text-green-600 dark:text-green-400'
 }
 
 function Sparkline({ data, color }: { data: number[]; color: string }) {
@@ -120,10 +120,10 @@ export function MetricsWidget() {
     const lastSeen = snapshotData.lastSnapshotAt ? (() => { const s = Math.floor((Date.now() - snapshotData.lastSnapshotAt!) / 1000); return s < 60 ? `${s}s ago` : `${Math.floor(s/60)}m ago` })() : '—'
     return (
       <div className="flex flex-col items-center justify-center h-full gap-1 px-4">
-        <div className="w-2 h-2 rounded-full bg-zinc-600" />
+        <div className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-600" />
         <span className="text-xs text-zinc-500">Agent offline</span>
-        <span className="text-xs text-zinc-700">last seen {lastSeen}</span>
-        {metrics && <span className="text-xs text-zinc-700 mt-1">last: CPU {metrics.cpu}% · RAM {Math.round((metrics.memUsed / metrics.memTotal) * 100)}%</span>}
+        <span className="text-xs text-zinc-400 dark:text-zinc-700">last seen {lastSeen}</span>
+        {metrics && <span className="text-xs text-zinc-400 dark:text-zinc-700 mt-1">last: CPU {metrics.cpu}% · RAM {Math.round((metrics.memUsed / metrics.memTotal) * 100)}%</span>}
       </div>
     )
   }
@@ -131,10 +131,10 @@ export function MetricsWidget() {
   return (
     <div className="flex flex-col h-full px-3 py-2 gap-3">
       {status === 'connecting' && (
-        <div className="text-xs text-zinc-600 animate-pulse">Connecting…</div>
+        <div className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Connecting…</div>
       )}
       {status === 'error' && (
-        <div className="text-xs text-red-400">Metrics unavailable</div>
+        <div className="text-xs text-red-500 dark:text-red-400">Metrics unavailable</div>
       )}
 
       {metrics && (
@@ -157,17 +157,17 @@ export function MetricsWidget() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs text-zinc-500">RAM</span>
-              <span className="text-xs tabular-nums text-zinc-300">
+              <span className="text-xs tabular-nums text-zinc-600 dark:text-zinc-300">
                 {formatBytes(metrics.memUsed)} / {formatBytes(metrics.memTotal)}
               </span>
             </div>
-            <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="h-2 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-500 ${memBarColor}`}
                 style={{ width: `${memPct}%` }}
               />
             </div>
-            <div className="text-xs text-zinc-600 mt-0.5 text-right">{memPct}%</div>
+            <div className="text-xs text-zinc-400 dark:text-zinc-600 mt-0.5 text-right">{memPct}%</div>
           </div>
         </>
       )}
