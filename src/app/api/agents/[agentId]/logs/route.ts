@@ -86,20 +86,11 @@ export async function GET(req: NextRequest, { params }: Props) {
         }
 
         function spawnJournalctl() {
-          // Try journalctl first (host/systemd), then docker logs, then syslog
-          child = spawn('journalctl', ['-f', '-n', '100', '--no-pager', '-u', 'openclaw', '--output=short'], {
-            stdio: ['ignore', 'pipe', 'pipe'],
-          })
-          child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
-          child.stderr?.on('data', () => {
-            // openclaw unit not found — try generic journalctl
-            child = spawn('journalctl', ['-f', '-n', '100', '--no-pager', '--output=short'], {
-              stdio: ['ignore', 'pipe', 'pipe'],
-            })
-            child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
-            child.on('error', () => tryDockerLogs())
-          })
-          child.on('error', () => tryDockerLogs())
+          // Remote agent: gateway is on a different host, can't stream logs directly.
+          // Send informative message immediately so widget doesn't hang on "Connecting…"
+          send('[info] Log streaming not available for remote agents.')
+          send('[info] The agent runs on a different host — logs cannot be proxied via this server.')
+          send('[info] Wave 9: log push via WebSocket will enable real-time remote logs.')
         }
 
         function tryDockerLogs() {
