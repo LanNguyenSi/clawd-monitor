@@ -27,7 +27,7 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
   let agentId: string | null = null
   let authenticated = false
 
-  ws.on('message', async (raw) => {
+  ws.on('message', async (raw: Buffer | string) => {
     let msg: WsMsg
     try {
       msg = JSON.parse(raw.toString()) as WsMsg
@@ -94,7 +94,7 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
     }
   })
 
-  ws.on('error', (err) => {
+  ws.on('error', (err: Error) => {
     console.warn(`[agent-ws] Error for ${agentId ?? 'unknown'}:`, err.message)
   })
 }

@@ -82,7 +82,7 @@ export function MetricsWidget() {
       })
       setStatus('connected')
       setCpuHistory((prev) => {
-        const cpuVal = (m as Record<string, unknown>).cpuPercent ?? (m as Record<string, unknown>).cpu ?? 0
+        const cpuVal = agentMetrics.cpuPercent ?? agentMetrics.cpu ?? 0
         const next = [...prev, cpuVal]
         return next.length > MAX_POINTS ? next.slice(next.length - MAX_POINTS) : next
       })

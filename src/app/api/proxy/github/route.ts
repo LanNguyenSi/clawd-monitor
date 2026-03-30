@@ -21,7 +21,8 @@ async function fetchPRsForRepo(owner: string, repo: string, token: string): Prom
     signal: AbortSignal.timeout(5000),
   })
   if (!res.ok) return []
-  const prs = await res.json() as Record<string, unknown>[]
+  interface GHApiPR { id: number; number: number; title: string; html_url: string; state: string; draft: boolean; created_at: string }
+  const prs = await res.json() as GHApiPR[]
   return prs.map((pr) => ({
     id: pr.id,
     number: pr.number,
@@ -29,7 +30,7 @@ async function fetchPRsForRepo(owner: string, repo: string, token: string): Prom
     repo: `${owner}/${repo}`,
     url: pr.html_url,
     state: pr.state,
-    draft: pr.draft,
+    draft: pr.draft ?? false,
     createdAt: pr.created_at,
     ciStatus: 'unknown',
   }))

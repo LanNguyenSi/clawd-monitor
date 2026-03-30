@@ -30,8 +30,9 @@ function formatLast(ms?: number): string {
   return `${Math.floor(m / 60)}h ago`
 }
 
+interface ScheduleShape { kind?: string; expr?: string; everyMs?: number }
 function scheduleLabel(job: CronJob): string {
-  const s = job.schedule as Record<string, unknown>
+  const s = job.schedule as ScheduleShape
   if (s.kind === 'cron') return s.expr ?? 'cron'
   if (s.kind === 'every' && s.everyMs) {
     const m = Math.round(s.everyMs / 60000)

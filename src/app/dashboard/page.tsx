@@ -59,7 +59,8 @@ function DashboardInner() {
 
   const handleScreenshot = useCallback(async () => {
     try {
-      const { default: html2canvas } = await import('html2canvas')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { default: html2canvas } = await import('html2canvas' as any)
       const canvas = await html2canvas(dashboardRef.current ?? document.body, { useCORS: true })
       const link = document.createElement('a')
       link.download = `clawd-monitor-${new Date().toISOString().slice(0, 19)}.png`
