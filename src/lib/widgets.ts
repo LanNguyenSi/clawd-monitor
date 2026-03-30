@@ -13,6 +13,7 @@ export const WIDGET_REGISTRY: Widget[] = [
   { id: 'github-prs',     title: 'GitHub PRs',         component: 'GitHubPRWidget',      defaultW: 2, defaultH: 2, minW: 1, minH: 2 },
   { id: 'alert-history',  title: 'Alert History',      component: 'AlertHistoryWidget',  defaultW: 1, defaultH: 2, minW: 1, minH: 1 },
   { id: 'agent-list',    title: 'Connected Agents',   component: 'AgentListWidget',     defaultW: 2, defaultH: 2, minW: 1, minH: 1 },
+  { id: 'session-log',  title: 'Session Log',        component: 'SessionLogWidget',    defaultW: 2, defaultH: 3, minW: 2, minH: 2 },
 ]
 
 export function getWidget(id: string): Widget | undefined {
