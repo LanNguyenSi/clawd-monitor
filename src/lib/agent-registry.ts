@@ -44,8 +44,8 @@ class AgentRegistry {
 
   register(ws: WebSocket, meta: { agentId: string; name: string; version: string; token: string; gatewayUrl?: string; gatewayToken?: string }) {
     const existing = this.agents.get(meta.agentId)
-    if (existing) {
-      // Reconnect — close old ws if still open
+    if (existing && existing.ws !== ws) {
+      // Reconnect — close old ws only if it's a different connection
       try { existing.ws.close() } catch {}
     }
 
