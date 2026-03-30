@@ -22,10 +22,10 @@ function detectLevel(line: string): LogLine['level'] {
 }
 
 const LEVEL_CLASSES: Record<LogLine['level'], string> = {
-  error: 'text-red-400',
-  warn:  'text-yellow-400',
-  info:  'text-zinc-300',
-  debug: 'text-zinc-600',
+  error: 'text-red-500 dark:text-red-400',
+  warn:  'text-yellow-600 dark:text-yellow-400',
+  info:  'text-zinc-700 dark:text-zinc-300',
+  debug: 'text-zinc-400 dark:text-zinc-600',
 }
 
 export function LogTailWidget() {
@@ -88,11 +88,11 @@ export function LogTailWidget() {
   return (
     <div className="flex flex-col h-full">
       {/* Controls */}
-      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-zinc-800 shrink-0">
+      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
         <select
           value={source}
           onChange={(e) => setSource(e.target.value as LogSource)}
-          className="text-xs bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-300"
+          className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300"
         >
           <option value="openclaw">OpenClaw</option>
           <option value="docker">Docker</option>
@@ -106,7 +106,7 @@ export function LogTailWidget() {
             onChange={(e) => setContainer(e.target.value)}
             onBlur={() => connect('docker', container)}
             placeholder="container name"
-            className="text-xs bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 text-zinc-300 placeholder-zinc-600 w-32"
+            className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded px-2 py-0.5 text-zinc-700 dark:text-zinc-300 placeholder-zinc-400 dark:placeholder-zinc-600 w-32"
           />
         )}
 
@@ -116,7 +116,7 @@ export function LogTailWidget() {
         <button
           onClick={() => setAutoScroll((v) => !v)}
           className={`text-xs px-2 py-0.5 rounded transition-colors ${
-            autoScroll ? 'bg-indigo-600/20 text-indigo-400' : 'text-zinc-600 hover:text-zinc-400'
+            autoScroll ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-600/20 dark:text-indigo-400' : 'text-zinc-400 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400'
           }`}
         >
           ↓ auto
@@ -133,10 +133,10 @@ export function LogTailWidget() {
       {/* Log output */}
       <div className="flex-1 overflow-y-auto font-mono text-xs leading-relaxed px-2 py-1">
         {status === 'connecting' && lines.length === 0 && (
-          <div className="text-zinc-600 animate-pulse">Connecting…</div>
+          <div className="text-zinc-400 dark:text-zinc-600 animate-pulse">Connecting…</div>
         )}
         {status === 'disconnected' && lines.length === 0 && (
-          <div className="text-red-400">Disconnected — retrying…</div>
+          <div className="text-red-500 dark:text-red-400">Disconnected — retrying…</div>
         )}
         {lines.map((line) => (
           <div key={line.id} className={`${LEVEL_CLASSES[line.level]} whitespace-pre-wrap break-all`}>

@@ -60,22 +60,22 @@ export function KeyboardShortcuts({ onRefresh, onScreenshot, onToggleTheme, onTo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-80 shadow-2xl">
+      <div className="bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700 rounded-xl p-6 w-80 shadow-2xl">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-zinc-200">Keyboard Shortcuts</h2>
-          <button onClick={() => setShowHelp(false)} className="text-zinc-600 hover:text-zinc-300">✕</button>
+          <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Keyboard Shortcuts</h2>
+          <button onClick={() => setShowHelp(false)} className="text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300">✕</button>
         </div>
         <div className="space-y-2">
           {SHORTCUTS.map((s) => (
             <div key={s.key} className="flex items-center justify-between">
-              <span className="text-xs text-zinc-400">{s.description}</span>
-              <kbd className="text-xs bg-zinc-800 border border-zinc-700 rounded px-2 py-0.5 font-mono text-zinc-300">
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">{s.description}</span>
+              <kbd className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded px-2 py-0.5 font-mono text-zinc-700 dark:text-zinc-300">
                 {s.key}
               </kbd>
             </div>
           ))}
         </div>
-        <p className="text-xs text-zinc-600 mt-4 text-center">Press ? to toggle</p>
+        <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-4 text-center">Press ? to toggle</p>
       </div>
     </div>
   )

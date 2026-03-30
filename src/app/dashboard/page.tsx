@@ -6,7 +6,6 @@ import { Navbar } from '@/components/Nav/Navbar'
 import { WidgetGrid } from '@/components/Grid/WidgetGrid'
 import { KeyboardShortcuts } from '@/components/KeyboardShortcuts'
 import { ActiveAgentProvider } from '@/lib/active-agent'
-import { AddWidgetMenu } from '@/components/Nav/AddWidgetMenu'
 import { WIDGET_REGISTRY } from '@/lib/widgets'
 import type { ColCount } from '@/types'
 
@@ -98,12 +97,11 @@ export default function DashboardPage() {
     <ActiveAgentProvider>
     <div
       ref={dashboardRef}
-      className={`flex flex-col h-screen ${theme === 'dark' ? 'bg-zinc-950' : 'bg-zinc-100'}`}
+      className="flex flex-col h-screen bg-zinc-100 dark:bg-zinc-950"
     >
       <Navbar
         cols={cols}
         onColsChange={handleColsChange}
-        onInstanceSwitch={handleRefresh}
         onToggleTheme={handleToggleTheme}
         theme={theme}
         editMode={editMode}
@@ -128,8 +126,8 @@ export default function DashboardPage() {
       />
 
       {/* Help hint */}
-      <div className="fixed bottom-3 right-3 text-xs text-zinc-700 select-none">
-        Press <kbd className="bg-zinc-900 border border-zinc-800 rounded px-1">?</kbd> for shortcuts
+      <div className="fixed bottom-3 right-3 text-xs text-zinc-400 dark:text-zinc-700 select-none">
+        Press <kbd className="bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded px-1">?</kbd> for shortcuts
       </div>
     </div>
     </ActiveAgentProvider>

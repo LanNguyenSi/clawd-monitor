@@ -70,9 +70,9 @@ export function CronWidget() {
     const lastSeen = snapshotData?.lastSnapshotAt ? (() => { const s = Math.floor((Date.now() - snapshotData.lastSnapshotAt!) / 1000); return s < 60 ? `${s}s ago` : `${Math.floor(s/60)}m ago` })() : '—'
     return (
       <div className="flex flex-col items-center justify-center h-full gap-1 px-4">
-        <div className="w-2 h-2 rounded-full bg-zinc-600" />
+        <div className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-600" />
         <span className="text-xs text-zinc-500">Agent offline</span>
-        <span className="text-xs text-zinc-700">last seen {lastSeen}</span>
+        <span className="text-xs text-zinc-400 dark:text-zinc-700">last seen {lastSeen}</span>
       </div>
     )
   }
@@ -81,41 +81,41 @@ export function CronWidget() {
     <div className="flex flex-col h-full">
       {isLoading && (
         <div className="flex items-center justify-center h-full">
-          <span className="text-xs text-zinc-600 animate-pulse">Loading…</span>
+          <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Loading…</span>
         </div>
       )}
 
       {!isLoading && errorMsg && (
         <div className="flex items-center justify-center h-full px-4">
           <div className="text-center">
-            <p className="text-xs text-zinc-600">{errorMsg}</p>
-            <p className="text-xs text-zinc-700 mt-1">Select an agent to view cron jobs</p>
+            <p className="text-xs text-zinc-400 dark:text-zinc-600">{errorMsg}</p>
+            <p className="text-xs text-zinc-400 dark:text-zinc-700 mt-1">Select an agent to view cron jobs</p>
           </div>
         </div>
       )}
 
       {!isLoading && !errorMsg && jobs.length === 0 && (
         <div className="flex items-center justify-center h-full">
-          <span className="text-xs text-zinc-600">No cron jobs</span>
+          <span className="text-xs text-zinc-400 dark:text-zinc-600">No cron jobs</span>
         </div>
       )}
 
       {jobs.length > 0 && (
-        <div className="overflow-y-auto divide-y divide-zinc-800/50 flex-1">
+        <div className="overflow-y-auto divide-y divide-zinc-200/50 dark:divide-zinc-800/50 flex-1">
           {jobs.map((job) => (
-            <div key={job.id} className="px-3 py-2 hover:bg-zinc-800/20 transition-colors">
+            <div key={job.id} className="px-3 py-2 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/20 transition-colors">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${job.enabled ? 'bg-green-500' : 'bg-zinc-600'}`} />
-                  <span className="text-xs text-zinc-200 truncate">{job.name ?? job.id.slice(0, 12)}</span>
+                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${job.enabled ? 'bg-green-500' : 'bg-zinc-400 dark:bg-zinc-600'}`} />
+                  <span className="text-xs text-zinc-800 dark:text-zinc-200 truncate">{job.name ?? job.id.slice(0, 12)}</span>
                 </div>
                 <button
                   onClick={() => void triggerJob(job.id)}
-                  className="text-xs text-zinc-600 hover:text-indigo-400 shrink-0 transition-colors"
+                  className="text-xs text-zinc-400 dark:text-zinc-600 hover:text-indigo-500 dark:hover:text-indigo-400 shrink-0 transition-colors"
                   title="Trigger now"
                 >▶</button>
               </div>
-              <div className="flex items-center gap-3 mt-0.5 text-xs text-zinc-600">
+              <div className="flex items-center gap-3 mt-0.5 text-xs text-zinc-400 dark:text-zinc-600">
                 <span className="font-mono">{scheduleLabel(job)}</span>
                 <span>next: {formatNext(job.state?.nextRunAtMs)}</span>
                 <span>last: {formatLast(job.state?.lastRunAtMs)}</span>

@@ -23,9 +23,9 @@ function getStatus(data?: HeartbeatResponse): 'OK' | 'WARNING' | 'SILENT' {
 }
 
 const STATUS_CONFIG = {
-  OK:      { dot: 'bg-green-500',  label: 'OK',      text: 'text-green-400' },
-  WARNING: { dot: 'bg-yellow-500 animate-pulse', label: 'WARNING', text: 'text-yellow-400' },
-  SILENT:  { dot: 'bg-red-500 animate-pulse',    label: 'SILENT',  text: 'text-red-400' },
+  OK:      { dot: 'bg-green-500',  label: 'OK',      text: 'text-green-600 dark:text-green-400' },
+  WARNING: { dot: 'bg-yellow-500 animate-pulse', label: 'WARNING', text: 'text-yellow-600 dark:text-yellow-400' },
+  SILENT:  { dot: 'bg-red-500 animate-pulse',    label: 'SILENT',  text: 'text-red-600 dark:text-red-400' },
 }
 
 interface AgentSnapshotResponse {
@@ -91,13 +91,13 @@ export function HeartbeatWidget() {
             {new Date(data.checkedAt).toLocaleTimeString()}
           </div>
           {data.error && (
-            <div className="text-xs text-red-400 text-center">{data.error}</div>
+            <div className="text-xs text-red-500 dark:text-red-400 text-center">{data.error}</div>
           )}
         </>
       )}
 
       {isLoading && !data && (
-        <span className="text-xs text-zinc-600 animate-pulse">Checking…</span>
+        <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Checking…</span>
       )}
     </div>
   )
