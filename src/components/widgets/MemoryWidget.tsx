@@ -61,7 +61,7 @@ export function MemoryWidget() {
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
       onErrorRetry: (err, _key, _cfg, revalidate, { retryCount }) => {
-        if ((err as any)?.status === 404) return
+        if ((err as {status?: number})?.status === 404) return
         if (retryCount >= 2) return
         setTimeout(() => revalidate({ retryCount }), 10_000)
       },

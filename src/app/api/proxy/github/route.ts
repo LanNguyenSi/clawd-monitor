@@ -21,7 +21,7 @@ async function fetchPRsForRepo(owner: string, repo: string, token: string): Prom
     signal: AbortSignal.timeout(5000),
   })
   if (!res.ok) return []
-  const prs = await res.json() as any[]
+  const prs = await res.json() as Record<string, unknown>[]
   return prs.map((pr) => ({
     id: pr.id,
     number: pr.number,

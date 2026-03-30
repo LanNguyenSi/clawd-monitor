@@ -31,7 +31,7 @@ function formatLast(ms?: number): string {
 }
 
 function scheduleLabel(job: CronJob): string {
-  const s = job.schedule as any
+  const s = job.schedule as Record<string, unknown>
   if (s.kind === 'cron') return s.expr ?? 'cron'
   if (s.kind === 'every' && s.everyMs) {
     const m = Math.round(s.everyMs / 60000)

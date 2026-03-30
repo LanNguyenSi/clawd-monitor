@@ -253,7 +253,7 @@ function SettingsInner() {
                 <h3 className="text-sm font-medium text-indigo-700 dark:text-indigo-300">Token generated for &ldquo;{newToken.name}&rdquo;</h3>
                 <button onClick={() => setNewToken(null)} className="text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 text-sm">✕</button>
               </div>
-              <p className="text-xs text-yellow-600 dark:text-yellow-500">⚠ Copy this token now — it won't be shown again.</p>
+              <p className="text-xs text-yellow-600 dark:text-yellow-500">⚠ Copy this token now — it won&apos;t be shown again.</p>
 
               <div className="flex items-center gap-2">
                 <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-800 dark:text-zinc-200 px-3 py-2 rounded font-mono break-all">
