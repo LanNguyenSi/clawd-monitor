@@ -1,0 +1,22 @@
+# Simple deployment without Traefik (HTTP only, port 3000)
+# For Traefik with TLS, use docker-compose.traefik.yml
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - CLAWD_MONITOR_DATA_DIR=/data
+    volumes:
+      - clawd_monitor_data:/data
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped
+
+volumes:
+  clawd_monitor_data:
