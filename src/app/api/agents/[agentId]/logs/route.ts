@@ -86,20 +86,35 @@ export async function GET(req: NextRequest, { params }: Props) {
         }
 
         function spawnJournalctl() {
-          // Read openclaw service logs via journalctl on this server
+          // Try journalctl first (host/systemd), then docker logs, then syslog
           child = spawn('journalctl', ['-f', '-n', '100', '--no-pager', '-u', 'openclaw', '--output=short'], {
             stdio: ['ignore', 'pipe', 'pipe'],
           })
           child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
           child.stderr?.on('data', () => {
-            // unit not found — try generic follow
+            // openclaw unit not found — try generic journalctl
             child = spawn('journalctl', ['-f', '-n', '100', '--no-pager', '--output=short'], {
               stdio: ['ignore', 'pipe', 'pipe'],
             })
             child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
-            child.on('error', () => send('[info] No log stream available on this host'))
+            child.on('error', () => tryDockerLogs())
           })
-          child.on('error', () => send('[info] journalctl not available'))
+          child.on('error', () => tryDockerLogs())
+        }
+
+        function tryDockerLogs() {
+          // Fallback: try docker logs for clawd-monitor-agent container
+          child = spawn('docker', ['logs', '--tail', '100', '--follow', 'clawd-monitor-agent'], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+          })
+          child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
+          child.stderr?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
+          child.on('error', () => {
+            // Last resort: tail /var/log/syslog
+            child = spawn('tail', ['-f', '-n', '100', '/var/log/syslog'], { stdio: ['ignore', 'pipe', 'pipe'] })
+            child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
+            child.on('error', () => send('[info] No log source available on this host'))
+          })
         }
       }
     }
