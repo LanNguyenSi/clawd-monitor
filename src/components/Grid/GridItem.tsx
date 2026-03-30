@@ -9,6 +9,8 @@ interface Props {
   error?: string | null
   className?: string
   style?: React.CSSProperties
+  editMode?: boolean
+  onRemove?: () => void
   onMouseDown?: React.MouseEventHandler
   onMouseUp?: React.MouseEventHandler
   onTouchEnd?: React.TouchEventHandler
@@ -16,7 +18,7 @@ interface Props {
 
 // forwardRef required by react-grid-layout
 export const GridItem = forwardRef<HTMLDivElement, Props>(function GridItem(
-  { title, children, loading, error, className, style, onMouseDown, onMouseUp, onTouchEnd },
+  { title, children, loading, error, className, style, editMode, onRemove, onMouseDown, onMouseUp, onTouchEnd },
   ref
 ) {
   return (
@@ -31,10 +33,20 @@ export const GridItem = forwardRef<HTMLDivElement, Props>(function GridItem(
       {/* Title bar — drag handle */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 cursor-grab active:cursor-grabbing shrink-0">
         <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 select-none">{title}</span>
-        <div className="flex gap-1">
+        <div className="flex items-center gap-1.5">
           <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />
           <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />
           <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+          {editMode && onRemove && (
+            <button
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onRemove() }}
+              className="ml-1 text-zinc-400 hover:text-red-400 dark:text-zinc-600 dark:hover:text-red-400 transition-colors text-xs leading-none"
+              title="Remove widget"
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
