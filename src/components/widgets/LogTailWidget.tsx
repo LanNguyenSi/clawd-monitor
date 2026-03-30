@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { getActiveInstance } from '@/lib/instance'
+import { useActiveAgent } from '@/lib/active-agent'
 
 type LogSource = 'openclaw' | 'docker' | 'system'
 
@@ -29,6 +29,7 @@ const LEVEL_CLASSES: Record<LogLine['level'], string> = {
 }
 
 export function LogTailWidget() {
+  const { activeAgentId } = useActiveAgent()
   const [source, setSource] = useState<LogSource>('openclaw')
   const [container, setContainer] = useState('')
   const [lines, setLines] = useState<LogLine[]>([])
@@ -38,17 +39,18 @@ export function LogTailWidget() {
   const esRef = useRef<EventSource | null>(null)
   const lineIdRef = useRef(0)
 
-  const connect = useCallback((src: LogSource, ctr: string) => {
+  const connect = useCallback((src: LogSource, ctr: string, agentId: string | null) => {
     esRef.current?.close()
     setLines([])
     setStatus('connecting')
 
-    const instance = getActiveInstance()
     const params = new URLSearchParams({ source: src })
     if (src === 'docker' && ctr) params.set('container', ctr)
 
-    // Pass instance config via URL params for client-side SSE
-    const url = `/api/stream/logs?${params}`
+    // Agent selected → proxy through agent's gateway
+    const url = agentId
+      ? `/api/agents/${agentId}/logs?${params}`
+      : `/api/stream/logs?${params}`
 
     const es = new EventSource(url)
     esRef.current = es
@@ -77,9 +79,9 @@ export function LogTailWidget() {
   }, [])
 
   useEffect(() => {
-    const cleanup = connect(source, container)
+    const cleanup = connect(source, container, activeAgentId)
     return cleanup
-  }, [connect, source, container])
+  }, [connect, source, container, activeAgentId])
 
   useEffect(() => {
     if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -104,13 +106,19 @@ export function LogTailWidget() {
             type="text"
             value={container}
             onChange={(e) => setContainer(e.target.value)}
-            onBlur={() => connect('docker', container)}
+            onBlur={() => connect('docker', container, activeAgentId)}
             placeholder="container name"
             className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded px-2 py-0.5 text-zinc-700 dark:text-zinc-300 placeholder-zinc-400 dark:placeholder-zinc-600 w-32"
           />
         )}
 
         <div className="flex-1" />
+
+        {activeAgentId && (
+          <span className="text-xs bg-indigo-900/30 text-indigo-400 px-1.5 rounded border border-indigo-800/30">
+            agent
+          </span>
+        )}
 
         {/* Auto-scroll toggle */}
         <button

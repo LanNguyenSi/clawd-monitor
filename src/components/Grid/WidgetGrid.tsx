@@ -105,7 +105,17 @@ export function WidgetGrid({ cols, editMode = true, onLayoutChange }: Props) {
         const WidgetComp = WIDGET_COMPONENTS[widget.component]
 
         return (
-          <GridItem key={layout.i} title={widget.title}>
+          <GridItem
+            key={layout.i}
+            title={widget.title}
+            editMode={editMode}
+            onRemove={() => {
+              const next = layouts.filter((l) => l.i !== layout.i)
+              setLayouts(next)
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+              onLayoutChange?.(next.map((l) => l.i))
+            }}
+          >
             <Suspense fallback={
               <div className="flex items-center justify-center h-full">
                 <span className="text-xs text-zinc-400 dark:text-zinc-700 animate-pulse">Loading…</span>

@@ -26,6 +26,8 @@ export interface AgentEntry {
   name: string
   version: string
   token: string
+  gatewayUrl?: string
+  gatewayToken?: string
   connectedAt: number
   lastSnapshotAt: number
   lastSnapshot: AgentSnapshot | null
@@ -40,7 +42,7 @@ const AGENT_TTL_MS = parseInt(process.env.AGENT_TTL_MS ?? '300000')
 class AgentRegistry {
   agents: Map<string, AgentEntry> = new Map()
 
-  register(ws: WebSocket, meta: { agentId: string; name: string; version: string; token: string }) {
+  register(ws: WebSocket, meta: { agentId: string; name: string; version: string; token: string; gatewayUrl?: string; gatewayToken?: string }) {
     const existing = this.agents.get(meta.agentId)
     if (existing) {
       // Reconnect — close old ws if still open

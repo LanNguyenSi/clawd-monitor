@@ -11,7 +11,7 @@ const STATIC_TOKENS = (process.env.AGENT_TOKENS ?? '')
   .filter(Boolean)
 
 type WsMsg =
-  | { type: 'auth'; token: string; agentId: string; name: string; version: string }
+  | { type: 'auth'; token: string; agentId: string; name: string; version: string; gatewayUrl?: string; gatewayToken?: string }
   | { type: 'snapshot'; data: AgentSnapshot }
   | { type: 'ping' }
 
@@ -70,6 +70,8 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
         name: msg.name,
         version: msg.version,
         token: msg.token,
+        gatewayUrl: msg.gatewayUrl,
+        gatewayToken: msg.gatewayToken,
       })
 
       send(ws, { type: 'auth_ok' })
