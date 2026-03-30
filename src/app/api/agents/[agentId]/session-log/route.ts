@@ -20,13 +20,14 @@ export async function GET(req: NextRequest, { params }: Props) {
 
   const sessionKey = req.nextUrl.searchParams.get('sessionKey')
   const limit = req.nextUrl.searchParams.get('limit') ?? '50'
+  const includeTools = req.nextUrl.searchParams.get('includeTools') ?? '0'
   if (!sessionKey) return NextResponse.json({ error: 'sessionKey required' }, { status: 400 })
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (agent.gatewayToken) headers['Authorization'] = `Bearer ${agent.gatewayToken}`
 
   // Try Gateway history endpoint
-  const url = `${agent.gatewayUrl.replace(/\/$/, '')}/sessions/${encodeURIComponent(sessionKey)}/history?limit=${limit}`
+  const url = `${agent.gatewayUrl.replace(/\/$/, '')}/sessions/${encodeURIComponent(sessionKey)}/history?limit=${limit}&includeTools=${includeTools}`
 
   try {
     const res = await fetch(url, { headers })

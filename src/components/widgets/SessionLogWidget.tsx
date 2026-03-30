@@ -5,10 +5,21 @@ import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
 import type { GatewaySession } from '@/types'
 
+type ContentBlock = { type: 'text'; text: string } | { type: string; [key: string]: unknown }
+
 interface Message {
   role: 'user' | 'assistant' | 'system'
-  content: string
+  content: string | ContentBlock[]
   createdAt?: string
+}
+
+function extractText(content: string | ContentBlock[]): string {
+  if (typeof content === 'string') return content
+  return content
+    .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n')
+    .trim() || '[non-text content]'
 }
 
 interface SessionLogResponse {
@@ -60,7 +71,7 @@ export function SessionLogWidget() {
 
   // Fetch session log
   const logUrl = activeAgentId && selectedSession
-    ? `/api/agents/${activeAgentId}/session-log?sessionKey=${encodeURIComponent(selectedSession)}&limit=50`
+    ? `/api/agents/${activeAgentId}/session-log?sessionKey=${encodeURIComponent(selectedSession)}&limit=50&includeTools=0`
     : null
 
   const { data: logData, isLoading, error } = useSWR<SessionLogResponse>(
@@ -161,7 +172,7 @@ export function SessionLogWidget() {
                 <span className="text-xs opacity-40 shrink-0">{formatTime(msg.createdAt)}</span>
               )}
             </div>
-            <p className="whitespace-pre-wrap break-words leading-relaxed line-clamp-6">{msg.content}</p>
+            <p className="whitespace-pre-wrap break-words leading-relaxed line-clamp-6">{extractText(msg.content)}</p>
           </div>
         ))}
         <div ref={bottomRef} />
