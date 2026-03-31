@@ -20,3 +20,4 @@ services:
 
 volumes:
   clawd_monitor_data:
+    external: true
