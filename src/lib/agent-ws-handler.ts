@@ -89,7 +89,7 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
 
   ws.on('close', () => {
     if (agentId) {
-      registry.disconnect(agentId)
+      registry.disconnect(agentId, ws)
       console.log(`[agent-ws] Agent disconnected: ${agentId}`)
     }
   })

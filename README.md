@@ -60,7 +60,11 @@ cp .env.example .env
 docker compose -f docker-compose.traefik.yml up -d
 ```
 
-Open `https://your-domain/` → login → Settings → generate an agent token.
+Open `https://your-domain/` and sign in with the admin password from `.env`.
+If you set `ADMIN_PASSWORD_HASH` instead, use the matching plaintext password when logging in.
+After the first login, open `Settings` in the UI to change the admin password.
+That UI password change is persisted in `CLAWD_MONITOR_DATA_DIR` and becomes the active login password.
+Then generate an agent token from `Settings`.
 
 ### 2. Connect an agent
 

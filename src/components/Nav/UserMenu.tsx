@@ -1,19 +1,17 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useTheme } from '@/lib/theme'
 
 export function UserMenu() {
-  const router = useRouter()
   const { theme, toggleTheme } = useTheme()
   const [open, setOpen] = useState(false)
 
   function handleLogout() {
-    localStorage.removeItem('clawd-monitor:token')
-    document.cookie = 'token=; Max-Age=0; path=/'
-    router.push('/login')
+    void fetch('/api/auth', { method: 'DELETE' }).finally(() => {
+      window.location.assign('/login')
+    })
   }
 
   return (

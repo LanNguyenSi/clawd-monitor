@@ -1,10 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -28,9 +26,7 @@ export default function LoginPage() {
         return
       }
 
-      // Store token in localStorage for client-side API calls
-      localStorage.setItem('clawd-monitor:token', data.token)
-      router.push('/dashboard')
+      window.location.assign('/dashboard')
     } catch {
       setError('Network error — is the server running?')
     } finally {
