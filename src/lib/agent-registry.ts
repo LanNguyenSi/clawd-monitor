@@ -35,9 +35,22 @@ export interface AgentEntry {
   ws: WebSocket
 }
 
-export type AgentEntryPublic = Omit<AgentEntry, 'ws' | 'token'>
+export type AgentEntryPublic = Omit<AgentEntry, 'ws' | 'token' | 'gatewayToken'>
 
 const AGENT_TTL_MS = parseInt(process.env.AGENT_TTL_MS ?? '300000')
+
+function toPublicEntry(entry: AgentEntry): AgentEntryPublic {
+  return {
+    agentId: entry.agentId,
+    name: entry.name,
+    version: entry.version,
+    gatewayUrl: entry.gatewayUrl,
+    connectedAt: entry.connectedAt,
+    lastSnapshotAt: entry.lastSnapshotAt,
+    lastSnapshot: entry.lastSnapshot,
+    online: entry.online,
+  }
+}
 
 class AgentRegistry {
   agents: Map<string, AgentEntry> = new Map()
@@ -66,24 +79,25 @@ class AgentRegistry {
     if (!entry) return
     entry.lastSnapshot = snapshot
     entry.lastSnapshotAt = Date.now()
+    entry.online = true
   }
 
-  disconnect(agentId: string) {
+  disconnect(agentId: string, ws?: WebSocket) {
     const entry = this.agents.get(agentId)
     if (!entry) return
+    if (ws && entry.ws !== ws) return
     entry.online = false
   }
 
   getAll(): AgentEntryPublic[] {
     this.cleanup()
-    return Array.from(this.agents.values()).map(({ ws: _ws, token: _token, ...rest }) => rest)
+    return Array.from(this.agents.values(), toPublicEntry)
   }
 
   getAgent(agentId: string): AgentEntryPublic | null {
     const entry = this.agents.get(agentId)
     if (!entry) return null
-    const { ws: _ws, token: _token, ...rest } = entry
-    return rest
+    return toPublicEntry(entry)
   }
 
   cleanup() {

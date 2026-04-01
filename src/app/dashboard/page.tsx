@@ -23,15 +23,41 @@ function DashboardInner() {
   const dashboardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const token = localStorage.getItem('clawd-monitor:token')
-    if (!token) { router.replace('/login'); return }
+    let mounted = true
 
-    const savedCols = localStorage.getItem(COLS_KEY)
-    if (savedCols && ['2', '4', '8'].includes(savedCols)) {
-      setCols(parseInt(savedCols) as ColCount)
+    async function checkAuth() {
+      try {
+        const res = await fetch('/api/auth')
+        if (!res.ok) {
+          router.replace('/login')
+          return
+        }
+
+        const data = await res.json() as { authenticated?: boolean }
+        if (!data.authenticated) {
+          router.replace('/login')
+          return
+        }
+
+        if (!mounted) {
+          return
+        }
+
+        const savedCols = localStorage.getItem(COLS_KEY)
+        if (savedCols && ['2', '4', '8'].includes(savedCols)) {
+          setCols(parseInt(savedCols) as ColCount)
+        }
+
+        setReady(true)
+      } catch {
+        router.replace('/login')
+      }
     }
 
-    setReady(true)
+    void checkAuth()
+    return () => {
+      mounted = false
+    }
   }, [router])
 
   const handleColsChange = useCallback((newCols: ColCount) => {

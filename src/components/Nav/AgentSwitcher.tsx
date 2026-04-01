@@ -60,12 +60,9 @@ export function AgentSwitcher() {
     e.stopPropagation()
     setRemoving(agentId)
     try {
-      const token = localStorage.getItem('clawd-monitor:token') ?? ''
       await fetch(`/api/agents/${agentId}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
       })
-      // If this was the active agent, deselect
       if (activeAgentId === agentId) select(null)
       setAgents((prev) => prev.filter((a) => a.agentId !== agentId))
     } finally {

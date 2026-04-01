@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
-import { generateToken } from '@/lib/auth'
+import { generateToken, isAuthenticated } from '@/lib/auth'
 import { readPasswordConfig } from '@/lib/data-store'
+
+export async function GET(req: NextRequest) {
+  return NextResponse.json({ authenticated: isAuthenticated(req) })
+}
 
 export async function POST(req: NextRequest) {
   let body: { password?: string }
@@ -39,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   const token = generateToken({ sub: 'admin' })
 
-  const response = NextResponse.json({ token })
+  const response = NextResponse.json({ ok: true })
   response.cookies.set('token', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -48,5 +52,17 @@ export async function POST(req: NextRequest) {
     path: '/',
   })
 
+  return response
+}
+
+export async function DELETE() {
+  const response = NextResponse.json({ ok: true })
+  response.cookies.set('token', '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 0,
+    path: '/',
+  })
   return response
 }

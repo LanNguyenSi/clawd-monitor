@@ -37,10 +37,37 @@ function SettingsInner() {
   }, [])
 
   useEffect(() => {
-    const token = localStorage.getItem('clawd-monitor:token')
-    if (!token) { router.replace('/login'); return }
-    setReady(true)
-    void loadTokens()
+    let mounted = true
+
+    async function checkAuth() {
+      try {
+        const res = await fetch('/api/auth')
+        if (!res.ok) {
+          router.replace('/login')
+          return
+        }
+
+        const data = await res.json() as { authenticated?: boolean }
+        if (!data.authenticated) {
+          router.replace('/login')
+          return
+        }
+
+        if (!mounted) {
+          return
+        }
+
+        setReady(true)
+        await loadTokens()
+      } catch {
+        router.replace('/login')
+      }
+    }
+
+    void checkAuth()
+    return () => {
+      mounted = false
+    }
   }, [router, loadTokens])
 
   async function handleChangePassword(e: React.FormEvent) {
@@ -59,7 +86,11 @@ function SettingsInner() {
         setPwStatus('success')
         setPwMsg('Password updated — logging you out…')
         setPwForm({ current: '', newPw: '', confirm: '' })
-        setTimeout(() => { localStorage.removeItem('clawd-monitor:token'); router.push('/login') }, 2000)
+        setTimeout(() => {
+          void fetch('/api/auth', { method: 'DELETE' }).finally(() => {
+            window.location.assign('/login')
+          })
+        }, 2000)
       }
     } catch { setPwStatus('error'); setPwMsg('Network error') }
   }
