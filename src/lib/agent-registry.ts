@@ -57,21 +57,24 @@ class AgentRegistry {
 
   register(ws: WebSocket, meta: { agentId: string; name: string; version: string; token: string; gatewayUrl?: string; gatewayToken?: string }) {
     const existing = this.agents.get(meta.agentId)
-    if (existing) {
-      // Reconnect — forcibly terminate old connection to avoid triggering reconnect loop
-      if (existing.ws !== ws) {
-        try { existing.ws.terminate() } catch {}
-      }
-    }
 
+    // Register the new connection first, THEN close the old one.
+    // This ensures the close handler for the old WS sees entry.ws !== oldWs
+    // and skips marking the agent offline.
     this.agents.set(meta.agentId, {
       ...meta,
       connectedAt: Date.now(),
-      lastSnapshotAt: 0,
-      lastSnapshot: null,
+      lastSnapshotAt: existing?.lastSnapshotAt ?? 0,
+      lastSnapshot: existing?.lastSnapshot ?? null,
       online: true,
       ws,
     })
+
+    if (existing && existing.ws !== ws) {
+      // Close old connection gracefully (with close frame) after a short delay
+      // to avoid interfering with the new connection
+      try { existing.ws.close(1000, 'replaced') } catch {}
+    }
   }
 
   update(agentId: string, snapshot: AgentSnapshot) {
