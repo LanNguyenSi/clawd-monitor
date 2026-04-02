@@ -70,14 +70,10 @@ class AgentRegistry {
       ws,
     })
 
-    if (existing && existing.ws !== ws) {
-      // Silently drop old connection — remove listeners first to prevent
-      // the close event from triggering reconnect cascades on the server
-      try {
-        existing.ws.removeAllListeners()
-        existing.ws.terminate()
-      } catch {}
-    }
+    // Don't touch the old WebSocket at all — let it close naturally.
+    // The disconnect handler checks ws !== entry.ws and skips stale sockets.
+    // Calling terminate/close/removeAllListeners on the old WS can interfere
+    // with the new connection in the same Node.js event loop.
   }
 
   update(agentId: string, snapshot: AgentSnapshot) {
