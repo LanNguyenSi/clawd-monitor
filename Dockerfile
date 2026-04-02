@@ -17,6 +17,10 @@ FROM node:20-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Install docker CLI for LogTail docker source
+RUN apt-get update && apt-get install -y --no-install-recommends docker.io && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
