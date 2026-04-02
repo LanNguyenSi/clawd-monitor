@@ -62,7 +62,7 @@ export function SessionLogWidget() {
   const messages = activeSession?.recentMessages ?? []
 
   useEffect(() => {
-    if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [messages, autoScroll])
 
   if (!activeAgentId) {
