@@ -27,6 +27,7 @@ interface AgentSnapshotResponse {
       memory?: string
       current?: string
       today?: string
+      yesterday?: string
     }
     timestamp?: number
   }
@@ -80,8 +81,7 @@ export function MemoryWidget() {
     if (!files) {
       errorMsg = 'No memory data from agent snapshot yet'
     } else {
-      const fileKey = selectedFile === 'yesterday' ? undefined : selectedFile === 'memory' ? 'memory' : selectedFile === 'current' ? 'current' : 'today'
-      content = fileKey ? files[fileKey] : undefined
+      content = files[selectedFile]
       if (!content) errorMsg = `${FILE_LABELS[selectedFile]} not available from agent`
       updatedAt = snapshotData.snapshot?.timestamp ? new Date(snapshotData.snapshot.timestamp).toISOString() : undefined
     }
