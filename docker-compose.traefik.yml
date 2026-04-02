@@ -19,6 +19,7 @@ services:
       - "traefik.http.routers.clawd-monitor.entrypoints=websecure"
       - "traefik.http.routers.clawd-monitor.tls=true"
       - "traefik.http.routers.clawd-monitor.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.clawd-monitor.tls.options=nohttp2@file"
       - "traefik.http.services.clawd-monitor.loadbalancer.server.port=3000"
     networks:
       - traefik
