@@ -40,7 +40,8 @@ export async function GET(req: NextRequest, { params }: Props) {
       req.signal.addEventListener('abort', abort)
 
       if (source === 'docker') {
-        const name = container || 'openclaw'
+        if (!container) { send('[error] no container selected'); return }
+        const name = container
         child = spawn('docker', ['logs', '--tail', '50', '--follow', name], {
           stdio: ['ignore', 'pipe', 'pipe'],
         })
