@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 type LogSource = 'openclaw' | 'docker' | 'system'
 
@@ -32,6 +35,11 @@ export function LogTailWidget() {
   const { activeAgentId } = useActiveAgent()
   const [source, setSource] = useState<LogSource>('openclaw')
   const [container, setContainer] = useState('')
+  const { data: containerData } = useSWR<{ containers: string[] }>(
+    source === 'docker' ? '/api/containers' : null,
+    fetcher,
+    { revalidateOnFocus: false }
+  )
   const [lines, setLines] = useState<LogLine[]>([])
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const [autoScroll, setAutoScroll] = useState(true)
@@ -104,14 +112,16 @@ export function LogTailWidget() {
         </select>
 
         {source === 'docker' && (
-          <input
-            type="text"
+          <select
             value={container}
-            onChange={(e) => setContainer(e.target.value)}
-            onBlur={() => connect('docker', container, activeAgentId)}
-            placeholder="container name"
-            className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded px-2 py-0.5 text-zinc-700 dark:text-zinc-300 placeholder-zinc-400 dark:placeholder-zinc-600 w-32"
-          />
+            onChange={(e) => { setContainer(e.target.value); connect('docker', e.target.value, activeAgentId) }}
+            className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 max-w-[10rem]"
+          >
+            <option value="">Select container…</option>
+            {(containerData?.containers ?? []).map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
         )}
 
         <div className="flex-1" />
