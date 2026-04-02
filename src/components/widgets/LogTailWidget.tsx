@@ -84,7 +84,7 @@ export function LogTailWidget() {
   }, [connect, source, container, activeAgentId])
 
   useEffect(() => {
-    if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [lines, autoScroll])
 
   return (
