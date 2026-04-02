@@ -71,9 +71,12 @@ class AgentRegistry {
     })
 
     if (existing && existing.ws !== ws) {
-      // Close old connection gracefully (with close frame) after a short delay
-      // to avoid interfering with the new connection
-      try { existing.ws.close(1000, 'replaced') } catch {}
+      // Silently drop old connection — remove listeners first to prevent
+      // the close event from triggering reconnect cascades on the server
+      try {
+        existing.ws.removeAllListeners()
+        existing.ws.terminate()
+      } catch {}
     }
   }
 
