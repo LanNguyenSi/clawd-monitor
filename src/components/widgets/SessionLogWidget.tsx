@@ -42,6 +42,7 @@ const ROLE_STYLES: Record<string, string> = {
 export function SessionLogWidget() {
   const { activeAgentId } = useActiveAgent()
   const [selectedSession, setSelectedSession] = useState<string>('')
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
 
@@ -62,7 +63,8 @@ export function SessionLogWidget() {
   const messages = activeSession?.recentMessages ?? []
 
   useEffect(() => {
-    if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    const el = scrollContainerRef.current
+    if (autoScroll && el) el.scrollTop = el.scrollHeight
   }, [messages, autoScroll])
 
   if (!activeAgentId) {
@@ -112,7 +114,7 @@ export function SessionLogWidget() {
         >↓</button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1.5">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-2 py-2 space-y-1.5">
         {!snapshotData && (
           <div className="flex items-center justify-center h-full">
             <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Loading…</span>

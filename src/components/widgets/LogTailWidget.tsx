@@ -35,6 +35,7 @@ export function LogTailWidget() {
   const [lines, setLines] = useState<LogLine[]>([])
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const [autoScroll, setAutoScroll] = useState(true)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
   const lineIdRef = useRef(0)
@@ -84,7 +85,8 @@ export function LogTailWidget() {
   }, [connect, source, container, activeAgentId])
 
   useEffect(() => {
-    if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    const el = scrollContainerRef.current
+    if (autoScroll && el) el.scrollTop = el.scrollHeight
   }, [lines, autoScroll])
 
   return (
@@ -139,7 +141,7 @@ export function LogTailWidget() {
       </div>
 
       {/* Log output */}
-      <div className="flex-1 overflow-y-auto font-mono text-xs leading-relaxed px-2 py-1">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto font-mono text-xs leading-relaxed px-2 py-1">
         {status === 'connecting' && lines.length === 0 && (
           <div className="text-zinc-400 dark:text-zinc-600 animate-pulse">Connecting…</div>
         )}
