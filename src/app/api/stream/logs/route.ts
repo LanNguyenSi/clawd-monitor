@@ -47,10 +47,14 @@ export async function GET(req: NextRequest) {
         child = spawn('journalctl', ['-f', '-n', '50', '--no-pager', '--output=short'], {
           stdio: ['ignore', 'pipe', 'pipe'],
         })
+        let journalFailed = false
         child.stdout?.on('data', (d: Buffer) => {
           d.toString().split('\n').filter(Boolean).forEach(send)
         })
         child.stderr?.on('data', () => {
+          if (journalFailed) return
+          journalFailed = true
+          child?.kill()
           // journalctl not available, try tail
           child = spawn('tail', ['-f', '-n', '50', '/var/log/syslog'], {
             stdio: ['ignore', 'pipe', 'pipe'],
@@ -59,6 +63,9 @@ export async function GET(req: NextRequest) {
             d.toString().split('\n').filter(Boolean).forEach(send)
           })
           child.on('error', () => send('[error] no system log available'))
+        })
+        child.on('error', () => {
+          send('[error] no system log available (journalctl not found)')
         })
 
       } else {

@@ -49,15 +49,22 @@ export async function GET(req: NextRequest, { params }: Props) {
         child.on('error', () => send('[error] docker not available'))
 
       } else if (source === 'system') {
-        child = spawn('journalctl', ['-f', '-n', '50', '--no-pager', '--output=short'], {
-          stdio: ['ignore', 'pipe', 'pipe'],
-        })
-        child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
-        child.on('error', () => {
-          child = spawn('tail', ['-f', '-n', '50', '/var/log/syslog'], { stdio: ['ignore', 'pipe', 'pipe'] })
+        // Remote agent: system logs are on the agent host, not on this server
+        if (agent.gatewayUrl) {
+          send('[info] System log streaming not available for remote agents.')
+          send('[info] Use SSH or the agent host directly to view system logs.')
+        } else {
+          child = spawn('journalctl', ['-f', '-n', '50', '--no-pager', '--output=short'], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+          })
           child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
-          child.on('error', () => send('[error] no system log available'))
-        })
+          child.stderr?.on('data', () => { /* journalctl prints to stderr on failure */ })
+          child.on('error', () => {
+            child = spawn('tail', ['-f', '-n', '50', '/var/log/syslog'], { stdio: ['ignore', 'pipe', 'pipe'] })
+            child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
+            child.on('error', () => send('[error] no system log available'))
+          })
+        }
 
       } else {
         // openclaw: try gateway /logs/stream, then fall back to journalctl on agent's host
