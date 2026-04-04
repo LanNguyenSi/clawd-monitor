@@ -1,8 +1,23 @@
 import jwt from 'jsonwebtoken'
 import type { NextRequest } from 'next/server'
 
-const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-in-production'
 const JWT_EXPIRES = '24h'
+
+let _jwtSecret: string | undefined
+function getJwtSecret(): string {
+  if (_jwtSecret) return _jwtSecret
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET environment variable is required in production')
+    }
+    console.warn('[auth] JWT_SECRET not set — using insecure dev default. Do NOT use in production.')
+    _jwtSecret = 'dev-secret-change-in-production'
+    return _jwtSecret
+  }
+  _jwtSecret = secret
+  return _jwtSecret
+}
 
 export interface TokenPayload {
   sub: string
@@ -11,12 +26,12 @@ export interface TokenPayload {
 }
 
 export function generateToken(payload: Omit<TokenPayload, 'iat' | 'exp'>): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES })
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: JWT_EXPIRES })
 }
 
 export function verifyToken(token: string): TokenPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as TokenPayload
+    return jwt.verify(token, getJwtSecret()) as TokenPayload
   } catch {
     return null
   }
