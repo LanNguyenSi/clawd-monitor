@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { Responsive, WidthProvider } from 'react-grid-layout'
 import type { Layout } from 'react-grid-layout'
 import { GridItem } from './GridItem'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { WIDGET_REGISTRY } from '@/lib/widgets'
 import type { ColCount } from '@/types'
 
@@ -117,13 +118,15 @@ export function WidgetGrid({ cols, editMode = true, onLayoutChange }: Props) {
               onLayoutChange?.(next.map((l) => l.i))
             }}
           >
-            <Suspense fallback={
-              <div className="flex items-center justify-center h-full">
-                <span className="text-xs text-zinc-400 dark:text-zinc-700 animate-pulse">Loading…</span>
-              </div>
-            }>
-              {WidgetComp ? <WidgetComp /> : null}
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={
+                <div className="flex items-center justify-center h-full">
+                  <span className="text-xs text-zinc-400 dark:text-zinc-700 animate-pulse">Loading…</span>
+                </div>
+              }>
+                {WidgetComp ? <WidgetComp /> : null}
+              </Suspense>
+            </ErrorBoundary>
           </GridItem>
         )
       })}

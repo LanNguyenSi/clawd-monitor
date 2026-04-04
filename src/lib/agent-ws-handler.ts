@@ -1,19 +1,15 @@
 import type WebSocket from 'ws'
 import type { IncomingMessage } from 'http'
 import bcrypt from 'bcryptjs'
-import { registry, type AgentSnapshot } from './agent-registry.js'
+import { registry } from './agent-registry.js'
 import { readTokens } from './data-store.js'
+import { wsMessageSchema, type ValidatedWsMessage } from './schemas.js'
 
 // Static tokens from env (for backward compat + default setup)
 const STATIC_TOKENS = (process.env.AGENT_TOKENS ?? '')
   .split(',')
   .map((t) => t.trim())
   .filter(Boolean)
-
-type WsMsg =
-  | { type: 'auth'; token: string; agentId: string; name: string; version: string; gatewayUrl?: string; gatewayToken?: string }
-  | { type: 'snapshot'; data: AgentSnapshot }
-  | { type: 'ping' }
 
 function send(ws: WebSocket, msg: object) {
   try {
@@ -28,9 +24,15 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
   let authenticated = false
 
   ws.on('message', async (raw: Buffer | string) => {
-    let msg: WsMsg
+    let msg: ValidatedWsMessage
     try {
-      msg = JSON.parse(raw.toString()) as WsMsg
+      const parsed = JSON.parse(raw.toString())
+      const result = wsMessageSchema.safeParse(parsed)
+      if (!result.success) {
+        send(ws, { type: 'error', message: 'Invalid message format' })
+        return
+      }
+      msg = result.data
     } catch {
       return
     }

@@ -32,8 +32,11 @@ export async function POST(req: NextRequest) {
     valid = await bcrypt.compare(password, envHash)
   } else if (envPlain) {
     valid = password === envPlain
+  } else if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'No admin password configured' }, { status: 500 })
   } else {
     // Dev default — no password configured
+    console.warn('[auth] No password configured — using insecure dev default. Do NOT use in production.')
     valid = password === 'admin'
   }
 
