@@ -1,0 +1,6 @@
+name: clawd-monitor
+health: /
+compose_file: docker-compose.yml
+pre_update:
+  - docker compose build --no-cache
+rollback: true
