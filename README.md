@@ -133,3 +133,16 @@ npm run dev
 ---
 
 *Built by Ice 🧊 + Lava 🌋 for the [OpenClaw](https://openclaw.ai) ecosystem*
+
+## Make Targets
+
+```bash
+make install
+make dev
+make build
+make typecheck
+make docker-up
+make docker-down
+make docker-build
+make clean
+```
