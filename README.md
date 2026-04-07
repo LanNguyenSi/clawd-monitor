@@ -107,6 +107,19 @@ cp .env.example .env.local
 npm run dev
 ```
 
+### Make Targets
+
+```bash
+make install       # Install dependencies
+make dev           # Start dev server
+make build         # Production build
+make typecheck     # TypeScript type check
+make docker-build  # Build Docker image
+make docker-up     # Start via Docker Compose
+make docker-down   # Stop Docker Compose
+make clean         # Remove build artifacts
+```
+
 ---
 
 ## Keyboard Shortcuts
