@@ -16,6 +16,8 @@ services:
     env_file:
       - path: .env
         required: false
+      - path: .env.runtime
+        required: false
     restart: unless-stopped
 
 volumes:
