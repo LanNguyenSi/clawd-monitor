@@ -59,11 +59,11 @@ function DashboardInner() {
     // Periodically revalidate auth to catch expired sessions
     const authInterval = setInterval(() => {
       void fetch('/api/auth').then((res) => {
-        if (!res.ok || res.status === 401) {
-          router.replace('/login')
+        if (res.status === 401) {
+          window.location.href = '/login'
         }
       }).catch(() => {
-        router.replace('/login')
+        // Network error — ignore, retry on next interval
       })
     }, 60_000)
 
