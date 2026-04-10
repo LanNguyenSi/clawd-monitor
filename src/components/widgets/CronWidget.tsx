@@ -3,11 +3,11 @@
 import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
 import type { CronJob } from '@/types'
+import { fetcher } from '@/lib/fetcher'
 
 interface CronResponse { jobs?: CronJob[]; error?: string }
 interface SnapshotResponse { snapshot?: { cronJobs?: CronJob[] }; online?: boolean; lastSnapshotAt?: number }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 function formatNext(ms?: number): string {
   if (!ms) return '—'

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import ReactMarkdown from 'react-markdown'
 import { useActiveAgent } from '@/lib/active-agent'
+import { fetcher } from '@/lib/fetcher'
 
 type MemFile = 'memory' | 'current' | 'today' | 'yesterday'
 
@@ -35,12 +36,6 @@ interface AgentSnapshotResponse {
   lastSnapshotAt?: number
 }
 
-const fetcher = async (url: string) => {
-  const res = await fetch(url)
-  const data = await res.json()
-  if (!res.ok) throw Object.assign(new Error(data.error ?? 'Not found'), { status: res.status })
-  return data
-}
 
 export function MemoryWidget() {
   const [selectedFile, setSelectedFile] = useState<MemFile>('current')

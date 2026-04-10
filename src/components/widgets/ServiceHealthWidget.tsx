@@ -1,6 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
+import { fetcher } from '@/lib/fetcher'
 
 interface ServiceResult {
   name: string
@@ -16,7 +17,6 @@ interface HealthResponse {
   error?: string
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 export function ServiceHealthWidget() {
   const { data, isLoading } = useSWR<HealthResponse>('/api/proxy/health', fetcher, { refreshInterval: 60_000 })

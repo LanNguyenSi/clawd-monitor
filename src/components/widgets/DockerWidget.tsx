@@ -2,6 +2,7 @@
 
 import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
+import { fetcher } from '@/lib/fetcher'
 
 interface DockerContainer {
   id: string; name: string; image: string
@@ -17,7 +18,6 @@ const STATE_DOT: Record<string, string> = {
   paused: 'bg-zinc-400 dark:bg-zinc-500', exited: 'bg-red-500', unknown: 'bg-zinc-400 dark:bg-zinc-700',
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 export function DockerWidget() {
   const { activeAgentId } = useActiveAgent()

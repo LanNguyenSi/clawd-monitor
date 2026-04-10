@@ -3,6 +3,7 @@
 import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
 import type { GatewaySession } from '@/types'
+import { fetcher } from '@/lib/fetcher'
 
 interface SessionsResponse {
   sessions?: GatewaySession[]
@@ -15,7 +16,6 @@ interface SnapshotResponse {
   lastSnapshotAt?: number
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 function formatAge(iso?: string): string {
   if (!iso) return '—'
