@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
 import type { SystemMetrics } from '@/types'
+import { fetcher } from '@/lib/fetcher'
 
 const MAX_POINTS = 60
 
@@ -53,7 +54,6 @@ interface SnapshotResponse {
   lastSnapshotAt?: number
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 export function MetricsWidget() {
   const { activeAgentId } = useActiveAgent()

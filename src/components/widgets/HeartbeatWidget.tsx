@@ -2,6 +2,7 @@
 
 import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
+import { fetcher } from '@/lib/fetcher'
 
 interface HeartbeatResponse {
   ok: boolean
@@ -12,7 +13,6 @@ interface HeartbeatResponse {
   data?: Record<string, unknown>
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 function getStatus(data?: HeartbeatResponse): 'OK' | 'WARNING' | 'SILENT' {
   if (!data) return 'SILENT'

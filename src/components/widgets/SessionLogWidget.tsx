@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
+import { fetcher } from '@/lib/fetcher'
 
 interface SessionMessage {
   role: string
@@ -25,7 +26,6 @@ interface SnapshotResponse {
   lastSnapshotAt?: number
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 function formatTime(ts?: string): string {
   if (!ts) return ''

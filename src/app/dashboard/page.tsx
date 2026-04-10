@@ -55,8 +55,21 @@ function DashboardInner() {
     }
 
     void checkAuth()
+
+    // Periodically revalidate auth to catch expired sessions
+    const authInterval = setInterval(() => {
+      void fetch('/api/auth').then((res) => {
+        if (!res.ok || res.status === 401) {
+          router.replace('/login')
+        }
+      }).catch(() => {
+        router.replace('/login')
+      })
+    }, 60_000)
+
     return () => {
       mounted = false
+      clearInterval(authInterval)
     }
   }, [router])
 

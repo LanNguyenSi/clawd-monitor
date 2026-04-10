@@ -1,6 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
+import { fetcher } from '@/lib/fetcher'
 
 interface GitHubPR {
   id: number
@@ -18,7 +19,6 @@ interface PRResponse {
   error?: string
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 function formatAge(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()

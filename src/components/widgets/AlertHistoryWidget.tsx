@@ -1,6 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
+import { fetcher } from '@/lib/fetcher'
 
 interface Alert {
   key: string
@@ -14,7 +15,6 @@ interface AlertHistoryResponse {
   error?: string
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 function formatTime(iso: string): string {
   const d = new Date(iso)

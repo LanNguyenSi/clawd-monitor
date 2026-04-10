@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
+import { fetcher } from '@/lib/fetcher'
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 type LogSource = 'openclaw' | 'docker' | 'system'
 

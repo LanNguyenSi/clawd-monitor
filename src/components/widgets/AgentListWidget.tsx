@@ -2,6 +2,7 @@
 
 import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
+import { fetcher } from '@/lib/fetcher'
 
 interface AgentEntry {
   agentId: string
@@ -21,7 +22,6 @@ interface AgentListResponse {
   error?: string
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 function formatAge(ms: number): string {
   if (!ms) return '—'
