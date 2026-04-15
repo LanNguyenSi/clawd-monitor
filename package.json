@@ -1,6 +1,6 @@
 {
   "name": "clawd-monitor",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Web-based monitoring dashboard for OpenClaw instances",
   "private": true,
   "scripts": {
