@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { AgentSwitcher } from './AgentSwitcher'
 import { AddWidgetMenu } from './AddWidgetMenu'
 import { UserMenu } from './UserMenu'
+import { AddAgentModal } from '@/components/AddAgentModal'
 import type { ColCount } from '@/types'
 
 interface Props {
@@ -17,6 +18,7 @@ interface Props {
 
 export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWidget, activeWidgetIds = [] }: Props) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [addAgentOpen, setAddAgentOpen] = useState(false)
 
   return (
     <nav className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 shrink-0">
@@ -30,6 +32,14 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
 
         {/* Desktop controls */}
         <div className="hidden md:flex items-center gap-3">
+          <button
+            onClick={() => setAddAgentOpen(true)}
+            className="text-xs px-2.5 py-1 rounded border border-zinc-300 text-zinc-600 hover:text-zinc-900 hover:border-zinc-400 dark:border-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:border-zinc-700 transition-colors"
+            title="Add a new monitoring agent"
+          >
+            + Add Agent
+          </button>
+
           {onToggleEditMode && (
             <button
               onClick={onToggleEditMode}
@@ -115,9 +125,18 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
             {onAddWidget && (
               <AddWidgetMenu onAdd={onAddWidget} activeWidgetIds={activeWidgetIds} />
             )}
+
+            <button
+              onClick={() => setAddAgentOpen(true)}
+              className="text-xs px-2.5 py-1 rounded border border-zinc-300 text-zinc-600 dark:border-zinc-800 dark:text-zinc-400"
+            >
+              + Add Agent
+            </button>
           </div>
         </div>
       )}
+
+      <AddAgentModal open={addAgentOpen} onClose={() => setAddAgentOpen(false)} />
     </nav>
   )
 }
