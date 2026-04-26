@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-04-26
+
+**Headline: One-click "Add Agent" onboarding** — a new dashboard
+modal generates a fresh agent token and renders a paste-ready
+`curl … | sudo bash` one-liner that drives `clawd-monitor-agent`'s
+`install.sh` on the target host. Replaces the prior two-screen
+flow (Settings → generate → SSH → manual systemd write) with a
+single dialog.
+
+This release is paired with `clawd-monitor-agent v0.1.0` — that
+release ships the `install.sh` script and the npm package the
+snippet references. Without the agent on npm at v0.1.0 the
+`npm install -g` step in the snippet would 404.
+
+### Added
+
+- **"+ Add Agent" navbar button** opens a two-step modal: enter a
+  name, get a token + paste-ready installer command. Two copy
+  buttons (token, full snippet). The token is shown once and
+  cleared from in-memory state on close.
+- **`buildInstallSnippet` helper** in `src/lib/install-snippet.ts`
+  — pure function that swaps the dashboard's origin scheme
+  (`https://` → `wss://`, `http://` → `ws://`) and shell-quotes
+  the operator-supplied name. Drives both the new modal and the
+  Settings → Agent Tokens snippet, so they stay byte-identical.
+
+### Changed
+
+- Settings → Agent Tokens snippet is now built from the same
+  `buildInstallSnippet` helper. Replaces the previous hand-built
+  `npm install -g clawd-monitor-agent` template that predated
+  the installer script.
+
+### Security
+
+- The Add Agent modal explicitly disables backdrop-click and Esc
+  on the snippet step. The token is shown only once and is
+  unrecoverable; closing must be deliberate (Done button or `✕`).
+- Plaintext token never leaves React state. Cleared on close AND
+  on next open (parent keeps the modal mounted with `open=false`,
+  so state could otherwise persist).
+- Inline error when `window.location.origin` is empty / non-`http(s)`,
+  preventing a malformed `--server ''` snippet from being rendered.
+- Name field is required at the UI layer (server already 400's on
+  blank). No client-side fallback — synthesizing a name would
+  have leaked rough creation time / ordering via the suffix.
+
+### Notes
+
+- Pinning the install.sh URL: `src/lib/install-snippet.ts` points
+  at `clawd-monitor-agent`'s `master` branch. A future release
+  may switch to a versioned URL (`…/v0.1.0/install.sh`) to lock
+  the dashboard to a known-good agent and avoid silent drift —
+  trade-off documented; not changed in this release.
+
 ## [0.1.0] - 2026-04-15
 
 **Headline: First tagged release of clawd-monitor — a web-based
