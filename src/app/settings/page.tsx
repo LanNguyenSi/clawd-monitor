@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ThemeProvider, useTheme } from '@/lib/theme'
+import { buildInstallSnippet } from '@/lib/install-snippet'
 
 interface TokenEntry {
   id: string
@@ -141,7 +142,13 @@ function SettingsInner() {
 
   if (!ready) return null
 
-  const serverUrl = window.location.origin
+  const installSnippet = newToken
+    ? buildInstallSnippet({
+        origin: window.location.origin,
+        token: newToken.token,
+        name: newToken.name,
+      })
+    : ''
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
@@ -297,14 +304,10 @@ function SettingsInner() {
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs text-zinc-500">Install command:</p>
+                <p className="text-xs text-zinc-500">Install command (run on the target host as root):</p>
                 <div className="flex items-start gap-2">
-                  <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded font-mono whitespace-pre-wrap">{`npm install -g clawd-monitor-agent
-clawd-monitor-agent \\
-  --server ${serverUrl} \\
-  --token ${newToken.token} \\
-  --name "${newToken.name}"`}</code>
-                  <button onClick={() => copyToClipboard(`npm install -g clawd-monitor-agent\nclawd-monitor-agent \\\n  --server ${serverUrl} \\\n  --token ${newToken.token} \\\n  --name "${newToken.name}"`)}
+                  <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded font-mono whitespace-pre-wrap break-all">{installSnippet}</code>
+                  <button onClick={() => copyToClipboard(installSnippet)}
                     className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded transition-colors">
                     Copy
                   </button>
