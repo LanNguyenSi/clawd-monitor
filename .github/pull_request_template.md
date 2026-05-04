@@ -9,7 +9,7 @@
 ## Test plan
 
 - [ ] `npm run build`
-- [ ] `npm test`
+- [ ] `npm run type-check` (matches CI)
 - [ ] For UI changes: ran the dev server and verified the affected widget
 - [ ] Manual smoke check: <!-- command or scenario -->
 
