@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a defect in clawd-monitor
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Expected vs. actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Minimal commands or actions that trigger the bug.
+      render: bash
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: clawd-monitor version
+      placeholder: "0.x.y or commit SHA"
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "browser + version, Docker host, OS"
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot or widget state
+      description: For dashboard widget issues, attach a screenshot or paste the relevant widget config.
