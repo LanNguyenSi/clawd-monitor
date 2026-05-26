@@ -10,7 +10,7 @@ build:
 	npm run build
 
 typecheck:
-	npm run typecheck
+	npm run type-check
 
 docker-up:
 	docker compose up -d
