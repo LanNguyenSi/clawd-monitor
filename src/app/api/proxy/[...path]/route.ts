@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthenticated } from '@/lib/auth'
-import { gatewayFetch } from '@/lib/gateway'
+import { gatewayFetch, GatewayUrlError } from '@/lib/gateway'
 
 interface Props {
   params: Promise<{ path: string[] }>
@@ -41,6 +41,9 @@ async function handler(req: NextRequest, { params }: Props) {
       headers: { 'Content-Type': res.headers.get('content-type') ?? 'application/json' },
     })
   } catch (err) {
+    if (err instanceof GatewayUrlError) {
+      return NextResponse.json({ error: err.message }, { status: 400 })
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Gateway error' },
       { status: 502 }

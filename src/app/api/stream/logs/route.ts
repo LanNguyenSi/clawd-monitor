@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthenticated } from '@/lib/auth'
+import { assertGatewayUrlAllowed, GatewayUrlError } from '@/lib/gateway'
 import { spawn } from 'child_process'
 
 export const dynamic = 'force-dynamic'
@@ -70,38 +71,59 @@ export async function GET(req: NextRequest) {
         })
 
       } else {
-        // openclaw — try Gateway /logs/stream, fall back to journal
+        // openclaw: try Gateway /logs/stream, fall back to journal
         const gatewayUrl = req.headers.get('x-gateway-url') ?? process.env.NEXT_PUBLIC_DEFAULT_GATEWAY_URL ?? 'http://localhost:9500'
         const token = req.headers.get('x-gateway-token') ?? process.env.DEFAULT_GATEWAY_TOKEN ?? ''
 
-        fetch(`${gatewayUrl}/logs/stream`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          signal: req.signal,
-        }).then(async (res) => {
-          if (!res.ok || !res.body) {
-            // Fall back to journalctl for openclaw process
-            child = spawn('journalctl', ['-f', '-n', '50', '--no-pager', '-u', 'openclaw', '--output=short'], {
-              stdio: ['ignore', 'pipe', 'pipe'],
-            })
-            child.stdout?.on('data', (d: Buffer) => {
-              d.toString().split('\n').filter(Boolean).forEach(send)
-            })
-            child.on('error', () => {
-              send('[info] Gateway log stream not available — no local log source found')
-            })
-            return
-          }
-          // Stream from gateway
-          const reader = res.body.getReader()
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            const text = new TextDecoder().decode(value)
-            text.split('\n').filter(Boolean).forEach(send)
-          }
-        }).catch(() => {
-          send('[info] Connecting to OpenClaw Gateway…')
-        })
+        // Fall back to the local journal for the openclaw process.
+        const startJournalFallback = () => {
+          child = spawn('journalctl', ['-f', '-n', '50', '--no-pager', '-u', 'openclaw', '--output=short'], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+          })
+          child.stdout?.on('data', (d: Buffer) => {
+            d.toString().split('\n').filter(Boolean).forEach(send)
+          })
+          child.on('error', () => {
+            send('[info] Gateway log stream not available, no local log source found')
+          })
+        }
+
+        // SSRF guard: gatewayUrl can come from the attacker-controlled
+        // x-gateway-url header and its body is streamed back to the caller, so
+        // validate it (same allowlist + private-range guard as gatewayFetch)
+        // before fetching. On rejection, use the local journal instead.
+        let gatewayAllowed = true
+        try {
+          assertGatewayUrlAllowed(gatewayUrl)
+        } catch (err) {
+          const message = err instanceof GatewayUrlError ? err.message : 'Invalid gateway URL'
+          send(`[error] ${message}`)
+          startJournalFallback()
+          gatewayAllowed = false
+        }
+
+        if (gatewayAllowed) {
+          fetch(`${gatewayUrl}/logs/stream`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            redirect: 'manual',
+            signal: req.signal,
+          }).then(async (res) => {
+            if (!res.ok || !res.body) {
+              startJournalFallback()
+              return
+            }
+            // Stream from gateway
+            const reader = res.body.getReader()
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              const text = new TextDecoder().decode(value)
+              text.split('\n').filter(Boolean).forEach(send)
+            }
+          }).catch(() => {
+            send('[info] Connecting to OpenClaw Gateway...')
+          })
+        }
       }
 
       // Heartbeat every 15s to keep connection alive
