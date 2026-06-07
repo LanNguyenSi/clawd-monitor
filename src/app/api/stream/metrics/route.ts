@@ -5,10 +5,16 @@ import type { SystemMetrics } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
-let prevCpuIdle = 0
-let prevCpuTotal = 0
+interface CpuSample {
+  percent: number
+  idle: number
+  total: number
+}
 
-function readCpuPercent(): number {
+// Pure read of /proc/stat: the previous sample is passed in and the fresh
+// sample returned, so each SSE connection keeps its own monotonic 2s window
+// instead of sharing a module-global baseline across concurrent clients.
+function readCpuPercent(prevIdle: number, prevTotal: number): CpuSample {
   try {
     const stat = readFileSync('/proc/stat', 'utf-8')
     const line = stat.split('\n')[0]
@@ -17,15 +23,13 @@ function readCpuPercent(): number {
     const idle = parts[3] + (parts[4] ?? 0)
     const total = parts.reduce((a, b) => a + b, 0)
 
-    const diffIdle = idle - prevCpuIdle
-    const diffTotal = total - prevCpuTotal
+    const diffIdle = idle - prevIdle
+    const diffTotal = total - prevTotal
     const cpu = diffTotal > 0 ? Math.round((1 - diffIdle / diffTotal) * 100) : 0
 
-    prevCpuIdle = idle
-    prevCpuTotal = total
-    return Math.max(0, Math.min(100, cpu))
+    return { percent: Math.max(0, Math.min(100, cpu)), idle, total }
   } catch {
-    return 0
+    return { percent: 0, idle: prevIdle, total: prevTotal }
   }
 }
 
@@ -56,6 +60,10 @@ export async function GET(req: NextRequest) {
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      // Per-connection CPU baseline so concurrent SSE clients never share state.
+      let prevCpuIdle = 0
+      let prevCpuTotal = 0
+
       function send(metrics: SystemMetrics) {
         try {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(metrics)}\n\n`))
@@ -64,18 +72,25 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      function sampleCpu(): number {
+        const sample = readCpuPercent(prevCpuIdle, prevCpuTotal)
+        prevCpuIdle = sample.idle
+        prevCpuTotal = sample.total
+        return sample.percent
+      }
+
       // Initial warmup read (establishes baseline for CPU diff)
-      readCpuPercent()
+      sampleCpu()
 
       const interval = setInterval(() => {
-        const cpu = readCpuPercent()
+        const cpu = sampleCpu()
         const mem = readMemory()
         send({ cpu, memUsed: mem.used, memTotal: mem.total, timestamp: Date.now() })
       }, 2000)
 
       // Send first reading after 1s warmup
       setTimeout(() => {
-        const cpu = readCpuPercent()
+        const cpu = sampleCpu()
         const mem = readMemory()
         send({ cpu, memUsed: mem.used, memTotal: mem.total, timestamp: Date.now() })
       }, 1000)
