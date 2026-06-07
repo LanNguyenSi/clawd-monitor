@@ -28,7 +28,15 @@ export class GatewayUrlError extends Error {
 function isPrivateHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '')
   if (host === 'localhost' || host.endsWith('.localhost')) return true
-  if (host === '::1' || host === '::' || host.startsWith('fe80:')) return true // IPv6 loopback / unspecified / link-local
+  if (host.includes(':')) {
+    // IPv6
+    if (host === '::1' || host === '::') return true // loopback / unspecified
+    if (host.startsWith('fe80:')) return true // link-local
+    if (host.startsWith('fc') || host.startsWith('fd')) return true // fc00::/7 unique-local
+    const mapped = host.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)
+    if (mapped) return isPrivateHost(mapped[1]) // IPv4-mapped IPv6, e.g. ::ffff:127.0.0.1
+    return false
+  }
   const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
   if (m) {
     const a = Number(m[1])
@@ -111,6 +119,9 @@ export async function gatewayFetch(
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
     signal: options.signal,
+    // SSRF hardening: do not auto-follow redirects, an allowlisted host could
+    // otherwise 30x-redirect to an internal target after the URL passed checks.
+    redirect: 'manual',
   })
 }
 
