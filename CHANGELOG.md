@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-06-09
+
+Security release closing the 2026-05-30 audit findings and a CVE sweep, plus the open source surface. The headline is three HIGH Next.js middleware/proxy-bypass CVEs. No feature changes; the app is private and deployed from `master`, so this tag is deploy provenance.
+
+### Security
+
+- **HIGH: three Next.js middleware/proxy-bypass CVEs patched** (PR #48). next bumped within the 15.5.x line to `^15.5.18`, resolving GHSA-267c-6grr-h53f, GHSA-26hh-7cqf-hhc6 (Middleware/Proxy bypass, App Router) and GHSA-492v-c6pp-mqqv (dynamic routes). `npm audit` reports zero open vulnerabilities.
+- **MEDIUM: SSRF / open-proxy in the gateway proxy** (PR #51, finding #41). `gatewayFetch` now validates the resolved gateway URL server-side: a caller-supplied `x-gateway-url` override must be https, present in the `ALLOWED_GATEWAY_HOSTS` allowlist, and not target loopback / link-local / private ranges; the operator-configured default stays trusted. The proxy route maps the new `GatewayUrlError` to HTTP 400.
+- **MEDIUM: metrics SSE shared a CPU sampling window across connections** (PR #51, finding #42). `readCpuPercent` is now pure (previous sample in, fresh sample out) and each SSE connection holds its own `prevCpuIdle` / `prevCpuTotal`, so concurrent clients no longer share a module-global diff window.
+- **ws bumped to `8.21.0`** (CVE-2026-45736, PR #50).
+- **postcss bumped to `^8.5.10`** (GHSA XSS, PR #46).
+
+### Fixed
+
+- **Makefile `type-check` target aligned with the package.json script name** (PR #49).
+
+### Documentation
+
+- **Open source surface added**: Code of Conduct, security policy, and issue/PR templates (PR #47).
+
 ## [0.2.0] - 2026-04-26
 
 **Headline: One-click "Add Agent" onboarding** — a new dashboard
