@@ -30,4 +30,4 @@ jobs:
         env:
           ADMIN_PASSWORD: ci-test
           JWT_SECRET: ci-test-secret-32-chars-minimum-ok
-          NEXT_PUBLIC_DEFAULT_GATEWAY_URL: http://localhost:18789
+          NEXT_PUBLIC_DEFAULT_GATEWAY_URL: http://localhost:9500

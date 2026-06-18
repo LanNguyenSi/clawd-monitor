@@ -44,4 +44,4 @@ server.ts       # Custom Next.js server (WebSocket support)
 
 ## Agent Protocol
 
-Agents connect via WebSocket and push snapshots. See [clawd-monitor-agent](https://github.com/LanNguyenSi/clawd-monitor-agent) for the agent implementation.
+Agents connect via WebSocket and push snapshots. See [docs/AGENT-PROTOCOL.md](docs/AGENT-PROTOCOL.md) for the message format, and [clawd-monitor-agent](https://github.com/LanNguyenSi/clawd-monitor-agent) for the agent implementation.
