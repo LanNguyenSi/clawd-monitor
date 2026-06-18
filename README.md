@@ -76,7 +76,7 @@ clawd-monitor-agent \
   --server https://your-clawd-monitor-domain \
   --token <token-from-settings> \
   --name "My OpenClaw Host" \
-  --gateway http://localhost:18789
+  --gateway http://localhost:9500
 ```
 
 Or copy the install snippet directly from the Settings page.
@@ -92,8 +92,13 @@ JWT_SECRET=                 # random 32+ char string
 
 # Optional
 AGENT_TOKENS=token1,token2  # static tokens (also manageable via Settings UI)
-NEXT_PUBLIC_DEFAULT_GATEWAY_URL=http://localhost:18789
+AGENT_TTL_MS=300000         # offline-agent TTL in ms (default 5min)
+NEXT_PUBLIC_DEFAULT_GATEWAY_URL=http://localhost:9500
+DEFAULT_GATEWAY_TOKEN=      # default OpenClaw API token
+ALLOWED_GATEWAY_HOSTS=      # SSRF allowlist for per-instance gateway overrides (comma-separated hostnames)
+CLAWD_DIR=/root/.openclaw/workspace  # Memory Viewer source (MEMORY.md / CURRENT.md / memory/*.md)
 CLAWD_MONITOR_DATA_DIR=/data   # persistent storage for tokens + password hash
+DOMAIN=monitor.yourdomain.com  # used by docker-compose.traefik.yml
 GITHUB_TOKEN=               # for GitHub PR widget
 ```
 

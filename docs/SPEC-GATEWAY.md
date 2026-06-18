@@ -2,6 +2,20 @@
 
 *Authored by Ice 🧊 — Changes needed in clawd-monitor to support push-based agents*
 
+> **Status: implemented (historical design spec).** This is the original design
+> document; the agent-push model it describes shipped, but some details below
+> diverge from the as-built code. Where they differ, the code is authoritative.
+> Known as-built differences:
+>
+> - The custom server lives at the repo root as `server.ts` (not `src/server.ts`).
+> - The dev script is `"dev": "tsx server.ts"` (tsx, not `ts-node`).
+> - There is **no** `src/app/api/agents/ws/route.ts` route file. The WebSocket
+>   upgrade for `/api/agents/ws` is handled in `server.ts`, and the connection
+>   logic lives in `src/lib/agent-ws-handler.ts`.
+> - The agent registry is `src/lib/agent-registry.ts` (kept on `globalThis` so the
+>   server and API routes share one instance).
+> - For the current message format, see [AGENT-PROTOCOL.md](AGENT-PROTOCOL.md).
+
 ---
 
 ## Overview
