@@ -7,6 +7,8 @@ Monitoring dashboard for [OpenClaw](https://openclaw.ai) instances. Connect mult
 
 **Live:** [clawd-monitor.opentriologue.ai](https://clawd-monitor.opentriologue.ai)
 
+![The clawd-monitor dashboard: a configurable widget grid showing log tail, memory viewer, CPU/RAM, Docker containers, cron jobs, recent activity, and connected-agent status.](docs/img/dashboard.png)
+
 ---
 
 ## Widgets
