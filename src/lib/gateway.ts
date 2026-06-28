@@ -25,7 +25,7 @@ export class GatewayUrlError extends Error {
 }
 
 /** True for loopback / link-local / private-range hosts (SSRF targets). */
-function isPrivateHost(hostname: string): boolean {
+export function isPrivateHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '')
   if (host === 'localhost' || host.endsWith('.localhost')) return true
   if (host.includes(':')) {
