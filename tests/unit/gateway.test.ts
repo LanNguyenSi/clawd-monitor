@@ -123,10 +123,12 @@ describe('assertGatewayUrlAllowed – default env', () => {
     expect(() => mod.assertGatewayUrlAllowed('https://[fd00::1]')).toThrow(mod.GatewayUrlError)
   })
 
-  it('throws for https://[::ffff:10.0.0.1] (IPv4-mapped)', () => {
-    // The WHATWG URL API normalises ::ffff:10.0.0.1 to hex ::ffff:a00:1 in the
-    // hostname, so the allowlist check fires before the isPrivateHost regex check.
-    // Either way the URL is rejected.
+  it('throws for https://[::ffff:10.0.0.1] (rejected via allowlist; host hex-normalized)', () => {
+    // NOTE: asserts allowlist rejection ONLY. The WHATWG URL API normalises
+    // ::ffff:10.0.0.1 to hex ::ffff:a00:1 in the hostname, so the allowlist check
+    // fires before isPrivateHost — the IPv4-mapped private-range branch is NOT
+    // exercised here. See the "isPrivateHost (direct)" block for that branch, and
+    // the follow-up task for the latent hex-normalization SSRF bypass.
     expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:10.0.0.1]')).toThrow(mod.GatewayUrlError)
   })
 
@@ -222,5 +224,40 @@ describe('assertGatewayUrlAllowed – defence-in-depth (private hosts in allowli
 
   it('rejects https://[fd00::1] even when allowlisted (IPv6 unique-local)', () => {
     expect(() => mod.assertGatewayUrlAllowed('https://[fd00::1]')).toThrow(mod.GatewayUrlError)
+  })
+})
+
+// ── isPrivateHost (direct) — covers the IPv4-mapped branch unreachable via URL ──
+//
+// assertGatewayUrlAllowed cannot reach the dotted-decimal IPv4-mapped branch of
+// isPrivateHost: the WHATWG URL parser rewrites ::ffff:10.0.0.1 to hex form. We
+// exercise isPrivateHost directly to pin the IPv4-mapped recursion + core ranges.
+describe('isPrivateHost (direct)', () => {
+  let mod: Awaited<ReturnType<typeof loadGateway>>
+  beforeAll(async () => { mod = await loadGateway() })
+  afterAll(() => { vi.unstubAllEnvs(); vi.resetModules() })
+
+  it('detects dotted-decimal IPv4-mapped IPv6 private addresses', () => {
+    expect(mod.isPrivateHost('::ffff:10.0.0.1')).toBe(true)
+    expect(mod.isPrivateHost('::ffff:127.0.0.1')).toBe(true)
+    expect(mod.isPrivateHost('::ffff:192.168.1.1')).toBe(true)
+  })
+
+  it('does not flag a public dotted-decimal IPv4-mapped address', () => {
+    expect(mod.isPrivateHost('::ffff:8.8.8.8')).toBe(false)
+  })
+
+  it('detects core private / loopback / link-local ranges', () => {
+    expect(mod.isPrivateHost('localhost')).toBe(true)
+    expect(mod.isPrivateHost('::1')).toBe(true)
+    expect(mod.isPrivateHost('fe80::1')).toBe(true)
+    expect(mod.isPrivateHost('fd00::1')).toBe(true)
+    expect(mod.isPrivateHost('10.0.0.1')).toBe(true)
+    expect(mod.isPrivateHost('169.254.0.1')).toBe(true)
+  })
+
+  it('does not flag public hosts', () => {
+    expect(mod.isPrivateHost('example.com')).toBe(false)
+    expect(mod.isPrivateHost('8.8.8.8')).toBe(false)
   })
 })
