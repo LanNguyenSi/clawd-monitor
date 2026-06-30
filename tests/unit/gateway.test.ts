@@ -261,3 +261,143 @@ describe('isPrivateHost (direct)', () => {
     expect(mod.isPrivateHost('8.8.8.8')).toBe(false)
   })
 })
+
+// ── gatewayFetch ──────────────────────────────────────────────────────────────
+//
+// DEFAULT_GATEWAY_URL defaults to 'http://localhost:9500' when
+// NEXT_PUBLIC_DEFAULT_GATEWAY_URL is not set. assertGatewayUrlAllowed trusts
+// that URL verbatim (early-return), so gatewayFetch can reach the fetch() call.
+// global fetch is replaced with vi.stubGlobal so no real network is used.
+
+describe('gatewayFetch – happy path (default gateway URL)', () => {
+  let mod: Awaited<ReturnType<typeof loadGateway>>
+
+  beforeAll(async () => {
+    // Pin env explicitly so the default URL / empty allowlist do not depend on the ambient runner env.
+    mod = await loadGateway({
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: 'http://localhost:9500',
+      ALLOWED_GATEWAY_HOSTS: '',
+      DEFAULT_GATEWAY_TOKEN: '',
+    })
+  })
+
+  afterAll(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules() })
+
+  it('calls fetch once with the constructed URL, method GET, and redirect:manual', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 } as Response))
+
+    await mod.gatewayFetch('/health')
+
+    expect(fetch).toHaveBeenCalledOnce()
+    const [url, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('http://localhost:9500/health')
+    expect(opts.method).toBe('GET')
+    expect(opts.redirect).toBe('manual')
+  })
+
+  it('includes Authorization: Bearer header when a token is provided', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true } as Response))
+
+    await mod.gatewayFetch('/health', { token: 'tok123' })
+
+    const [, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit]
+    expect((opts.headers as Record<string, string>)['Authorization']).toBe('Bearer tok123')
+  })
+
+  it('omits Authorization header when token is an empty string', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true } as Response))
+
+    await mod.gatewayFetch('/health', { token: '' })
+
+    const [, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit]
+    expect((opts.headers as Record<string, string>)['Authorization']).toBeUndefined()
+  })
+
+  it('omits Authorization header when no token option is passed (DEFAULT_GATEWAY_TOKEN is empty)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true } as Response))
+
+    await mod.gatewayFetch('/health')
+
+    const [, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit]
+    expect((opts.headers as Record<string, string>)['Authorization']).toBeUndefined()
+  })
+})
+
+describe('gatewayFetch – SSRF rejection (attacker-supplied http URL)', () => {
+  let mod: Awaited<ReturnType<typeof loadGateway>>
+
+  beforeAll(async () => {
+    mod = await loadGateway({
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: 'http://localhost:9500',
+      ALLOWED_GATEWAY_HOSTS: '',
+      DEFAULT_GATEWAY_TOKEN: '',
+    })
+  })
+
+  afterAll(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules() })
+
+  it('rejects with GatewayUrlError and does NOT call fetch for an http non-default URL', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    // 'http://evil.com' is not the default URL and is not https → GatewayUrlError
+    await expect(mod.gatewayFetch('/x', { gatewayUrl: 'http://evil.com' }))
+      .rejects.toBeInstanceOf(mod.GatewayUrlError)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects with GatewayUrlError for an https non-allowlisted URL and does NOT call fetch', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    // 'https://example.com' passes protocol check but fails allowlist (empty allowlist)
+    await expect(mod.gatewayFetch('/x', { gatewayUrl: 'https://example.com' }))
+      .rejects.toBeInstanceOf(mod.GatewayUrlError)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+// ── gatewayJson ───────────────────────────────────────────────────────────────
+
+describe('gatewayJson – ok and not-ok responses', () => {
+  let mod: Awaited<ReturnType<typeof loadGateway>>
+
+  beforeAll(async () => {
+    mod = await loadGateway({
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: 'http://localhost:9500',
+      ALLOWED_GATEWAY_HOSTS: '',
+      DEFAULT_GATEWAY_TOKEN: '',
+    })
+  })
+
+  afterAll(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules() })
+
+  it('returns parsed JSON when the response is ok', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ a: 1, b: 'hello' }),
+    } as unknown as Response))
+
+    const result = await mod.gatewayJson<{ a: number; b: string }>('/api/data')
+    expect(result).toEqual({ a: 1, b: 'hello' })
+  })
+
+  it('throws an Error matching /returned 500/ when the response is not ok', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+    } as Response))
+
+    await expect(mod.gatewayJson('/api/data')).rejects.toThrow(/returned 500/)
+  })
+
+  it('throws an Error matching /returned 404/ for a 404 response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+    } as Response))
+
+    await expect(mod.gatewayJson('/missing')).rejects.toThrow(/returned 404/)
+  })
+})

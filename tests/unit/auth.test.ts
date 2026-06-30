@@ -158,3 +158,66 @@ describe('isAuthenticated', () => {
     expect(isAuthenticated(mockReq({ authHeader: `Bearer ${parts.join('.')}` }))).toBe(false)
   })
 })
+
+// ── getJwtSecret – production guard (lines 11-12 of auth.ts) ─────────────────
+//
+// When JWT_SECRET is absent in production the module must throw immediately.
+// _jwtSecret is memoised, so a vi.resetModules() + fresh import is required.
+
+describe('getJwtSecret – production: throws when JWT_SECRET is absent', () => {
+  let prodGenerateToken: (payload: { sub: string }) => string
+
+  beforeAll(async () => {
+    // Set production env WITHOUT a JWT_SECRET (empty string → falsy).
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('JWT_SECRET', '')
+    vi.resetModules()
+    const mod = await import('@/lib/auth')
+    prodGenerateToken = mod.generateToken
+  })
+
+  afterAll(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  it('throws with the expected message when JWT_SECRET is absent in production', () => {
+    expect(() => prodGenerateToken({ sub: 'u' }))
+      .toThrow(/JWT_SECRET environment variable is required in production/)
+  })
+})
+
+// ── getJwtSecret – dev default (lines 14-16 of auth.ts) ──────────────────────
+//
+// When JWT_SECRET is absent outside production the module uses the hardcoded
+// dev fallback secret and does NOT throw. generateToken + verifyToken must
+// still round-trip.
+
+describe('getJwtSecret – non-production: uses dev default when JWT_SECRET is absent', () => {
+  let devGenerateToken: (payload: { sub: string }) => string
+  let devVerifyToken: (token: string) => { sub: string } | null
+
+  beforeAll(async () => {
+    vi.stubEnv('NODE_ENV', 'test') // already the vitest default, but explicit is clearer
+    vi.stubEnv('JWT_SECRET', '')
+    vi.resetModules()
+    const mod = await import('@/lib/auth')
+    devGenerateToken = mod.generateToken
+    devVerifyToken = mod.verifyToken as (token: string) => { sub: string } | null
+  })
+
+  afterAll(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  it('does not throw and generates a token with the dev default secret', () => {
+    expect(() => devGenerateToken({ sub: 'dev-user' })).not.toThrow()
+  })
+
+  it('verifyToken round-trips a token generated with the dev default secret', () => {
+    const token = devGenerateToken({ sub: 'dev-user' })
+    const payload = devVerifyToken(token)
+    expect(payload?.sub).toBe('dev-user')
+  })
+})
