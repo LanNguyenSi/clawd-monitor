@@ -14,14 +14,15 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       include: ['src/lib/**/*.ts'],
-      // Ratchet floor a few points below the current measured baseline so the
-      // suite passes today but a regression fails CI. Raise as more libs gain
-      // tests (data-store.ts, schemas.ts, gatewayFetch are still uncovered).
+      // Ratchet floor ~3 points below the measured baseline (2026-06-30):
+      //   statements 81.27% / branches 77.24% / functions 76.08% / lines 82.19%
+      // instance.ts (0%) and fetcher.ts (0%) remain uncovered and drag the
+      // global % down; they are tracked as follow-up work.
       thresholds: {
-        statements: 58,
-        branches: 55,
-        functions: 45,
-        lines: 58,
+        statements: 78,
+        branches: 74,
+        functions: 73,
+        lines: 79,
       },
     },
   },

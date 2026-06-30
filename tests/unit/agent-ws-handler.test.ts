@@ -231,3 +231,96 @@ describe('handleAgentConnection – valid bcrypt persisted token', () => {
     expect(ws.close).toHaveBeenCalledOnce()
   })
 })
+
+// ── post-auth paths ───────────────────────────────────────────────────────────
+//
+// These tests cover the branches that execute AFTER a successful auth handshake:
+//   snapshot → registry.update + ack
+//   ping     → pong
+//   close    → registry.disconnect
+//   malformed JSON → silent return (no send)
+//   valid-JSON but invalid schema shape → {type:'error'} sent
+
+describe('handleAgentConnection – post-auth paths', () => {
+  const STATIC_TOKEN = 'post-auth-static-token-abc'
+  let handleAgentConnection: (ws: WebSocket, req: IncomingMessage) => void
+
+  beforeAll(async () => {
+    vi.stubEnv('AGENT_TOKENS', STATIC_TOKEN)
+    vi.resetModules()
+    const mod = await import('@/lib/agent-ws-handler')
+    handleAgentConnection = mod.handleAgentConnection
+  })
+
+  afterAll(() => { vi.unstubAllEnvs(); vi.resetModules() })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockReadTokens.mockReturnValue([])
+  })
+
+  /**
+   * Authenticate the connection, then clear the send spy so subsequent
+   * assertions see only the message under test (not the auth_ok).
+   */
+  async function authenticate(ws: MockWs): Promise<void> {
+    handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+    await emitAndWait(ws, { ...AUTH_MSG, token: STATIC_TOKEN })
+    ws.send.mockClear()
+  }
+
+  it('calls registry.update with the snapshot data and sends {type:ack}', async () => {
+    const ws = makeMockWs()
+    await authenticate(ws)
+
+    await emitAndWait(ws, SNAPSHOT_MSG)
+
+    expect(mockRegistry.update).toHaveBeenCalledWith('test-agent-1', SNAPSHOT_MSG.data)
+    const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
+    expect(sent.type).toBe('ack')
+  })
+
+  it('sends {type:pong} for a ping message', async () => {
+    const ws = makeMockWs()
+    await authenticate(ws)
+
+    await emitAndWait(ws, { type: 'ping' })
+
+    const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
+    expect(sent.type).toBe('pong')
+  })
+
+  it('calls registry.disconnect when the ws closes after auth', async () => {
+    const ws = makeMockWs()
+    await authenticate(ws)
+
+    // The close handler is synchronous
+    ws.emit('close')
+
+    expect(mockRegistry.disconnect).toHaveBeenCalledWith('test-agent-1', expect.anything())
+  })
+
+  it('silently returns and sends nothing for malformed JSON', async () => {
+    const ws = makeMockWs()
+    await authenticate(ws)
+
+    ws.emit('message', Buffer.from('{not json'))
+    // Give the async handler a tick to complete before asserting
+    await new Promise<void>((resolve) => setTimeout(resolve, 50))
+
+    expect(ws.send).not.toHaveBeenCalled()
+  })
+
+  it('sends {type:error, message:Invalid message format} for valid-JSON but invalid-schema payload', async () => {
+    const ws = makeMockWs()
+    await authenticate(ws)
+
+    // {type:'snapshot', data:{}} passes JSON.parse but fails agentSnapshotSchema
+    // (missing agentId, name, timestamp, version, metrics)
+    await emitAndWait(ws, { type: 'snapshot', data: {} })
+
+    const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
+    expect(sent.type).toBe('error')
+    expect(sent.message).toBe('Invalid message format')
+  })
+})
