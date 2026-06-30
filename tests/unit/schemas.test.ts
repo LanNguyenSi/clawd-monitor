@@ -117,16 +117,19 @@ describe('agentSnapshotSchema – defaults applied when optional fields are omit
 
   it('applies default empty array for cronJobs', () => {
     const result = agentSnapshotSchema.safeParse(VALID_SNAPSHOT_DATA)
+    expect(result.success).toBe(true)
     if (result.success) expect(result.data.cronJobs).toEqual([])
   })
 
   it('applies default empty array for containers', () => {
     const result = agentSnapshotSchema.safeParse(VALID_SNAPSHOT_DATA)
+    expect(result.success).toBe(true)
     if (result.success) expect(result.data.containers).toEqual([])
   })
 
   it('applies default empty object for memoryFiles', () => {
     const result = agentSnapshotSchema.safeParse(VALID_SNAPSHOT_DATA)
+    expect(result.success).toBe(true)
     if (result.success) expect(result.data.memoryFiles).toEqual({})
   })
 

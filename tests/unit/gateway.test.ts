@@ -273,8 +273,12 @@ describe('gatewayFetch – happy path (default gateway URL)', () => {
   let mod: Awaited<ReturnType<typeof loadGateway>>
 
   beforeAll(async () => {
-    // Load with no env overrides → DEFAULT_GATEWAY_URL = 'http://localhost:9500'
-    mod = await loadGateway({})
+    // Pin env explicitly so the default URL / empty allowlist do not depend on the ambient runner env.
+    mod = await loadGateway({
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: 'http://localhost:9500',
+      ALLOWED_GATEWAY_HOSTS: '',
+      DEFAULT_GATEWAY_TOKEN: '',
+    })
   })
 
   afterAll(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules() })
@@ -323,7 +327,11 @@ describe('gatewayFetch – SSRF rejection (attacker-supplied http URL)', () => {
   let mod: Awaited<ReturnType<typeof loadGateway>>
 
   beforeAll(async () => {
-    mod = await loadGateway({})
+    mod = await loadGateway({
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: 'http://localhost:9500',
+      ALLOWED_GATEWAY_HOSTS: '',
+      DEFAULT_GATEWAY_TOKEN: '',
+    })
   })
 
   afterAll(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules() })
@@ -355,7 +363,11 @@ describe('gatewayJson – ok and not-ok responses', () => {
   let mod: Awaited<ReturnType<typeof loadGateway>>
 
   beforeAll(async () => {
-    mod = await loadGateway({})
+    mod = await loadGateway({
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: 'http://localhost:9500',
+      ALLOWED_GATEWAY_HOSTS: '',
+      DEFAULT_GATEWAY_TOKEN: '',
+    })
   })
 
   afterAll(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules() })
