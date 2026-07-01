@@ -13,7 +13,14 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
-      include: ['src/lib/**/*.ts'],
+      include: [
+        'src/lib/**/*.ts',
+        'src/app/api/auth/change-password/route.ts',
+        // '[id]' is a glob char-class, so a literal segment won't match the
+        // dynamic-route directory — use '**' to cover both tokens/route.ts
+        // and tokens/[id]/route.ts.
+        'src/app/api/settings/tokens/**/route.ts',
+      ],
       // Ratchet floor ~3 points below the measured baseline (2026-06-30):
       //   statements 81.27% / branches 77.24% / functions 76.08% / lines 82.19%
       // instance.ts (0%) and fetcher.ts (0%) remain uncovered and drag the
@@ -23,6 +30,24 @@ export default defineConfig({
         branches: 74,
         functions: 73,
         lines: 79,
+        'src/app/api/auth/change-password/route.ts': {
+          statements: 95,
+          branches: 95,
+          functions: 95,
+          lines: 95,
+        },
+        'src/app/api/settings/tokens/route.ts': {
+          statements: 95,
+          branches: 95,
+          functions: 95,
+          lines: 95,
+        },
+        'src/app/api/settings/tokens/[id]/route.ts': {
+          statements: 95,
+          branches: 95,
+          functions: 95,
+          lines: 95,
+        },
       },
     },
   },
