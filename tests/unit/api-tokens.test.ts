@@ -149,4 +149,17 @@ describe('POST /api/settings/tokens', () => {
     expect(stored[0].tokenHash).not.toBe(json.token)
     await expect(bcrypt.compare(json.token, stored[0].tokenHash)).resolves.toBe(true)
   })
+
+  it('appends to existing tokens: a second create preserves the first (read-modify-write)', async () => {
+    authMock.mockReturnValue(true)
+    const first = await (await POST(makePostRequest({ name: 'first' }))).json()
+    const second = await (await POST(makePostRequest({ name: 'second' }))).json()
+
+    const stored = readTokens()
+    expect(stored).toHaveLength(2)
+    const ids = stored.map((t) => t.id)
+    expect(ids).toContain(first.id)
+    expect(ids).toContain(second.id)
+    expect(stored.map((t) => t.name)).toEqual(['first', 'second'])
+  })
 })
