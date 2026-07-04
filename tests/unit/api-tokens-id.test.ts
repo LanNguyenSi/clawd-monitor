@@ -124,6 +124,18 @@ describe('PATCH /api/settings/tokens/[id]', () => {
     const stored = readTokens()
     expect(stored[0].name).toBe(seedToken.name)
   })
+
+  it('rejects a whitespace-only name without blanking the stored name: 400', async () => {
+    authMock.mockReturnValue(true)
+    writeTokens([seedToken])
+    const res = await PATCH(makeRequest('PATCH', { name: '   ' }), params('tok-1'))
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.error).toBe('name is required')
+
+    const stored = readTokens()
+    expect(stored[0].name).toBe(seedToken.name)
+  })
 })
 
 describe('DELETE /api/settings/tokens/[id]', () => {

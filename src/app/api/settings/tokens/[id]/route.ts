@@ -17,6 +17,11 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   const tokens = readTokens()
   const idx = tokens.findIndex((t) => t.id === id)
   if (idx === -1) return NextResponse.json({ error: 'Token not found' }, { status: 404 })
+  // A whitespace-only name is truthy but trims to empty; reject it so a rename
+  // cannot silently blank the token name, matching the POST create handler.
+  if (typeof body.name === 'string' && !body.name.trim()) {
+    return NextResponse.json({ error: 'name is required' }, { status: 400 })
+  }
   if (body.name) tokens[idx].name = body.name.trim()
   writeTokens(tokens)
   return NextResponse.json({ ok: true })
