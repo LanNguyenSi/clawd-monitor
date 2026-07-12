@@ -12,7 +12,7 @@ function getJwtSecret(): string {
       throw new Error('JWT_SECRET environment variable is required in production')
     }
     console.warn('[auth] JWT_SECRET not set — using insecure dev default. Do NOT use in production.')
-    _jwtSecret = 'dev-secret-change-in-production'
+    _jwtSecret = 'dev-secret-change-in-production' // pragma: allowlist secret
     return _jwtSecret
   }
   _jwtSecret = secret
