@@ -27,7 +27,7 @@ export async function GET(req: NextRequest, { params }: Props) {
   // Try Gateway history endpoint. gatewayFetch applies the SSRF guard
   // (assertGatewayUrlAllowed) and redirect:'manual' — the agent-registered
   // gatewayUrl is attacker-influencable via the WebSocket connect payload.
-  const path = `/sessions/${encodeURIComponent(sessionKey)}/history?limit=${limit}&includeTools=${includeTools}`
+  const path = `/sessions/${encodeURIComponent(sessionKey)}/history?limit=${encodeURIComponent(limit)}&includeTools=${encodeURIComponent(includeTools)}`
 
   try {
     const res = await gatewayFetch(path, {
