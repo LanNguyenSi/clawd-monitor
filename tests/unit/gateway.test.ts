@@ -126,9 +126,10 @@ describe('assertGatewayUrlAllowed – default env', () => {
   it('throws for https://[::ffff:10.0.0.1] (rejected via allowlist; host hex-normalized)', () => {
     // NOTE: asserts allowlist rejection ONLY. The WHATWG URL API normalises
     // ::ffff:10.0.0.1 to hex ::ffff:a00:1 in the hostname, so the allowlist check
-    // fires before isPrivateHost — the IPv4-mapped private-range branch is NOT
-    // exercised here. See the "isPrivateHost (direct)" block for that branch, and
-    // the follow-up task for the latent hex-normalization SSRF bypass.
+    // fires before isPrivateHost is even reached. The isPrivateHost hex-mapped
+    // branch itself (needed for the case where the hex-normalized host IS
+    // allowlisted) is covered directly in "isPrivateHost (direct)" and via the
+    // URL path in the "allowlisted public host" describe block below.
     expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:10.0.0.1]')).toThrow(mod.GatewayUrlError)
   })
 
@@ -227,6 +228,37 @@ describe('assertGatewayUrlAllowed – defence-in-depth (private hosts in allowli
   })
 })
 
+// ── assertGatewayUrlAllowed — defence-in-depth: hex-normalized IPv4-mapped ────
+//
+// The WHATWG URL parser normalizes IPv4-mapped IPv6 hosts to hex groups
+// (::ffff:10.0.0.1 -> ::ffff:a00:1). If an operator allowlists that exact
+// hex-normalized hostname, the allowlist check alone would let it through;
+// the isPrivateHost() guard must still reject it via the hex-mapped branch.
+
+describe('assertGatewayUrlAllowed – defence-in-depth (hex-normalized IPv4-mapped host allowlisted)', () => {
+  let mod: Awaited<ReturnType<typeof loadGateway>>
+
+  beforeAll(async () => {
+    mod = await loadGateway({
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: 'http://localhost:9500',
+      // Hex-normalized hostnames for ::ffff:10.0.0.1 and ::ffff:127.0.0.1.
+      ALLOWED_GATEWAY_HOSTS: '[::ffff:a00:1],[::ffff:7f00:1]',
+    })
+  })
+
+  afterAll(() => { vi.unstubAllEnvs(); vi.resetModules() })
+
+  it('rejects https://[::ffff:10.0.0.1] even when its hex-normalized host is allowlisted', () => {
+    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:10.0.0.1]')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:10.0.0.1]')).toThrow('Gateway host not allowed')
+  })
+
+  it('rejects https://[::ffff:127.0.0.1] even when its hex-normalized host is allowlisted', () => {
+    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:127.0.0.1]')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:127.0.0.1]')).toThrow('Gateway host not allowed')
+  })
+})
+
 // ── isPrivateHost (direct) — covers the IPv4-mapped branch unreachable via URL ──
 //
 // assertGatewayUrlAllowed cannot reach the dotted-decimal IPv4-mapped branch of
@@ -245,6 +277,16 @@ describe('isPrivateHost (direct)', () => {
 
   it('does not flag a public dotted-decimal IPv4-mapped address', () => {
     expect(mod.isPrivateHost('::ffff:8.8.8.8')).toBe(false)
+  })
+
+  it('detects hex-normalized IPv4-mapped IPv6 private addresses (WHATWG URL form)', () => {
+    expect(mod.isPrivateHost('::ffff:a00:1')).toBe(true) // 10.0.0.1
+    expect(mod.isPrivateHost('::ffff:7f00:1')).toBe(true) // 127.0.0.1
+    expect(mod.isPrivateHost('::ffff:c0a8:101')).toBe(true) // 192.168.1.1
+  })
+
+  it('does not flag a public hex-normalized IPv4-mapped address', () => {
+    expect(mod.isPrivateHost('::ffff:808:808')).toBe(false) // 8.8.8.8
   })
 
   it('detects core private / loopback / link-local ranges', () => {
