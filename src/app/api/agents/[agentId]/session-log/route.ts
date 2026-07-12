@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthenticated } from '@/lib/auth'
 import { registry } from '@/lib/agent-registry'
+import { gatewayFetch, GatewayUrlError } from '@/lib/gateway'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,14 +24,16 @@ export async function GET(req: NextRequest, { params }: Props) {
   const includeTools = req.nextUrl.searchParams.get('includeTools') ?? '0'
   if (!sessionKey) return NextResponse.json({ error: 'sessionKey required' }, { status: 400 })
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (agent.gatewayToken) headers['Authorization'] = `Bearer ${agent.gatewayToken}`
-
-  // Try Gateway history endpoint
-  const url = `${agent.gatewayUrl.replace(/\/$/, '')}/sessions/${encodeURIComponent(sessionKey)}/history?limit=${limit}&includeTools=${includeTools}`
+  // Try Gateway history endpoint. gatewayFetch applies the SSRF guard
+  // (assertGatewayUrlAllowed) and redirect:'manual' — the agent-registered
+  // gatewayUrl is attacker-influencable via the WebSocket connect payload.
+  const path = `/sessions/${encodeURIComponent(sessionKey)}/history?limit=${limit}&includeTools=${includeTools}`
 
   try {
-    const res = await fetch(url, { headers })
+    const res = await gatewayFetch(path, {
+      gatewayUrl: agent.gatewayUrl.replace(/\/$/, ''),
+      token: agent.gatewayToken ?? '',
+    })
     if (!res.ok) {
       return NextResponse.json(
         { error: `Gateway returned ${res.status}`, messages: [] },
@@ -40,6 +43,12 @@ export async function GET(req: NextRequest, { params }: Props) {
     const data = await res.json()
     return NextResponse.json(data)
   } catch (err) {
+    if (err instanceof GatewayUrlError) {
+      return NextResponse.json(
+        { error: `Agent gateway URL not allowed: ${err.message}`, messages: [] },
+        { status: 502 }
+      )
+    }
     return NextResponse.json(
       { error: `Cannot reach agent gateway: ${err}`, messages: [] },
       { status: 502 }
