@@ -35,6 +35,20 @@ export function isPrivateHost(hostname: string): boolean {
     if (host.startsWith('fc') || host.startsWith('fd')) return true // fc00::/7 unique-local
     const mapped = host.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)
     if (mapped) return isPrivateHost(mapped[1]) // IPv4-mapped IPv6, e.g. ::ffff:127.0.0.1
+    // WHATWG URL normalizes IPv4-mapped IPv6 to hex groups, e.g.
+    // ::ffff:10.0.0.1 -> ::ffff:a00:1 (so new URL(...).hostname never surfaces
+    // the dotted-decimal form above). Decode the two hex groups back into the
+    // embedded IPv4 address and reuse the dotted-decimal private-range logic.
+    const mappedHex = host.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/)
+    if (mappedHex) {
+      const high = Number.parseInt(mappedHex[1], 16)
+      const low = Number.parseInt(mappedHex[2], 16)
+      const a = (high >> 8) & 0xff
+      const b = high & 0xff
+      const c = (low >> 8) & 0xff
+      const d = low & 0xff
+      return isPrivateHost(`${a}.${b}.${c}.${d}`)
+    }
     return false
   }
   const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
