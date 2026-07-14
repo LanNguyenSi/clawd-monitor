@@ -21,15 +21,15 @@ export default defineConfig({
         // and tokens/[id]/route.ts.
         'src/app/api/settings/tokens/**/route.ts',
       ],
-      // Ratchet floor ~3 points below the measured baseline (2026-06-30):
-      //   statements 81.27% / branches 77.24% / functions 76.08% / lines 82.19%
-      // instance.ts (0%) and fetcher.ts (0%) remain uncovered and drag the
-      // global % down; they are tracked as follow-up work.
+      // Ratchet floor ~3 points below the measured baseline (2026-07-14):
+      //   statements 99.4% / branches 95.19% / functions 98.14% / lines 99.31%
+      // instance.ts and fetcher.ts are now covered under jsdom (see
+      // tests/unit/instance.test.ts and tests/unit/fetcher.test.ts).
       thresholds: {
-        statements: 78,
-        branches: 74,
-        functions: 73,
-        lines: 79,
+        statements: 96,
+        branches: 92,
+        functions: 95,
+        lines: 96,
         'src/app/api/auth/change-password/route.ts': {
           statements: 95,
           branches: 95,
