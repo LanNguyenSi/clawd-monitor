@@ -5,10 +5,16 @@
  * Runs under jsdom (see docblock above) because the module reads/writes
  * `window.localStorage`. localStorage is cleared between tests so state
  * does not leak across cases.
+ *
+ * DEFAULT_INSTANCE.gatewayUrl is a module-level const derived from
+ * process.env.NEXT_PUBLIC_DEFAULT_GATEWAY_URL at import time, so the module
+ * is loaded dynamically in beforeAll AFTER explicitly unsetting that env var
+ * (vi.stubEnv(..., undefined)). This keeps the test hermetic: an ambient
+ * NEXT_PUBLIC_DEFAULT_GATEWAY_URL in the runner's environment cannot change
+ * the fallback value this file asserts against.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import * as instanceLib from '@/lib/instance'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
 import type { Instance } from '@/types'
 
 const DEFAULT_INSTANCE: Instance = {
@@ -20,6 +26,19 @@ const DEFAULT_INSTANCE: Instance = {
 
 // Mirrors the module-private STORAGE_KEY constant in src/lib/instance.ts.
 const STORAGE_KEY = 'clawd-monitor:instances'
+
+let instanceLib: typeof import('@/lib/instance')
+
+beforeAll(async () => {
+  vi.stubEnv('NEXT_PUBLIC_DEFAULT_GATEWAY_URL', undefined)
+  vi.resetModules()
+  instanceLib = await import('@/lib/instance')
+})
+
+afterAll(() => {
+  vi.unstubAllEnvs()
+  vi.resetModules()
+})
 
 /**
  * Seed localStorage directly with a raw instances array, bypassing
@@ -156,23 +175,48 @@ describe('getActiveInstanceId / getActiveInstance / setActiveInstance', () => {
 // *value* is undefined, not only when it's undeclared, so stubbing the
 // global to undefined faithfully reproduces the SSR code path even though
 // this file runs under jsdom.
+//
+// Stubbing `window` alone only proves the guard's RETURN VALUE matches; it
+// does not prove the guard is what produced it. jsdom keeps the bare
+// `localStorage` global intact even when `window` is stubbed to undefined,
+// so if the `typeof window === 'undefined'` check were deleted entirely
+// (not merely inverted), getInstances()'s try/catch would swallow the
+// resulting call and still coincidentally return [DEFAULT_INSTANCE], and
+// getActiveInstanceId() (no try/catch) would only fail via an uncaught
+// TypeError rather than a clean assertion mismatch. Spying on
+// localStorage.getItem and asserting it was never called makes guard
+// REMOVAL fail the test directly, regardless of any try/catch downstream.
 
 describe('getInstances – SSR guard (typeof window === "undefined")', () => {
   it('returns [DEFAULT_INSTANCE] without touching localStorage when window is undefined', () => {
+    // Spy on Storage.prototype (not the localStorage instance): jsdom's
+    // Storage implements Web IDL "legacy platform object" semantics, where
+    // assigning/spying directly on the instance's getItem does not actually
+    // intercept real calls made through it.
+    const getItemSpy = vi.spyOn(Object.getPrototypeOf(localStorage), 'getItem')
     vi.stubGlobal('window', undefined)
     try {
       expect(instanceLib.getInstances()).toEqual([DEFAULT_INSTANCE])
+      expect(getItemSpy).not.toHaveBeenCalled()
     } finally {
       vi.unstubAllGlobals()
+      getItemSpy.mockRestore()
     }
   })
 
   it('getActiveInstanceId returns null without touching localStorage when window is undefined', () => {
+    // Spy on Storage.prototype (not the localStorage instance): jsdom's
+    // Storage implements Web IDL "legacy platform object" semantics, where
+    // assigning/spying directly on the instance's getItem does not actually
+    // intercept real calls made through it.
+    const getItemSpy = vi.spyOn(Object.getPrototypeOf(localStorage), 'getItem')
     vi.stubGlobal('window', undefined)
     try {
       expect(instanceLib.getActiveInstanceId()).toBeNull()
+      expect(getItemSpy).not.toHaveBeenCalled()
     } finally {
       vi.unstubAllGlobals()
+      getItemSpy.mockRestore()
     }
   })
 })
