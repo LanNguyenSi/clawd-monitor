@@ -1,6 +1,24 @@
 import { defineConfig } from 'vitest/config'
 import { resolve } from 'path'
 
+// Node 22.4+ ships an experimental global `localStorage` (unflagged by
+// default on newer Node releases, e.g. the Node 26 this was diagnosed on)
+// that vitest's jsdom environment does not override: its populateGlobal
+// helper only copies a jsdom-owned key onto the worker's global when that
+// key is either absent from the host global or in its hardcoded allowlist
+// of DOM class names, and `localStorage` is in neither. Node's own
+// accessor (non-functional unless --localstorage-file is set) therefore
+// shadows jsdom's real Storage implementation, and any
+// `window.localStorage` access in a jsdom test throws
+// "Cannot read properties of undefined (reading 'clear')"
+// (see tests/unit/instance.test.ts). Disabling the flag on the worker
+// processes vitest spawns restores the jsdom-backed localStorage this
+// suite has always relied on. Guarded by allowedNodeEnvironmentFlags so
+// this is a no-op on Node versions without the flag (e.g. CI's Node 20).
+const execArgv = process.allowedNodeEnvironmentFlags.has('--no-experimental-webstorage')
+  ? ['--no-experimental-webstorage']
+  : []
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -8,6 +26,7 @@ export default defineConfig({
     },
   },
   test: {
+    execArgv,
     environment: 'node',
     include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
     coverage: {
