@@ -20,11 +20,11 @@ Browser
   └── Next.js App (SSR + Client Components)
         ├── /login              → JWT auth
         ├── /dashboard          → Widget grid
-        └── /api/
-              ├── /api/auth/                  → Login endpoint
-              ├── /api/agents/list            → Connected agents (from registry)
-              ├── /api/agents/[id]/snapshot   → Latest snapshot for an agent
-              ├── /api/proxy/                 → Direct proxy to OpenClaw Gateway
+        └── /api/  (abridged, see Directory Structure below for the full route list)
+              ├── /api/auth/                  → Login, session, password change
+              ├── /api/agents/                → Connected agents, snapshot, logs, session-log (from registry)
+              ├── /api/containers/, /api/health/, /api/settings/tokens/ → Container list, server health, agent tokens
+              ├── /api/proxy/                 → Direct proxy to OpenClaw Gateway (generic + topic-specific routes)
               └── /api/stream/                → SSE streams (logs, metrics)
 
 OpenClaw Gateway (remote, direct-proxy path only)
@@ -90,12 +90,21 @@ clawd-monitor/
 │   │   ├── dashboard/         → Main grid page
 │   │   ├── settings/          → Settings (admin password, agent tokens)
 │   │   ├── api/
-│   │   │   ├── auth/route.ts                       → POST /api/auth (login → JWT)
-│   │   │   ├── agents/list/route.ts                → GET connected agents (JWT)
-│   │   │   ├── agents/[agentId]/snapshot/route.ts  → GET latest agent snapshot (JWT)
-│   │   │   ├── proxy/[...path]/route.ts            → GET/POST proxy to Gateway
-│   │   │   ├── stream/logs/route.ts                → SSE: logs
-│   │   │   └── stream/metrics/route.ts             → SSE: metrics
+│   │   │   ├── auth/route.ts                          → GET/POST/DELETE /api/auth (login, session, logout → JWT)
+│   │   │   ├── auth/change-password/route.ts          → POST admin password change
+│   │   │   ├── agents/list/route.ts                    → GET connected agents (JWT)
+│   │   │   ├── agents/[agentId]/snapshot/route.ts      → GET latest agent snapshot (JWT)
+│   │   │   ├── agents/[agentId]/logs/route.ts          → GET agent logs (JWT)
+│   │   │   ├── agents/[agentId]/session-log/route.ts   → GET agent session log (JWT)
+│   │   │   ├── containers/route.ts                     → GET Docker container list
+│   │   │   ├── health/route.ts                         → GET server + registry health
+│   │   │   ├── settings/tokens/route.ts                → GET/POST agent tokens
+│   │   │   ├── settings/tokens/[id]/route.ts           → DELETE/PATCH agent token by id
+│   │   │   ├── proxy/[...path]/route.ts                → GET/POST/PUT/DELETE/PATCH generic proxy to Gateway
+│   │   │   ├── proxy/{alert-history,docker,github,health,heartbeat,memory,sessions}/route.ts → GET topic-specific proxy to Gateway
+│   │   │   ├── proxy/cron/route.ts                     → GET/POST cron jobs proxy
+│   │   │   ├── stream/logs/route.ts                    → SSE: logs
+│   │   │   └── stream/metrics/route.ts                 → SSE: metrics
 │   │   └── layout.tsx
 │   ├── components/
 │   │   ├── Grid/              → WidgetGrid, GridItem
@@ -130,9 +139,9 @@ clawd-monitor/
 ADMIN_PASSWORD=<plaintext>       # compared as plaintext, or use ADMIN_PASSWORD_HASH (bcrypt)
 ADMIN_PASSWORD_HASH=<bcrypt>     # bcrypt hash, alternative to ADMIN_PASSWORD
 JWT_SECRET=<random-32-char>      # JWT signing secret
-NEXT_PUBLIC_DEFAULT_GATEWAY_URL= # Default OpenClaw gateway URL (default http://localhost:9500)
 
 # Optional (can be configured per-instance in the UI)
+NEXT_PUBLIC_DEFAULT_GATEWAY_URL= # Default OpenClaw gateway URL (default http://localhost:9500)
 DEFAULT_GATEWAY_TOKEN=           # Default API token
 ```
 
