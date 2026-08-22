@@ -24,7 +24,7 @@ Browser
               ├── /api/auth/                  → Login, session, password change
               ├── /api/agents/                → Connected agents, snapshot, logs, session-log (from registry)
               ├── /api/containers/, /api/health/, /api/settings/tokens/ → Container list, server health, agent tokens
-              ├── /api/proxy/                 → Direct proxy to OpenClaw Gateway (generic + topic-specific routes)
+              ├── /api/proxy/                 → Generic Gateway proxy plus topic routes (some Gateway, some server-local)
               └── /api/stream/                → SSE streams (logs, metrics)
 
 OpenClaw Gateway (remote, direct-proxy path only)
@@ -94,14 +94,16 @@ clawd-monitor/
 │   │   │   ├── auth/change-password/route.ts          → POST admin password change
 │   │   │   ├── agents/list/route.ts                    → GET connected agents (JWT)
 │   │   │   ├── agents/[agentId]/snapshot/route.ts      → GET latest agent snapshot (JWT)
-│   │   │   ├── agents/[agentId]/logs/route.ts          → GET agent logs (JWT)
-│   │   │   ├── agents/[agentId]/session-log/route.ts   → GET agent session log (JWT)
+│   │   │   ├── agents/[agentId]/logs/route.ts          → SSE: agent logs (JWT)
+│   │   │   ├── agents/[agentId]/session-log/route.ts   → SSE: agent session log (JWT)
 │   │   │   ├── containers/route.ts                     → GET Docker container list
 │   │   │   ├── health/route.ts                         → GET server + registry health
 │   │   │   ├── settings/tokens/route.ts                → GET/POST agent tokens
 │   │   │   ├── settings/tokens/[id]/route.ts           → DELETE/PATCH agent token by id
 │   │   │   ├── proxy/[...path]/route.ts                → GET/POST/PUT/DELETE/PATCH generic proxy to Gateway
-│   │   │   ├── proxy/{alert-history,docker,github,health,heartbeat,memory,sessions}/route.ts → GET topic-specific proxy to Gateway
+│   │   │   ├── proxy/{heartbeat,sessions}/route.ts     → GET Gateway proxy (status, sessions)
+│   │   │   ├── proxy/memory/route.ts                   → GET Gateway proxy with CLAWD_DIR filesystem fallback
+│   │   │   ├── proxy/{alert-history,docker,github,health}/route.ts → GET server-local / third-party data, not Gateway
 │   │   │   ├── proxy/cron/route.ts                     → GET/POST cron jobs proxy
 │   │   │   ├── stream/logs/route.ts                    → SSE: logs
 │   │   │   └── stream/metrics/route.ts                 → SSE: metrics
