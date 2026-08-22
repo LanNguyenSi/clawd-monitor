@@ -7,7 +7,7 @@ Monitoring dashboard for [OpenClaw](https://openclaw.ai) instances. Connect mult
 
 **Live:** [clawd-monitor.opentriologue.ai](https://clawd-monitor.opentriologue.ai)
 
-![The clawd-monitor dashboard: a configurable widget grid showing log tail, memory viewer, CPU/RAM, Docker containers, cron jobs, recent activity, and connected-agent status.](docs/img/dashboard.png)
+![The clawd-monitor dashboard: a configurable widget grid showing log tail, memory viewer, CPU/RAM, Docker containers, cron jobs, session log, and connected-agent status.](docs/img/dashboard.png)
 
 ---
 
@@ -98,7 +98,7 @@ AGENT_TTL_MS=300000         # offline-agent TTL in ms (default 5min)
 NEXT_PUBLIC_DEFAULT_GATEWAY_URL=http://localhost:9500
 DEFAULT_GATEWAY_TOKEN=      # default OpenClaw API token
 ALLOWED_GATEWAY_HOSTS=      # SSRF allowlist for per-instance gateway overrides (comma-separated hostnames)
-CLAWD_DIR=/root/.openclaw/workspace  # Memory Viewer source (MEMORY.md / CURRENT.md / memory/*.md)
+CLAWD_DIR=/root/.openclaw/workspace  # Memory Viewer source (MEMORY.md / CURRENT.md / memory/*.md); code default when unset is /root/clawd
 CLAWD_MONITOR_DATA_DIR=/data   # persistent storage for tokens + password hash
 DOMAIN=monitor.yourdomain.com  # used by docker-compose.traefik.yml
 GITHUB_TOKEN=               # for GitHub PR widget
