@@ -9,8 +9,10 @@ dashboard and also accepts agent WebSocket connections. Two data paths coexist:
    `/api/agents/ws` and push periodic snapshots. The server keeps them in an
    in-memory registry; widgets read the latest snapshot. No inbound port is
    needed on the agent host.
-2. **Direct proxy (legacy/optional):** when no agent is selected, API routes
-   under `/api/proxy/*` and `/api/stream/*` reach an OpenClaw Gateway directly.
+2. **Direct proxy (legacy/optional):** when no agent is selected, most API
+   routes under `/api/proxy/*` and `/api/stream/*` reach an OpenClaw Gateway
+   directly; some `/api/proxy/*` topic routes read server-local or
+   third-party data instead (see Directory Structure below).
 
 ```
 clawd-monitor-agent (remote host)
@@ -22,9 +24,9 @@ Browser
         ├── /dashboard          → Widget grid
         └── /api/  (abridged, see Directory Structure below for the full route list)
               ├── /api/auth/                  → Login, session, password change
-              ├── /api/agents/                → Connected agents, snapshot, logs, session-log (from registry)
+              ├── /api/agents/                → Connected agents, snapshot, logs, session-log
               ├── /api/containers/, /api/health/, /api/settings/tokens/ → Container list, server health, agent tokens
-              ├── /api/proxy/                 → Generic Gateway proxy plus topic routes (some Gateway, some server-local)
+              ├── /api/proxy/                 → Generic Gateway proxy plus topic routes (some Gateway, some server-local / third-party)
               └── /api/stream/                → SSE streams (logs, metrics)
 
 OpenClaw Gateway (remote, direct-proxy path only)
@@ -90,21 +92,21 @@ clawd-monitor/
 │   │   ├── dashboard/         → Main grid page
 │   │   ├── settings/          → Settings (admin password, agent tokens)
 │   │   ├── api/
-│   │   │   ├── auth/route.ts                          → GET/POST/DELETE /api/auth (login, session, logout → JWT)
-│   │   │   ├── auth/change-password/route.ts          → POST admin password change
+│   │   │   ├── auth/route.ts                           → GET/POST/DELETE /api/auth (session, login, logout → JWT)
+│   │   │   ├── auth/change-password/route.ts           → POST admin password change
 │   │   │   ├── agents/list/route.ts                    → GET connected agents (JWT)
 │   │   │   ├── agents/[agentId]/snapshot/route.ts      → GET latest agent snapshot (JWT)
 │   │   │   ├── agents/[agentId]/logs/route.ts          → SSE: agent logs (JWT)
-│   │   │   ├── agents/[agentId]/session-log/route.ts   → SSE: agent session log (JWT)
+│   │   │   ├── agents/[agentId]/session-log/route.ts   → GET session history via Gateway (JWT)
 │   │   │   ├── containers/route.ts                     → GET Docker container list
 │   │   │   ├── health/route.ts                         → GET server + registry health
 │   │   │   ├── settings/tokens/route.ts                → GET/POST agent tokens
 │   │   │   ├── settings/tokens/[id]/route.ts           → DELETE/PATCH agent token by id
 │   │   │   ├── proxy/[...path]/route.ts                → GET/POST/PUT/DELETE/PATCH generic proxy to Gateway
 │   │   │   ├── proxy/{heartbeat,sessions}/route.ts     → GET Gateway proxy (status, sessions)
+│   │   │   ├── proxy/cron/route.ts                     → GET/POST Gateway proxy (cron jobs, trigger run)
 │   │   │   ├── proxy/memory/route.ts                   → GET Gateway proxy with CLAWD_DIR filesystem fallback
 │   │   │   ├── proxy/{alert-history,docker,github,health}/route.ts → GET server-local / third-party data, not Gateway
-│   │   │   ├── proxy/cron/route.ts                     → GET/POST cron jobs proxy
 │   │   │   ├── stream/logs/route.ts                    → SSE: logs
 │   │   │   └── stream/metrics/route.ts                 → SSE: metrics
 │   │   └── layout.tsx
