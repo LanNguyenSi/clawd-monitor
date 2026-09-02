@@ -1,0 +1,43 @@
+name: Audit
+
+# npm-audit regression gate. Deliberately a SEPARATE workflow from ci.yml
+# (which release.yml may reuse via workflow_call) so a freshly published
+# advisory cannot turn a release or an unrelated PR red with zero code
+# change.
+#
+# Threshold: HIGH and CRITICAL advisories fail the gate step; moderate
+# and low are report-only (first step, never red). npm audit reads
+# package-lock.json directly; no npm ci needed, zero added install time.
+#
+# Single lockfile tree in this repo; the job below covers it.
+#
+# If a HIGH/CRITICAL has no upstream fix, resolution is an operator
+# decision (documented override or allowlist), never a silent threshold
+# bump in this file.
+#
+# Registering this job as a required status check in branch protection
+# is a separate operator action, out of scope here.
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - name: npm audit (full report, non-blocking)
+        run: npm audit || true
+      - name: npm audit gate (high/critical fail)
+        run: npm audit --audit-level=high
