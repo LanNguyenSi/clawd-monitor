@@ -2,8 +2,8 @@ name: Audit
 
 # npm-audit regression gate. Deliberately a SEPARATE workflow from ci.yml
 # (which release.yml may reuse via workflow_call) so a freshly published
-# advisory never turns a release or an unrelated PR red with zero code
-# change. Same split agent-tasks' audit.yml already documents.
+# advisory cannot turn a release or an unrelated PR red with zero code
+# change.
 #
 # Threshold: HIGH and CRITICAL advisories fail the gate step; moderate
 # and low are report-only (first step, never red). npm audit reads
