@@ -136,23 +136,21 @@ clawd-monitor/
 └── .env.example
 ```
 
+## Stack
+
+- [Next.js 15](https://nextjs.org): App Router plus the custom WebSocket
+  server (`server.ts`).
+- [TypeScript](https://www.typescriptlang.org) in strict mode.
+- [Tailwind CSS](https://tailwindcss.com) with dark mode.
+- [react-grid-layout](https://github.com/react-grid-layout/react-grid-layout)
+  for the drag-and-drop widget grid.
+- [SWR](https://swr.vercel.app) for client-side data fetching.
+- Docker and Traefik for deployment.
+
 ## Environment Variables
 
-```env
-# Required
-ADMIN_PASSWORD=<plaintext>       # compared as plaintext, or use ADMIN_PASSWORD_HASH (bcrypt)
-ADMIN_PASSWORD_HASH=<bcrypt>     # bcrypt hash, alternative to ADMIN_PASSWORD
-JWT_SECRET=<random-32-char>      # JWT signing secret
-
-# Optional (can be configured per-instance in the UI)
-NEXT_PUBLIC_DEFAULT_GATEWAY_URL= # Default OpenClaw gateway URL (default http://localhost:9500)
-DEFAULT_GATEWAY_TOKEN=           # Default API token
-```
-
-`ADMIN_PASSWORD` is compared as plaintext (and a UI password change is persisted
-in `CLAWD_MONITOR_DATA_DIR`); set `ADMIN_PASSWORD_HASH` to a precomputed bcrypt
-hash instead if you prefer not to store the plaintext in the environment. See
-`.env.example` for the full list of supported variables.
+See [configuration.md](configuration.md) for the full list of environment
+variables the server reads and how the admin password is resolved.
 
 ## Deployment
 
