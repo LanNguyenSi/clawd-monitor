@@ -16,8 +16,10 @@ DEFAULT_GATEWAY_TOKEN=      # default OpenClaw API token
 ALLOWED_GATEWAY_HOSTS=      # SSRF allowlist for per-instance gateway overrides (comma-separated hostnames)
 CLAWD_DIR=/root/.openclaw/workspace  # Memory Viewer source (MEMORY.md / CURRENT.md / memory/*.md); code default when unset is /root/clawd
 CLAWD_MONITOR_DATA_DIR=/data   # persistent storage for tokens + password hash
-DOMAIN=monitor.yourdomain.com  # used by docker-compose.traefik.yml
+DOMAIN=monitor.yourdomain.com  # read by docker-compose.traefik.yml only, not by the server
 GITHUB_TOKEN=               # for GitHub PR widget
+PORT=3000                   # listen port (server.ts default)
+HOSTNAME=0.0.0.0            # listen address (server.ts default)
 ```
 
 Notes:

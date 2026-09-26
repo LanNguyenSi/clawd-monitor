@@ -40,10 +40,5 @@ make clean         # Remove build artifacts
 
 ## Pull requests
 
-- Branch naming: `feat/<name>` or `fix/<name>`.
-- Build must pass: `npm run build`.
-- Type check must pass: `npm run type-check`.
-- One PR per feature or fix.
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for the project structure and how
-to add a widget.
+See [CONTRIBUTING.md](../CONTRIBUTING.md#pull-requests) for the PR checklist,
+the project structure, and how to add a widget.

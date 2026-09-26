@@ -8,8 +8,8 @@ Monitoring dashboard for [OpenClaw](https://openclaw.ai) instances.
 ## Overview
 
 clawd-monitor is a Next.js dashboard that shows live status for one or more
-OpenClaw hosts: sessions, memory files, cron jobs, Docker containers, and log
-tails. Each host runs the companion
+OpenClaw hosts: sessions, memory files, cron jobs, and Docker containers.
+Each host runs the companion
 [clawd-monitor-agent](https://github.com/LanNguyenSi/clawd-monitor-agent),
 which pushes a snapshot over WebSocket every 5 seconds; no inbound port is
 required on the agent host. A widget grid renders the latest snapshot per
@@ -19,8 +19,8 @@ agent, with a switcher to move between connected agents.
 
 ## Key Features
 
-- Live CPU/RAM, session, and agent-status widgets fed by agent push, no
-  polling required.
+- Live CPU/RAM, session, and agent-status widgets fed by agent push; the
+  server never polls the agent host.
 - Connected-agent list with online/offline status and per-agent switching.
 - Memory viewer, cron jobs, Docker containers, and log tail widgets.
 - GitHub PR widget with CI status, and service-health checks for configured
@@ -35,16 +35,23 @@ shortcuts.
 
 ### 1. Run clawd-monitor (server)
 
+Prerequisites: Docker with Compose, and a running Traefik on an external
+Docker network named `traefik` (with a `websecure` entrypoint and a
+`letsencrypt` certificate resolver).
+
 ```bash
 git clone https://github.com/LanNguyenSi/clawd-monitor
 cd clawd-monitor
 cp .env.example .env
-# edit .env: set ADMIN_PASSWORD, JWT_SECRET
+# edit .env: set ADMIN_PASSWORD, JWT_SECRET, DOMAIN
 
 docker compose -f docker-compose.traefik.yml up -d
 ```
 
-Open `https://your-domain/` and sign in with the admin password from `.env`.
+Without Traefik, `docker compose up -d` serves plain HTTP on port 3000
+(create the data volume first: `docker volume create clawd_monitor_data`).
+
+Open `https://your-domain/` (or `http://localhost:3000`) and sign in with the admin password from `.env`.
 After the first login, use `Settings` in the UI to change the admin
 password, then generate an agent token there too.
 
