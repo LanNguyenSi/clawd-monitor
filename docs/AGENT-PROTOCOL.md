@@ -29,7 +29,7 @@ Agent → server:
   "agentId": "<stable-unique-id>",
   "name": "<display-name>",
   "version": "<agent-version>",
-  "gatewayUrl": "http://localhost:9500",
+  "gatewayUrl": "http://localhost:18789",
   "gatewayToken": "<optional OpenClaw token>"
 }
 ```
