@@ -154,8 +154,6 @@ variables the server reads and how the admin password is resolved.
 
 ## Deployment
 
-Same pattern as depsight — Docker + Traefik on Stone VPS.
-
-Target URL: `clawd-monitor.opentriologue.ai`
+Docker + Traefik; see the README Quick Start and [configuration.md](configuration.md) (`DOMAIN`).
 
 Dockerfile: multi-stage (deps → builder → runner), `node:20-slim`.

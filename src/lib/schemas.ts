@@ -17,6 +17,7 @@ export const agentSnapshotSchema = z.object({
     memory: z.string().optional(),
     current: z.string().optional(),
     today: z.string().optional(),
+    yesterday: z.string().optional(),
   }).default({}),
   containers: z.array(z.unknown()).default([]),
 })

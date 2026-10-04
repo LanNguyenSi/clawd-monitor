@@ -65,7 +65,7 @@ clawd-monitor-agent \
   --server https://your-clawd-monitor-domain \
   --token <token-from-settings> \
   --name "My OpenClaw Host" \
-  --gateway http://localhost:9500
+  --gateway http://localhost:18789
 ```
 
 Or copy the install snippet directly from the Settings page.

@@ -12,7 +12,7 @@ grid. For how a widget gets its data (agent push vs. direct Gateway proxy), see
 | Agent Status | Active sessions and model info |
 | Connected Agents | All connected agents with online/offline status |
 | Session Log | Last 5 messages per session (embedded in snapshot) |
-| Memory Viewer | Reads MEMORY.md / CURRENT.md / today's log from the agent |
+| Memory Viewer | Reads MEMORY.md / CURRENT.md / today's and yesterday's log from the agent |
 | Cron Jobs | Scheduled jobs with next/last run times |
 | Docker Containers | Container status, restarts, uptime |
 | Log Tail | Live log stream (local server) |
