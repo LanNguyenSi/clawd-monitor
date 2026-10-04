@@ -9,6 +9,9 @@ dev:
 build:
 	npm run build
 
+test:
+	npm test
+
 typecheck:
 	npm run type-check
 

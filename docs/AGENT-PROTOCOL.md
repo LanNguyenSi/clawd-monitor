@@ -73,7 +73,7 @@ Agent → server:
       "memTotalBytes": 0,
       "uptimeSeconds": 0
     },
-    "memoryFiles": { "memory": "", "current": "", "today": "" },
+    "memoryFiles": { "memory": "", "current": "", "today": "", "yesterday": "" },
     "containers": []
   }
 }
@@ -81,7 +81,7 @@ Agent → server:
 
 - `metrics` is required with all four numeric fields.
 - `sessions`, `cronJobs`, `containers` default to `[]`; `memoryFiles` defaults to
-  `{}` and its `memory` / `current` / `today` fields are each optional strings.
+  `{}` and its `memory` / `current` / `today` / `yesterday` fields are each optional strings.
 
 Server → agent after a valid snapshot:
 

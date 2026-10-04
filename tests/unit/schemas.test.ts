@@ -133,6 +133,15 @@ describe('agentSnapshotSchema – defaults applied when optional fields are omit
     if (result.success) expect(result.data.memoryFiles).toEqual({})
   })
 
+  it('keeps memoryFiles.yesterday instead of stripping it', () => {
+    const result = agentSnapshotSchema.safeParse({
+      ...VALID_SNAPSHOT_DATA,
+      memoryFiles: { today: 't', yesterday: 'y-log' },
+    })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.memoryFiles.yesterday).toBe('y-log')
+  })
+
   it('preserves explicitly provided optional fields', () => {
     const result = agentSnapshotSchema.safeParse({
       ...VALID_SNAPSHOT_DATA,
