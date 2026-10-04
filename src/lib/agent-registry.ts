@@ -1,5 +1,5 @@
 import type WebSocket from 'ws'
-import type { ValidatedSnapshot } from './schemas'
+import type { ValidatedSnapshot } from './schemas.js'
 
 export type AgentSnapshot = ValidatedSnapshot
 
