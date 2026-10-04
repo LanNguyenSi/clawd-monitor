@@ -135,6 +135,31 @@ describe('update', () => {
   })
 })
 
+// ── AgentSnapshot memoryFiles ─────────────────────────────────────────────────
+
+describe('AgentSnapshot memoryFiles', () => {
+  it('stores memoryFiles.yesterday on the snapshot', () => {
+    const ws = makeMockWs()
+    registry.register(ws, makeMeta('agent-mem'))
+
+    const snap: AgentSnapshot = {
+      agentId: 'agent-mem',
+      name: 'Agent agent-mem',
+      timestamp: Date.now(),
+      version: '1.0.0',
+      sessions: [],
+      cronJobs: [],
+      metrics: { cpuPercent: 5, memUsedBytes: 100, memTotalBytes: 1000, uptimeSeconds: 60 },
+      memoryFiles: { memory: 'm', today: 't', yesterday: 'y' },
+      containers: [],
+    }
+    registry.update('agent-mem', snap)
+
+    const entry = registry.agents.get('agent-mem')!
+    expect(entry.lastSnapshot?.memoryFiles.yesterday).toBe('y')
+  })
+})
+
 // ── disconnect ────────────────────────────────────────────────────────────────
 
 describe('disconnect', () => {
