@@ -1,25 +1,7 @@
 import type WebSocket from 'ws'
+import type { ValidatedSnapshot } from './schemas'
 
-export interface AgentSnapshot {
-  agentId: string
-  name: string
-  timestamp: number
-  version: string
-  sessions: unknown[]
-  cronJobs: unknown[]
-  metrics: {
-    cpuPercent: number
-    memUsedBytes: number
-    memTotalBytes: number
-    uptimeSeconds: number
-  }
-  memoryFiles: {
-    memory?: string
-    current?: string
-    today?: string
-  }
-  containers: unknown[]
-}
+export type AgentSnapshot = ValidatedSnapshot
 
 export interface AgentEntry {
   agentId: string

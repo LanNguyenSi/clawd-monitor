@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- `AgentSnapshot` is now derived from the zod snapshot schema (`ValidatedSnapshot`), so it includes `memoryFiles.yesterday` and cannot drift from the validated shape. No runtime change.
+
 ## [0.2.1] - 2026-06-09
 
 Security release closing the 2026-05-30 audit findings and a CVE sweep, plus the open source surface. The headline is three HIGH Next.js middleware/proxy-bypass CVEs. No feature changes; the app is private and deployed from `master`, so this tag is deploy provenance.
