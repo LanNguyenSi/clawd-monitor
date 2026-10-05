@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - `AgentSnapshot` is now derived from the zod snapshot schema (`ValidatedSnapshot`), so it includes `memoryFiles.yesterday` and cannot drift from the validated shape. No runtime change.
 
+### Fixed
+
+- CI now type-checks the test files (`tsconfig.test.json`, `npm run type-check:tests`), so a test that no longer matches a source type fails CI instead of only failing at runtime.
+- The change-password tests no longer time out under the full coverage run: fixtures hash with bcrypt cost 4, and the tests that reach the route's cost-12 hash have an explicit timeout.
+
 ## [0.2.1] - 2026-06-09
 
 Security release closing the 2026-05-30 audit findings and a CVE sweep, plus the open source surface. The headline is three HIGH Next.js middleware/proxy-bypass CVEs. No feature changes; the app is private and deployed from `master`, so this tag is deploy provenance.
