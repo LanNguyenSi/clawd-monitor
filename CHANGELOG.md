@@ -7,14 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-05
+
+Patch release: security fixes in the gateway proxy and dependencies, a snapshot fix, test and CI hardening. No feature changes; the app is private and deployed from `master`, so this tag is deploy provenance.
+
+### Security
+
+- **Session-log route now goes through the SSRF guard.** `GET /api/agents/[agentId]/session-log` fetched the agent-registered `gatewayUrl` directly, which a connecting agent controls. It now uses `gatewayFetch`, so private, loopback and metadata targets are rejected before any outbound request and redirects are not followed. A rejected URL returns HTTP 502. The `limit` and `includeTools` query parameters are URL-encoded in the downstream request.
+- **`isPrivateHost` detects hex-normalized IPv4-mapped IPv6.** The URL parser rewrites `::ffff:10.0.0.1` to `::ffff:a00:1`, which the guard did not match. The hex form is now decoded and checked against the private IPv4 ranges.
+- **Dependency advisories closed** by in-range bumps and overrides: `esbuild` 0.28.1 via `tsx`, `js-yaml` (now 4.3.2, floor `^4.3.1`), `sharp` (override `^0.35.3`, now 0.35.4), `next` (15.5.25), `nanoid` 3.3.18, `postcss` (floor `^8.5.18`), `undici`, `brace-expansion` and `fast-uri` patched releases, and other lockfile-only audit fixes. `npm audit` is gated by a new `audit.yml` workflow.
+
 ### Changed
 
 - `AgentSnapshot` is now derived from the zod snapshot schema (`ValidatedSnapshot`), so it includes `memoryFiles.yesterday` and cannot drift from the validated shape. No runtime change.
 
 ### Fixed
 
+- Agent snapshots keep `memoryFiles.yesterday`; the snapshot schema used to strip the field the agent sends and the Memory widget reads.
+- `PATCH /api/settings/tokens/[id]` rejects a whitespace-only `name` with HTTP 400 (`name is required`) instead of silently blanking the token name. An omitted `name` still skips the rename.
 - CI now type-checks the test files (`tsconfig.test.json`, `npm run type-check:tests`), so a test that no longer matches a source type fails CI instead of only failing at runtime.
 - The change-password tests no longer time out under the full coverage run: fixtures hash with bcrypt cost 4, and the tests that reach the route's cost-12 hash have an explicit timeout.
+- Vitest workers disable Node's experimental webstorage, which broke the client-side lib tests on newer Node versions.
+
+### Documentation
+
+- README restructured, with reference material moved to `docs/`; the hero screenshot, API route inventory, env and alt-text claims, protocol example and widgets table were aligned with the code.
+
+### Tests and CI
+
+- Vitest with coverage is bootstrapped (`npm test`, `npm run test:coverage`) with a coverage ratchet and a CI test job; unit tests cover the SSRF guard, WebSocket auth, JWT, agent registry, password-change and token routes, and the client-side libs.
+- Workflow expressions are routed out of `run:` bodies via `env`, GitHub Actions moved to Node-24-capable majors, and installs use `npm ci --no-audit --no-fund`.
 
 ## [0.2.1] - 2026-06-09
 
