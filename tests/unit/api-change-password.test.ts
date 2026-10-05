@@ -25,6 +25,18 @@ import { isAuthenticated } from '@/lib/auth'
 
 const authMock = vi.mocked(isAuthenticated)
 
+// Fixture hashes use the minimum practical bcrypt cost: bcryptjs is pure
+// JavaScript, and cost 12 fixtures (4096 rounds each) made these tests time
+// out under the full coverage run. The cost is encoded in the hash, so
+// bcrypt.compare in the route verifies a cost-4 hash exactly like a cost-12
+// one; the behaviour under test does not depend on the cost.
+const TEST_BCRYPT_COST = 4
+
+// Successful password changes run the route's own cost-12 bcrypt.hash for
+// the new password, which is slow under coverage instrumentation; give
+// those tests an explicit budget instead of vitest's 5 s default.
+const ROUTE_HASH_TIMEOUT_MS = 20_000
+
 function makeRequest(body: unknown | string): NextRequest {
   return new NextRequest('http://localhost/api/auth/change-password', {
     method: 'POST',
@@ -118,7 +130,7 @@ describe('POST /api/auth/change-password', () => {
 
   it('returns 401 when currentPassword does not match the stored bcrypt hash', async () => {
     authMock.mockReturnValue(true)
-    writePasswordConfig({ hash: await bcrypt.hash('oldpass', 12) })
+    writePasswordConfig({ hash: await bcrypt.hash('oldpass', TEST_BCRYPT_COST) })
     const res = await POST(makeRequest({ currentPassword: 'wrongpass', newPassword: 'newpassword', confirmPassword: 'newpassword' }))
     expect(res.status).toBe(401)
     const json = await res.json()
@@ -127,7 +139,7 @@ describe('POST /api/auth/change-password', () => {
 
   it('returns 200 and persists a new bcrypt hash when currentPassword matches the stored hash', async () => {
     authMock.mockReturnValue(true)
-    writePasswordConfig({ hash: await bcrypt.hash('oldpass', 12) })
+    writePasswordConfig({ hash: await bcrypt.hash('oldpass', TEST_BCRYPT_COST) })
     const res = await POST(makeRequest({ currentPassword: 'oldpass', newPassword: 'newpassword', confirmPassword: 'newpassword' }))
     expect(res.status).toBe(200)
     const json = await res.json()
@@ -138,20 +150,20 @@ describe('POST /api/auth/change-password', () => {
     expect(config.hash).not.toBe('newpassword')
     await expect(bcrypt.compare('newpassword', config.hash!)).resolves.toBe(true)
     await expect(bcrypt.compare('oldpass', config.hash!)).resolves.toBe(false)
-  })
+  }, ROUTE_HASH_TIMEOUT_MS)
 
   it('verifies currentPassword against ADMIN_PASSWORD_HASH env when no stored config hash exists', async () => {
     authMock.mockReturnValue(true)
-    vi.stubEnv('ADMIN_PASSWORD_HASH', await bcrypt.hash('envhashpass', 12))
+    vi.stubEnv('ADMIN_PASSWORD_HASH', await bcrypt.hash('envhashpass', TEST_BCRYPT_COST))
     vi.resetModules()
     const routeMod = await import('@/app/api/auth/change-password/route')
     const res = await routeMod.POST(makeRequest({ currentPassword: 'envhashpass', newPassword: 'newpassword', confirmPassword: 'newpassword' }))
     expect(res.status).toBe(200)
-  })
+  }, ROUTE_HASH_TIMEOUT_MS)
 
   it('rejects a wrong currentPassword when only ADMIN_PASSWORD_HASH env is set', async () => {
     authMock.mockReturnValue(true)
-    vi.stubEnv('ADMIN_PASSWORD_HASH', await bcrypt.hash('envhashpass', 12))
+    vi.stubEnv('ADMIN_PASSWORD_HASH', await bcrypt.hash('envhashpass', TEST_BCRYPT_COST))
     vi.resetModules()
     const routeMod = await import('@/app/api/auth/change-password/route')
     const res = await routeMod.POST(makeRequest({ currentPassword: 'wrong', newPassword: 'newpassword', confirmPassword: 'newpassword' }))
@@ -165,7 +177,7 @@ describe('POST /api/auth/change-password', () => {
     const routeMod = await import('@/app/api/auth/change-password/route')
     const res = await routeMod.POST(makeRequest({ currentPassword: 'plainenvpass', newPassword: 'newpassword', confirmPassword: 'newpassword' }))
     expect(res.status).toBe(200)
-  })
+  }, ROUTE_HASH_TIMEOUT_MS)
 
   it('rejects a wrong currentPassword when only plaintext ADMIN_PASSWORD env is set', async () => {
     authMock.mockReturnValue(true)
@@ -180,7 +192,7 @@ describe('POST /api/auth/change-password', () => {
     authMock.mockReturnValue(true)
     const res = await POST(makeRequest({ currentPassword: 'admin', newPassword: 'newpassword', confirmPassword: 'newpassword' }))
     expect(res.status).toBe(200)
-  })
+  }, ROUTE_HASH_TIMEOUT_MS)
 
   it('rejects a wrong currentPassword against the dev default when nothing is configured', async () => {
     authMock.mockReturnValue(true)
