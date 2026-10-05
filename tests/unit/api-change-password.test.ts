@@ -150,6 +150,8 @@ describe('POST /api/auth/change-password', () => {
     expect(config.hash).not.toBe('newpassword')
     await expect(bcrypt.compare('newpassword', config.hash!)).resolves.toBe(true)
     await expect(bcrypt.compare('oldpass', config.hash!)).resolves.toBe(false)
+    // The route, unlike the fixtures above, must persist a full-cost hash.
+    expect(bcrypt.getRounds(config.hash!)).toBe(12)
   }, ROUTE_HASH_TIMEOUT_MS)
 
   it('verifies currentPassword against ADMIN_PASSWORD_HASH env when no stored config hash exists', async () => {
