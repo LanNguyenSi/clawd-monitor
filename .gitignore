@@ -2,6 +2,11 @@ node_modules/
 .next/
 .env
 .env.local
+# Runtime secrets on the deploy host (loaded by the compose files) and any
+# backup copies of them; the committed template stays tracked.
+.env.runtime
+.env.runtime.*
+!.env.runtime.example
 *.tsbuildinfo
 .DS_Store
 dist/
