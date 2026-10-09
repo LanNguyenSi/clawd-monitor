@@ -48,8 +48,8 @@ export function CronWidget() {
   const snapshotUrl = activeAgentId ? `/api/agents/${activeAgentId}/snapshot` : null
   const proxyUrl = !activeAgentId ? '/api/proxy/cron' : null
 
-  const { data: snapshotData, isLoading: snLoading, mutate: mutateSn } = useSWR<SnapshotResponse>(snapshotUrl, fetcher, { refreshInterval: 5_000, revalidateOnFocus: false })
-  const { data: proxyData, isLoading: prLoading, mutate: mutateProxy } = useSWR<CronResponse>(proxyUrl, fetcher, { refreshInterval: 30_000 })
+  const { data: snapshotData, isLoading: snLoading } = useSWR<SnapshotResponse>(snapshotUrl, fetcher, { refreshInterval: 5_000, revalidateOnFocus: false })
+  const { data: proxyData, isLoading: prLoading } = useSWR<CronResponse>(proxyUrl, fetcher, { refreshInterval: 30_000 })
 
   const isLoading = activeAgentId ? snLoading : prLoading
   const agentOffline = activeAgentId && snapshotData && !snapshotData.online
@@ -58,14 +58,6 @@ export function CronWidget() {
     : (proxyData?.jobs ?? [])
   const errorMsg = !activeAgentId && proxyData?.error
 
-  async function triggerJob(jobId: string) {
-    await fetch('/api/proxy/cron', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jobId }),
-    })
-    void (activeAgentId ? mutateSn() : mutateProxy())
-  }
 
   if (agentOffline) {
     const lastSeen = snapshotData?.lastSnapshotAt ? (() => { const s = Math.floor((Date.now() - snapshotData.lastSnapshotAt!) / 1000); return s < 60 ? `${s}s ago` : `${Math.floor(s/60)}m ago` })() : '—'
@@ -110,11 +102,6 @@ export function CronWidget() {
                   <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${job.enabled ? 'bg-green-500' : 'bg-zinc-400 dark:bg-zinc-600'}`} />
                   <span className="text-xs text-zinc-800 dark:text-zinc-200 truncate">{job.name ?? job.id.slice(0, 12)}</span>
                 </div>
-                <button
-                  onClick={() => void triggerJob(job.id)}
-                  className="text-xs text-zinc-400 dark:text-zinc-600 hover:text-indigo-500 dark:hover:text-indigo-400 shrink-0 transition-colors"
-                  title="Trigger now"
-                >▶</button>
               </div>
               <div className="flex items-center gap-3 mt-0.5 text-xs text-zinc-400 dark:text-zinc-600">
                 <span className="font-mono">{scheduleLabel(job)}</span>

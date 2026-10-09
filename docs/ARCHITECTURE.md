@@ -104,7 +104,7 @@ clawd-monitor/
 │   │   │   ├── settings/tokens/[id]/route.ts           → DELETE/PATCH agent token by id
 │   │   │   ├── proxy/[...path]/route.ts                → GET/POST/PUT/DELETE/PATCH generic proxy to Gateway
 │   │   │   ├── proxy/{heartbeat,sessions}/route.ts     → GET Gateway proxy (status, sessions)
-│   │   │   ├── proxy/cron/route.ts                     → GET/POST Gateway proxy (cron jobs, trigger run)
+│   │   │   ├── proxy/cron/route.ts                     → GET Gateway proxy (cron jobs, read-only)
 │   │   │   ├── proxy/memory/route.ts                   → GET Gateway proxy with CLAWD_DIR filesystem fallback
 │   │   │   ├── proxy/{alert-history,docker,github,health}/route.ts → GET server-local / third-party data, not Gateway
 │   │   │   ├── stream/logs/route.ts                    → SSE: logs

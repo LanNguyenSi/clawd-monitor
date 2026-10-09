@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- **Cron "trigger now" (▶) is removed from the Cron widget, and `POST /api/proxy/cron` with it.** The button posted `/cron/jobs/<id>/run` to the server's own configured gateway, never to the monitored agent's host, and OpenClaw 2026.9 has no such HTTP endpoint (404), so it could not work for remote agents. `GET /api/proxy/cron` (read-only job list) stays. A proper trigger would have to go through the agent WebSocket (server → agent → `openclaw cron run`).
+
 ### Fixed
 
 - **Runtime env files are gitignored.** `.env.runtime` (the deploy host's secrets file that both compose files load) and backups such as `.env.runtime.bak` are now ignored, so a host checkout stays clean and a deploy-panel redeploy passes the clean-tree preflight without force (task bee5c8ad). `.env.runtime.example` stays tracked.
