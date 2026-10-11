@@ -20,8 +20,10 @@ dashboard and also accepts agent WebSocket connections. Two data paths coexist:
    agent selected, `/api/agents/<id>/session-log` also contacts the gateway URL
    the agent reported.
 
-The first diagram shows both data paths, the persistent data store, and the
-unauthenticated health endpoint.
+The first diagram shows the agent-push path, the browser-facing API routes, the
+persistent data store, and the unauthenticated health endpoint; the second
+diagram shows where the routes reach out, including the default OpenClaw
+Gateway.
 
 ```mermaid
 flowchart TD
