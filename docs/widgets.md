@@ -1,8 +1,8 @@
 # Widgets
 
 Reference for the dashboard widgets and the keyboard shortcuts that control the
-grid. For how a widget gets its data (agent push vs. direct Gateway proxy), see
-[ARCHITECTURE.md](ARCHITECTURE.md).
+grid. For where each widget gets its data, see [Data sources](#data-sources)
+below and [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Available widgets
 
@@ -16,17 +16,37 @@ grid. For how a widget gets its data (agent push vs. direct Gateway proxy), see
 | Cron Jobs | Scheduled jobs with next/last run times |
 | Docker Containers | Container status, restarts, uptime |
 | Log Tail | Live log stream (local server) |
-| GitHub PRs | Open PRs with CI status |
+| GitHub PRs | Open PRs for a repository list defined in `src/app/api/proxy/github/route.ts` (CI status is not populated yet) |
 | Heartbeat Pulse | Agent heartbeat health check |
-| Service Health | HTTP health checks for configured services |
+| Service Health | HEAD checks against a fixed URL list defined in `src/app/api/proxy/health/route.ts`; edit that list to monitor your own services |
 | Alert History | Recent alerts from the last 7 days |
 
-All widgets support agent switching: select an agent in the navbar to view its
-data.
-
-Adding a new widget is a self-contained change (new file in
-`src/components/widgets/` plus a registry entry); see
+Adding a new widget takes a component file in `src/components/widgets/`, an
+entry in `src/lib/widgets.ts`, and an entry in `WIDGET_COMPONENTS` in
+`src/components/Grid/WidgetGrid.tsx`; see
 [CONTRIBUTING.md](../CONTRIBUTING.md#adding-a-widget).
+
+## Data sources
+
+Most widgets follow the agent selected in the navbar. Without a selected
+agent, they fall back to the default gateway or to data on the clawd-monitor
+host. Four widgets always show the same server-wide data.
+
+| Widget | Agent selected | No agent selected |
+|--------|----------------|-------------------|
+| CPU + RAM | Agent snapshot `metrics` | `/proc` on the clawd-monitor host (`/api/stream/metrics`) |
+| Agent Status | Agent snapshot `sessions` | Default gateway `/sessions` |
+| Session Log | Agent snapshot `sessions[].recentMessages` | None, needs an agent |
+| Memory Viewer | Agent snapshot `memoryFiles` | Default gateway, then files under `CLAWD_DIR` on the clawd-monitor host |
+| Cron Jobs | Agent snapshot `cronJobs` | Default gateway `/cron/jobs` |
+| Docker Containers | Agent snapshot `containers` | `docker ps` on the clawd-monitor host |
+| Heartbeat Pulse | Agent snapshot (online state, uptime) | Default gateway `/status` |
+| Log Tail | `/api/agents/<id>/logs`; the docker source lists and tails containers on the clawd-monitor host | `/api/stream/logs`: default gateway, or local `docker logs`, `journalctl` or syslog |
+
+Connected Agents (agent registry), GitHub PRs (GitHub API), Service Health
+(fixed URL list) and Alert History (`CLAWD_DIR/memory/smart-alert-state.json`
+on the clawd-monitor host) show the same data whether or not an agent is
+selected.
 
 ## Keyboard shortcuts
 
@@ -35,5 +55,5 @@ Adding a new widget is a self-contained change (new file in
 | `r` | Refresh |
 | `e` | Toggle edit mode (drag/resize/close widgets) |
 | `t` | Toggle dark/light mode |
-| `s` | Screenshot |
+| `s` | Screenshot; currently does nothing visible, because the `html2canvas` package it loads is not a dependency |
 | `?` | Show shortcuts |

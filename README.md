@@ -23,9 +23,9 @@ agent, with a switcher to move between connected agents.
   server never polls the agent host.
 - Connected-agent list with online/offline status and per-agent switching.
 - Memory viewer, cron jobs, Docker containers, and log tail widgets.
-- GitHub PR widget with CI status, and service-health checks for configured
-  endpoints.
-- Alert history and heartbeat pulse for agent health.
+- GitHub PR widget for open pull requests, and service-health checks for a
+  URL list defined in code.
+- Alert history (from the server's `CLAWD_DIR`) and heartbeat pulse.
 - Drag/resize/close widget layout, dark mode, and keyboard shortcuts.
 
 See [docs/widgets.md](docs/widgets.md) for the full widget list and
@@ -35,9 +35,20 @@ shortcuts.
 
 ### 1. Run clawd-monitor (server)
 
-Prerequisites: Docker with Compose, and a running Traefik on an external
-Docker network named `traefik` (with a `websecure` entrypoint and a
-`letsencrypt` certificate resolver).
+Prerequisites: Docker with Compose v2.24 or later (the compose files use
+`env_file` entries with `required: false`), and a running Traefik on an
+external Docker network named `traefik` with a `websecure` entrypoint, a
+`letsencrypt` certificate resolver, and a file-provider TLS options set named
+`nohttp2`. The router references `nohttp2@file` to keep the agent WebSocket on
+HTTP/1.1. A matching Traefik dynamic configuration:
+
+```yaml
+tls:
+  options:
+    nohttp2:
+      alpnProtocols:
+        - http/1.1
+```
 
 ```bash
 git clone https://github.com/LanNguyenSi/clawd-monitor
@@ -48,8 +59,17 @@ cp .env.example .env
 docker compose -f docker-compose.traefik.yml up -d
 ```
 
+Secrets can go into `.env.runtime` instead; see
+[docs/configuration.md](docs/configuration.md#docker-compose-env-files) for the
+`$$` escaping rule.
+
 Without Traefik, `docker compose up -d` serves plain HTTP on port 3000
 (create the data volume first: `docker volume create clawd_monitor_data`).
+This mode is for local access: the session cookie is marked Secure in
+production, so browsers on other machines need HTTPS (for example the Traefik
+setup above). See
+[Troubleshooting](docs/configuration.md#troubleshooting) for this and other
+setup problems.
 
 Open `https://your-domain/` (or `http://localhost:3000`) and sign in with the admin password from `.env`.
 After the first login, use `Settings` in the UI to change the admin
@@ -81,10 +101,12 @@ lets you move between all currently connected agents.
 
 - [docs/widgets.md](docs/widgets.md): widget reference and keyboard
   shortcuts.
-- [docs/configuration.md](docs/configuration.md): environment variables and
-  how the admin password is resolved.
+- [docs/configuration.md](docs/configuration.md): environment variables, how
+  the admin password is resolved, Docker Compose env files, and
+  troubleshooting.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): data paths, key design
-  decisions, and directory structure.
+  decisions, the [security model](docs/ARCHITECTURE.md#security-model), and
+  directory structure.
 - [docs/AGENT-PROTOCOL.md](docs/AGENT-PROTOCOL.md): the agent WebSocket
   message format.
 - [docs/SPEC-GATEWAY.md](docs/SPEC-GATEWAY.md): the original design spec for
