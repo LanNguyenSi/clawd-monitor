@@ -8,8 +8,12 @@
 
 ## Test plan
 
+<!-- The first four commands match CI. -->
+
 - [ ] `npm run build`
-- [ ] `npm run type-check` (matches CI)
+- [ ] `npm run type-check`
+- [ ] `npm run type-check:tests`
+- [ ] `npm run test:coverage`
 - [ ] For UI changes: ran the dev server and verified the affected widget
 - [ ] Manual smoke check: <!-- command or scenario -->
 

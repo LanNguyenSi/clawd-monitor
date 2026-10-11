@@ -9,32 +9,57 @@ dashboard and also accepts agent WebSocket connections. Two data paths coexist:
    `/api/agents/ws` and push periodic snapshots. The server keeps them in an
    in-memory registry; widgets read the latest snapshot. No inbound port is
    needed on the agent host.
-2. **Direct proxy (legacy/optional):** when no agent is selected, most API
-   routes under `/api/proxy/*` and `/api/stream/*` reach an OpenClaw Gateway
-   directly; some `/api/proxy/*` topic routes read server-local or
-   third-party data instead (see Directory Structure below).
+2. **Server-side routes (no agent selected):** the Gateway topic routes under
+   `/api/proxy/*` (`sessions`, `cron`, `heartbeat`, `memory` and the generic
+   `[...path]` proxy) and `/api/stream/logs?source=openclaw` call the default
+   OpenClaw Gateway (`NEXT_PUBLIC_DEFAULT_GATEWAY_URL`, default
+   `http://localhost:9500`). `/api/stream/metrics` reads `/proc` on the
+   clawd-monitor host; the docker and system log sources run `docker logs`,
+   `journalctl` or `tail` there; `alert-history`, `docker`, `github` and
+   `health` under `/api/proxy/*` read server-local or third-party data. With an
+   agent selected, `/api/agents/<id>/session-log` also contacts the gateway URL
+   the agent reported.
 
+The first diagram shows the agent-push path, the browser-facing API routes, the
+persistent data store, and the unauthenticated health endpoint.
+
+```mermaid
+flowchart TD
+  Agent["clawd-monitor-agent (remote host)"] -->|"WS /api/agents/ws"| WS["server.ts upgrade + agent-ws-handler"]
+  Browser["Browser"] -->|"login, then JWT cookie or Bearer"| Routes["Next.js API routes"]
+  AnyClient["Any client"] -->|"GET /api/health, no auth"| Routes
+  WS -->|"register, snapshot"| Registry[("in-memory agent registry")]
+  Routes -->|"agents/list, snapshot, health"| Registry
+  WS -->|"token check"| Store[("CLAWD_MONITOR_DATA_DIR: tokens.json, password.json")]
+  Routes -->|"auth, change-password, settings/tokens"| Store
 ```
-clawd-monitor-agent (remote host)
-  └── WebSocket ──▶ /api/agents/ws  → auth + snapshot push → agent registry
 
-Browser
-  └── Next.js App (SSR + Client Components)
-        ├── /login              → JWT auth
-        ├── /dashboard          → Widget grid
-        └── /api/  (abridged, see Directory Structure below for the full route list)
-              ├── /api/auth/                  → Login, session, password change
-              ├── /api/agents/                → Connected agents, snapshot, logs, session-log
-              ├── /api/containers/, /api/health/, /api/settings/tokens/ → Container list, server health, agent tokens
-              ├── /api/proxy/                 → Generic Gateway proxy plus topic routes (some Gateway, some server-local / third-party)
-              └── /api/stream/                → SSE streams (logs, metrics)
+The second diagram shows the server-local and outbound data sources of the API
+routes.
 
-OpenClaw Gateway (remote, direct-proxy path only)
-  └── REST API (port 9500 or configured URL)
-        ├── GET /sessions       → Active sessions
-        ├── GET /cron/jobs      → Cron jobs
-        ├── GET /logs/stream    → Log SSE (if available)
-        └── ...
+```mermaid
+flowchart LR
+  Routes["Next.js API routes"]
+  subgraph host["clawd-monitor host"]
+    Docker["Docker daemon (socket mount)"]
+    Journal["journalctl, syslog"]
+    Proc["proc filesystem"]
+    Clawd["CLAWD_DIR files"]
+  end
+  subgraph remote["Remote services"]
+    GW["default OpenClaw Gateway"]
+    AGW["agent-reported gatewayUrl"]
+    GH["GitHub API"]
+    Svc["fixed service URL list"]
+  end
+  Routes -->|"docker CLI"| Docker
+  Routes -->|"system log source, openclaw fallback"| Journal
+  Routes -->|"stream/metrics"| Proc
+  Routes -->|"memory fallback, alert-history"| Clawd
+  Routes -->|"proxy topics, stream/logs"| GW
+  Routes -->|"agents/id/session-log"| AGW
+  Routes -->|"proxy/github"| GH
+  Routes -->|"proxy/health"| Svc
 ```
 
 The agent WebSocket protocol (handshake, snapshot shape, TTL) is documented in
@@ -58,6 +83,12 @@ Log tailing and metrics use SSE (Server-Sent Events) from Next.js API routes. Th
 
 **Why:** SSE is simpler, works through HTTP/2, no upgrade required. Sufficient for log tailing.
 
+**Update:** `/api/stream/metrics` samples `/proc/stat` and `/proc/meminfo` on
+the clawd-monitor host and never contacts a Gateway; with an agent selected,
+the CPU + RAM widget reads the agent snapshot instead. `/api/stream/logs`
+reaches the Gateway only for `source=openclaw`; its docker and system sources
+read the clawd-monitor host.
+
 **Update (agent-push model):** browser-facing streaming still uses SSE, but
 agent-to-server transport is now a WebSocket (`/api/agents/ws`, handled in
 `server.ts` via the `ws` package), because agents push bidirectional,
@@ -73,6 +104,12 @@ Instances stored in localStorage as `{ name, gatewayUrl, token }[]`. Switcher in
 
 **No server-side instance state** — purely client-driven.
 
+**Update:** the instance switcher is no longer mounted (the navbar carries the
+agent switcher instead), and the browser fetcher sends no `x-gateway-url` /
+`x-gateway-token` headers. The direct-proxy routes therefore use
+`NEXT_PUBLIC_DEFAULT_GATEWAY_URL` and `DEFAULT_GATEWAY_TOKEN` for requests from
+the dashboard. To monitor several hosts, connect one agent per host.
+
 ### ADR-005: Widget Registry Pattern
 Each widget is a self-contained React component that:
 1. Declares its metadata (`id`, `title`, `defaultSize`)
@@ -80,6 +117,53 @@ Each widget is a self-contained React component that:
 3. Renders independently
 
 New widgets = new file in `src/components/widgets/`. No changes to core grid.
+
+**Update:** metadata (id, title, component name, default and minimum size) is
+registered centrally in `src/lib/widgets.ts`, and each component must also be
+mapped in `WIDGET_COMPONENTS` in `src/components/Grid/WidgetGrid.tsx`.
+
+## Security model
+
+### Admin access
+
+There is one admin password (see
+[configuration.md](configuration.md#admin-password-resolution)). Login issues
+a JWT valid for 24 hours in an httpOnly, `SameSite=Lax` cookie that is Secure
+when `NODE_ENV=production`; an `Authorization: Bearer` header is also
+accepted. There is no server-side session store, so logout and a password
+change do not revoke an already issued JWT before it expires.
+
+### Unauthenticated endpoints
+
+- `POST /api/auth` (login), `GET /api/auth` (session check) and
+  `DELETE /api/auth` (logout, clears the cookie).
+- `GET /api/health`: process uptime and the total and online agent counts.
+- `/api/agents/ws`: requires an agent token instead of the admin JWT.
+
+All other API routes require the admin JWT.
+
+### Agent tokens
+
+Static `AGENT_TOKENS` are compared in plaintext. Tokens created in Settings
+are stored as bcrypt hashes in `tokens.json` (file mode 0600) under
+`CLAWD_MONITOR_DATA_DIR`. Tokens are checked at connect time only, so revoking
+a token stops new connections but does not close an open one (restart the
+server to drop it). A token is not bound to an `agentId`: the newest
+connection for an `agentId` replaces the registry entry, including its gateway
+URL.
+
+### Outbound requests
+
+The server makes requests to the default OpenClaw Gateway, to gateway URLs
+reported by agents, to the GitHub API (GitHub PRs widget), and to the fixed
+URL list of the Service Health widget.
+
+### Docker socket
+
+`docker-compose.traefik.yml` mounts `/var/run/docker.sock` into the container
+so the Docker widget and the docker log source can run the docker CLI. The
+`:ro` flag does not limit what the Docker API allows over the socket, so treat
+access to this container as access to the host's Docker daemon.
 
 ## Directory Structure
 
@@ -107,8 +191,8 @@ clawd-monitor/
 │   │   │   ├── proxy/cron/route.ts                     → GET Gateway proxy (cron jobs, read-only)
 │   │   │   ├── proxy/memory/route.ts                   → GET Gateway proxy with CLAWD_DIR filesystem fallback
 │   │   │   ├── proxy/{alert-history,docker,github,health}/route.ts → GET server-local / third-party data, not Gateway
-│   │   │   ├── stream/logs/route.ts                    → SSE: logs
-│   │   │   └── stream/metrics/route.ts                 → SSE: metrics
+│   │   │   ├── stream/logs/route.ts                    → SSE: logs (openclaw: Gateway with local journal fallback; docker/system: this host)
+│   │   │   └── stream/metrics/route.ts                 → SSE: CPU/RAM of this host from /proc
 │   │   └── layout.tsx
 │   ├── components/
 │   │   ├── Grid/              → WidgetGrid, GridItem
@@ -124,7 +208,7 @@ clawd-monitor/
 │   ├── lib/
 │   │   ├── auth.ts            → JWT sign/verify
 │   │   ├── gateway.ts         → Gateway API client (SSRF-guarded)
-│   │   ├── instance.ts        → Multi-instance store (localStorage)
+│   │   ├── instance.ts        → Multi-instance store (localStorage), not used by the current UI
 │   │   ├── agent-registry.ts  → In-memory connected-agent registry
 │   │   ├── agent-ws-handler.ts → Agent WebSocket auth + snapshot handler
 │   │   ├── schemas.ts         → Zod schemas for agent messages/snapshots
@@ -154,6 +238,8 @@ variables the server reads and how the admin password is resolved.
 
 ## Deployment
 
-Docker + Traefik; see the README Quick Start and [configuration.md](configuration.md) (`DOMAIN`).
+Docker + Traefik; see the README Quick Start for the Compose and Traefik
+prerequisites (including the `nohttp2` TLS options set) and
+[configuration.md](configuration.md) (`DOMAIN`, Docker Compose env files).
 
 Dockerfile: multi-stage (deps → builder → runner), `node:20-slim`.

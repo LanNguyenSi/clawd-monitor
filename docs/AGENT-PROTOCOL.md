@@ -17,8 +17,10 @@ destroyed. No user JWT is required — agents authenticate with an agent token.
 
 ## Handshake
 
-The first message MUST be an `auth` message. Anything else is rejected with
-`auth_error` ("Expected auth message first") and the socket is closed.
+The first valid message MUST be an `auth` message. A valid `snapshot` or
+`ping` sent before authentication is rejected with `auth_error` ("Expected
+auth message first") and the socket is closed; malformed messages are handled
+as described under [Errors](#errors).
 
 Agent → server:
 
@@ -83,6 +85,23 @@ Agent → server:
 - `sessions`, `cronJobs`, `containers` default to `[]`; `memoryFiles` defaults to
   `{}` and its `memory` / `current` / `today` / `yesterday` fields are each optional strings.
 
+### Element fields the dashboard reads
+
+The server validates only that `sessions`, `cronJobs` and `containers` are
+arrays. The widgets read these fields from their elements:
+
+- `sessions[]`: `sessionKey` (string; a session without it makes the Agent
+  Status widget throw and show its error state), `model`, `lastMessage`,
+  `lastActiveAt` (ISO time), and `recentMessages[]` with `role` (`user` /
+  `assistant` / `system`), `content` and `timestamp`.
+- `cronJobs[]`: `id`, `name`, `enabled`, `schedule` { `kind` (`cron`, `every`
+  or `at`), `expr`, `everyMs` }, `state` { `nextRunAtMs`, `lastRunAtMs` }.
+- `containers[]`: `id`, `name`, `image`, `state` (`running` / `exited` /
+  `paused` / `restarting` / `unknown`), `restarts` (number), `uptime`
+  (string).
+
+An element without these fields passes validation but renders empty.
+
 Server → agent after a valid snapshot:
 
 ```json
@@ -117,6 +136,29 @@ retained. Offline agents are evicted from the in-memory registry once
 `Date.now() - lastSnapshotAt` exceeds `AGENT_TTL_MS` (default `300000`, i.e. 5
 minutes). Until then, `/api/agents/list` still returns the agent with its last
 snapshot and `online: false`.
+
+Eviction is not timer-based: it runs when `/api/agents/list` or `/api/health`
+is read, so `/api/agents/<id>/snapshot` can still return an expired entry until
+then. An agent that authenticated but never sent a snapshot is evicted on the
+first such read after it disconnects. A newer connection with the same
+`agentId` replaces the entry, and only the close of the current socket marks
+it offline.
+
+The state diagram shows the lifecycle of a connection and its registry entry.
+
+```mermaid
+stateDiagram-v2
+  [*] --> AwaitingAuth: upgrade /api/agents/ws
+  AwaitingAuth --> AwaitingAuth: malformed message
+  AwaitingAuth --> Closed: invalid token, or snapshot or ping first
+  AwaitingAuth --> Online: valid token, register, auth_ok
+  Offline --> Online: re-auth
+  Online --> Online: snapshot or ping
+  Online --> Offline: socket closes
+  Offline --> Evicted: list or health read after AGENT_TTL_MS since last snapshot
+  Closed --> [*]
+  Evicted --> [*]
+```
 
 ## Reading agent data (browser side, JWT-gated)
 

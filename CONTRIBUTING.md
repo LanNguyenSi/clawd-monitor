@@ -13,13 +13,18 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). See
+[docs/development.md](docs/development.md#setup) for the data directory and
+the variables that must be set in the shell environment.
 
 ## Pull Requests
 
 - Branch naming: `feat/<name>` or `fix/<name>`
 - Build must pass: `npm run build`
 - Type check must pass: `npm run type-check`
+- Test files must type-check: `npm run type-check:tests`
+- Tests must pass with coverage: `npm run test:coverage` (CI enforces the
+  thresholds in `vitest.config.ts`)
 - One PR per feature/fix
 
 ## Project Structure
