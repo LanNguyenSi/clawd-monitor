@@ -90,10 +90,10 @@ Agent → server:
 The server validates only that `sessions`, `cronJobs` and `containers` are
 arrays. The widgets read these fields from their elements:
 
-- `sessions[]`: `sessionKey` (string; the Agent Status widget fails to render
-  a session without it), `model`, `lastMessage`, `lastActiveAt` (ISO time),
-  and `recentMessages[]` with `role` (`user` / `assistant` / `system`),
-  `content` and `timestamp`.
+- `sessions[]`: `sessionKey` (string; a session without it makes the Agent
+  Status widget throw and show its error state), `model`, `lastMessage`,
+  `lastActiveAt` (ISO time), and `recentMessages[]` with `role` (`user` /
+  `assistant` / `system`), `content` and `timestamp`.
 - `cronJobs[]`: `id`, `name`, `enabled`, `schedule` { `kind` (`cron`, `every`
   or `at`), `expr`, `everyMs` }, `state` { `nextRunAtMs`, `lastRunAtMs` }.
 - `containers[]`: `id`, `name`, `image`, `state` (`running` / `exited` /
@@ -152,9 +152,9 @@ stateDiagram-v2
   AwaitingAuth --> AwaitingAuth: malformed message
   AwaitingAuth --> Closed: invalid token, or snapshot or ping first
   AwaitingAuth --> Online: valid token, register, auth_ok
+  Offline --> Online: re-auth
   Online --> Online: snapshot or ping
   Online --> Offline: socket closes
-  Offline --> Online: auth again
   Offline --> Evicted: list or health read after AGENT_TTL_MS since last snapshot
   Closed --> [*]
   Evicted --> [*]

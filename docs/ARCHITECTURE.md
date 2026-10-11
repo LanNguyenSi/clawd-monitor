@@ -21,18 +21,16 @@ dashboard and also accepts agent WebSocket connections. Two data paths coexist:
    the agent reported.
 
 The first diagram shows the agent-push path, the browser-facing API routes, the
-persistent data store, and the unauthenticated health endpoint; the second
-diagram shows where the routes reach out, including the default OpenClaw
-Gateway.
+persistent data store, and the unauthenticated health endpoint.
 
 ```mermaid
 flowchart TD
   Agent["clawd-monitor-agent (remote host)"] -->|"WS /api/agents/ws"| WS["server.ts upgrade + agent-ws-handler"]
-  WS -->|"token check"| Store[("CLAWD_MONITOR_DATA_DIR: tokens.json, password.json")]
+  Browser["Browser"] -->|"login, then JWT cookie or Bearer"| Routes["Next.js API routes"]
+  AnyClient["Any client"] -->|"GET /api/health, no auth"| Routes
   WS -->|"register, snapshot"| Registry[("in-memory agent registry")]
-  Browser["Browser"] -->|"JWT cookie or Bearer"| Routes["Next.js API routes"]
-  AnyClient["Any client"] -->|"GET /api/health, no auth"| Registry
-  Routes -->|"agents/list, snapshot"| Registry
+  Routes -->|"agents/list, snapshot, health"| Registry
+  WS -->|"token check"| Store[("CLAWD_MONITOR_DATA_DIR: tokens.json, password.json")]
   Routes -->|"auth, change-password, settings/tokens"| Store
 ```
 
@@ -55,7 +53,7 @@ flowchart LR
     Svc["fixed service URL list"]
   end
   Routes -->|"docker CLI"| Docker
-  Routes -->|"system log source"| Journal
+  Routes -->|"system log source, openclaw fallback"| Journal
   Routes -->|"stream/metrics"| Proc
   Routes -->|"memory fallback, alert-history"| Clawd
   Routes -->|"proxy topics, stream/logs"| GW
@@ -193,7 +191,7 @@ clawd-monitor/
 │   │   │   ├── proxy/cron/route.ts                     → GET Gateway proxy (cron jobs, read-only)
 │   │   │   ├── proxy/memory/route.ts                   → GET Gateway proxy with CLAWD_DIR filesystem fallback
 │   │   │   ├── proxy/{alert-history,docker,github,health}/route.ts → GET server-local / third-party data, not Gateway
-│   │   │   ├── stream/logs/route.ts                    → SSE: logs (Gateway for source=openclaw, else docker/journal on this host)
+│   │   │   ├── stream/logs/route.ts                    → SSE: logs (openclaw: Gateway with local journal fallback; docker/system: this host)
 │   │   │   └── stream/metrics/route.ts                 → SSE: CPU/RAM of this host from /proc
 │   │   └── layout.tsx
 │   ├── components/

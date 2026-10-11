@@ -24,7 +24,10 @@ HOSTNAME=0.0.0.0            # listen address (server.ts default)
 
 When running outside Docker (`npm run dev`, `npm start`), set `AGENT_TOKENS`,
 `AGENT_TTL_MS` and `CLAWD_MONITOR_DATA_DIR` in the shell environment, and for
-`npm start` also `JWT_SECRET` and `ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH`.
+`NODE_ENV=production npm start` also `JWT_SECRET` and `ADMIN_PASSWORD` or
+`ADMIN_PASSWORD_HASH`. `npm start` does not set `NODE_ENV`; without
+`NODE_ENV=production` the server skips the startup check and accepts the
+development fallbacks.
 The custom server reads these before Next.js loads `.env` / `.env.local`;
 values only in those files reach the API routes but not the agent WebSocket
 handler or the production startup check. Under Docker Compose all values come
