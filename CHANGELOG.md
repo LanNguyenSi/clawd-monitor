@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **Docker widget shows the real restart count.** It matches the agent change that fills `restarts` from `docker inspect`: the `↺N` badge renders only for a positive number, so it is hidden at 0 and when the agent could not read the count. The second line now reads "created 2 hours ago" instead of a bare duration, since `uptime` holds the time since creation. The field names are unchanged. Requires the matching clawd-monitor-agent release for correct counts; the standalone host `docker` proxy still derives `restarts` from the `docker ps` status column.
+- **Docker widget shows the real restart count.** It matches the agent change that fills `restarts` from `docker inspect`: the `↺N` badge renders only for a positive number, so it is hidden at 0 and when the agent could not read the count. The second line now reads "created 2 hours ago" instead of a bare duration, since `uptime` holds the time since creation. The field names are unchanged. Requires the matching clawd-monitor-agent release for correct counts; the standalone host `docker` proxy now reads it the same way, with one batched `docker inspect`, instead of parsing the first number in parentheses of the `docker ps` status column (an exit code for exited containers, so a container that exited with code 137 no longer shows a bogus restart badge). `restarts` is omitted for a container whose count inspect did not return.
 
 ### Removed
 

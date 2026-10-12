@@ -3,7 +3,7 @@ type: module
 title: Widget data modes, agent snapshot vs default gateway vs dashboard host
 description: For each dashboard widget, where its data comes from when an agent is selected (the agent's last WebSocket snapshot) and when none is (the default gateway or the dashboard host itself), which widgets ignore the selection, and how the selection is held.
 tags: [widgets, dashboard, agents, data-sources]
-timestamp: 2026-10-12T07:31:25Z
+timestamp: 2026-10-12T10:03:11Z
 sources:
   - src/lib/widgets.ts
   - src/lib/active-agent.tsx
@@ -116,7 +116,7 @@ mounts `AgentSwitcher`, `AddWidgetMenu`, `UserMenu` and `AddAgentModal`
 | `cron` | snapshot `cronJobs` | `/api/proxy/cron`, default gateway `/cron/jobs` |
 | `heartbeat` | snapshot `online` and `metrics.uptimeSeconds` | `/api/proxy/heartbeat`, default gateway `/status` |
 | `memory` | snapshot `memoryFiles` | `/api/proxy/memory`, default gateway `/workspace/memory`, then files under `CLAWD_DIR` on the dashboard host |
-| `docker` | snapshot `containers` | `/api/proxy/docker`, `docker ps -a` on the dashboard host |
+| `docker` | snapshot `containers` | `/api/proxy/docker`, `docker ps -a` plus one batched `docker inspect` for the restart count, on the dashboard host |
 | `metrics` | snapshot `metrics`, polled | `/api/stream/metrics` SSE, `/proc/stat` and `/proc/meminfo` read by the dashboard process |
 | `log-tail` | `/api/agents/<id>/logs` SSE, see below | `/api/stream/logs` SSE, see below |
 | `session-log` | snapshot `sessions[].recentMessages` | nothing, a prompt to select an agent |
@@ -139,7 +139,7 @@ Evidence for the switch in each component, agent URL first:
   falls back to the filesystem
   (`src/app/api/proxy/memory/route.ts:46-48#"FILE_PATHS[file] ?? FILE_PATHS.memory"`).
 - `docker`: `src/components/widgets/DockerWidget.tsx:29-30#"'/api/proxy/docker'"`;
-  route `src/app/api/proxy/docker/route.ts:19-20#"docker ps -a"`.
+  route `src/app/api/proxy/docker/route.ts:56#"docker ps -a"`.
 - `metrics`: `src/components/widgets/MetricsWidget.tsx:66-67#"/api/agents/"`
   and `src/components/widgets/MetricsWidget.tsx:94-95#"new EventSource('/api/stream/metrics')"`;
   route `src/app/api/stream/metrics/route.ts:19#"/proc/stat"` and

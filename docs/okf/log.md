@@ -2,6 +2,12 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-12T10:03:11Z, widget-data-modes re-verified against
+  `src/app/api/proxy/docker/route.ts` after the proxy started reading the
+  restart count from a batched `docker inspect`: the `docker` row names the
+  inspect call and the route citation moved to the `docker ps -a` lines.
+  `okf-kit check --json --require-anchors docs/okf`: clean.
+
 - 2026-10-11T16:21:35Z, auth-and-config-loading and widget-data-modes
   re-verified against the sources at master `09eafa7`.
   auth-and-config-loading: the unauthenticated `/api/auth` handlers are

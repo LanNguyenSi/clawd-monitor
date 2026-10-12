@@ -1,9 +1,9 @@
 /**
  * Display rules for the Docker widget.
  *
- * `restarts` is the agent's real restart count (`docker inspect` RestartCount)
- * and is absent when the agent could not read it. Containers that never
- * restarted (0) show no badge.
+ * `restarts` is the real restart count (`docker inspect` RestartCount), from
+ * the agent or the host proxy, and is absent when it could not be read.
+ * Containers that never restarted (0) show no badge.
  */
 export function restartBadge(restarts: unknown): { text: string; title: string } | null {
   if (typeof restarts !== 'number' || !Number.isFinite(restarts) || restarts <= 0) return null
