@@ -39,7 +39,7 @@ host. Four widgets always show the same server-wide data.
 | Session Log | Agent snapshot `sessions[].recentMessages` | None, needs an agent |
 | Memory Viewer | Agent snapshot `memoryFiles` | Default gateway, then files under `CLAWD_DIR` on the clawd-monitor host |
 | Cron Jobs | Agent snapshot `cronJobs` | Default gateway `/cron/jobs` |
-| Docker Containers | Agent snapshot `containers` | `docker ps` on the clawd-monitor host |
+| Docker Containers | Agent snapshot `containers` | `docker ps -a` plus one batched `docker inspect` (restart count) on the clawd-monitor host |
 | Heartbeat Pulse | Agent snapshot (online state, uptime) | Default gateway `/status` |
 | Log Tail | `/api/agents/<id>/logs`; the docker source lists and tails containers on the clawd-monitor host | `/api/stream/logs`: default gateway, or local `docker logs`, `journalctl` or syslog |
 

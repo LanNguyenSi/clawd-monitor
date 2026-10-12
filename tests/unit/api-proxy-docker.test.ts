@@ -107,4 +107,33 @@ describe('GET /api/proxy/docker', () => {
     expect(body.containers).toEqual([])
     expect(body.error).toBeDefined()
   })
+
+  it('passes only hex ids to docker inspect', async () => {
+    execMock.mockImplementation(((cmd: string) => {
+      if (cmd.startsWith('docker ps')) {
+        return `${A}\tmy-app\tnginx\tUp 1 hour\trunning\t1 hour ago\n` +
+          `abc;touch x\tbad\tredis\tUp 1 hour\trunning\t1 hour ago\n`
+      }
+      return emulateInspect(cmd, [[full(A), 3]])
+    }) as never)
+    const body = await (await GET(req())).json()
+    expect(body.containers[0].restarts).toBe(3)
+    expect('restarts' in body.containers[1]).toBe(false)
+    const calls = execMock.mock.calls.map((c) => String(c[0]))
+    expect(calls).toHaveLength(2)
+    expect(calls[1]).toMatch(new RegExp(`" ${A}$`))
+    expect(calls[1]).not.toContain('touch')
+  })
+
+  it('does not call docker inspect when no id is hex', async () => {
+    execMock.mockImplementation(((cmd: string) => {
+      if (cmd.startsWith('docker ps')) {
+        return `$(id)\tbad\tredis\tUp 1 hour\trunning\t1 hour ago\n`
+      }
+      throw new Error('inspect must not run')
+    }) as never)
+    const body = await (await GET(req())).json()
+    expect('restarts' in body.containers[0]).toBe(false)
+    expect(execMock).toHaveBeenCalledTimes(1)
+  })
 })
