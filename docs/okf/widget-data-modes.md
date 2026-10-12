@@ -139,7 +139,7 @@ Evidence for the switch in each component, agent URL first:
   falls back to the filesystem
   (`src/app/api/proxy/memory/route.ts:46-48#"FILE_PATHS[file] ?? FILE_PATHS.memory"`).
 - `docker`: `src/components/widgets/DockerWidget.tsx:29-30#"'/api/proxy/docker'"`;
-  route `src/app/api/proxy/docker/route.ts:55-58#"docker ps -a"`.
+  route `src/app/api/proxy/docker/route.ts:56#"docker ps -a"`.
 - `metrics`: `src/components/widgets/MetricsWidget.tsx:66-67#"/api/agents/"`
   and `src/components/widgets/MetricsWidget.tsx:94-95#"new EventSource('/api/stream/metrics')"`;
   route `src/app/api/stream/metrics/route.ts:19#"/proc/stat"` and
