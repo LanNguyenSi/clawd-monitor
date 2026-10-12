@@ -97,8 +97,9 @@ arrays. The widgets read these fields from their elements:
 - `cronJobs[]`: `id`, `name`, `enabled`, `schedule` { `kind` (`cron`, `every`
   or `at`), `expr`, `everyMs` }, `state` { `nextRunAtMs`, `lastRunAtMs` }.
 - `containers[]`: `id`, `name`, `image`, `state` (`running` / `exited` /
-  `paused` / `restarting` / `unknown`), `restarts` (number), `uptime`
-  (string).
+  `paused` / `restarting` / `unknown`), `restarts` (number, the real restart
+  count from `docker inspect`; omitted when the agent could not read it),
+  `uptime` (string, the time since the container was created).
 
 An element without these fields passes validation but renders empty.
 

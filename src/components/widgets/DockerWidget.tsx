@@ -3,11 +3,15 @@
 import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
 import { fetcher } from '@/lib/fetcher'
+import { restartBadge, createdLabel } from '@/lib/docker-display'
 
 interface DockerContainer {
   id: string; name: string; image: string
   state: 'running' | 'exited' | 'paused' | 'restarting' | 'unknown'
-  restarts: number; uptime: string
+  /** Real restart count from the agent; absent when it could not be read. */
+  restarts?: number
+  /** Time since the container was created, not its uptime. */
+  uptime: string
 }
 
 interface DockerResponse { containers?: DockerContainer[]; error?: string }
@@ -69,13 +73,13 @@ export function DockerWidget() {
               <div className="flex items-center gap-2">
                 <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATE_DOT[c.state] ?? STATE_DOT.unknown}`} />
                 <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200 truncate flex-1">{c.name}</span>
-                {c.restarts > 0 && (
-                  <span className="text-xs text-orange-500 dark:text-orange-400 shrink-0" title={`${c.restarts} restarts`}>↺{c.restarts}</span>
+                {restartBadge(c.restarts) && (
+                  <span className="text-xs text-orange-500 dark:text-orange-400 shrink-0" title={restartBadge(c.restarts)!.title}>{restartBadge(c.restarts)!.text}</span>
                 )}
               </div>
               <div className="flex gap-3 mt-0.5 text-xs text-zinc-400 dark:text-zinc-600 ml-3.5">
                 <span className="font-mono truncate">{c.image}</span>
-                <span className="shrink-0">{c.uptime}</span>
+                <span className="shrink-0">{createdLabel(c.uptime)}</span>
               </div>
             </div>
           ))}

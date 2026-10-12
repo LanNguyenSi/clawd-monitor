@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Docker widget shows the real restart count.** It matches the agent change that fills `restarts` from `docker inspect`: the `↺N` badge renders only for a positive number, so it is hidden at 0 and when the agent could not read the count. The second line now reads "created 2 hours ago" instead of a bare duration, since `uptime` holds the time since creation. The field names are unchanged. Requires the matching clawd-monitor-agent release for correct counts; the standalone host `docker` proxy still derives `restarts` from the `docker ps` status column.
+
 ### Removed
 
 - **Cron "trigger now" (▶) is removed from the Cron widget, and `POST /api/proxy/cron` with it.** The button posted `/cron/jobs/<id>/run` to the server's own configured gateway, never to the monitored agent's host, and OpenClaw 2026.9 has no such HTTP endpoint (404), so it could not work for remote agents. `GET /api/proxy/cron` (read-only job list) stays. A proper trigger would have to go through the agent WebSocket (server → agent → `openclaw cron run`).
