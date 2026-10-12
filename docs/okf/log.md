@@ -2,7 +2,7 @@
 
 <!-- Add new entries at the top, newest first. -->
 
-- 2026-10-12T10:03:00Z, widget-data-modes re-verified against
+- 2026-10-12T10:03:11Z, widget-data-modes re-verified against
   `src/app/api/proxy/docker/route.ts` after the proxy started reading the
   restart count from a batched `docker inspect`: the `docker` row names the
   inspect call and the route citation moved to the `docker ps -a` lines.
