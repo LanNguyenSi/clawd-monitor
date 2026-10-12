@@ -14,7 +14,7 @@ below and [ARCHITECTURE.md](ARCHITECTURE.md).
 | Session Log | Last 5 messages per session (embedded in snapshot) |
 | Memory Viewer | Reads MEMORY.md / CURRENT.md / today's and yesterday's log from the agent |
 | Cron Jobs | Scheduled jobs with next/last run times |
-| Docker Containers | Container status, restarts, uptime |
+| Docker Containers | Container status, restart count (hidden at 0), time since creation |
 | Log Tail | Live log stream (local server) |
 | GitHub PRs | Open PRs for a repository list defined in `src/app/api/proxy/github/route.ts` (CI status is not populated yet) |
 | Heartbeat Pulse | Agent heartbeat health check |

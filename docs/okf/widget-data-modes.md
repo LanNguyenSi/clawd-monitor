@@ -3,7 +3,7 @@ type: module
 title: Widget data modes, agent snapshot vs default gateway vs dashboard host
 description: For each dashboard widget, where its data comes from when an agent is selected (the agent's last WebSocket snapshot) and when none is (the default gateway or the dashboard host itself), which widgets ignore the selection, and how the selection is held.
 tags: [widgets, dashboard, agents, data-sources]
-timestamp: 2026-10-11T16:21:35Z
+timestamp: 2026-10-12T07:31:25Z
 sources:
   - src/lib/widgets.ts
   - src/lib/active-agent.tsx
@@ -89,7 +89,7 @@ and `containers`
 (`src/lib/schemas.ts:8-22#"containers: z.array(z.unknown()).default([])"`).
 When the entry is offline, these widgets show an "Agent offline" state with
 the last-seen time instead of the stale data, for example
-`src/components/widgets/DockerWidget.tsx:37#"!snapshotData.online"`; the
+`src/components/widgets/DockerWidget.tsx:41#"!snapshotData.online"`; the
 heartbeat widget shows `SILENT`
 (`src/components/widgets/HeartbeatWidget.tsx:56#"online ? 'OK' : 'SILENT'"`).
 
@@ -138,7 +138,7 @@ Evidence for the switch in each component, agent URL first:
   (`src/app/api/proxy/memory/route.ts:36#"/workspace/memory?file="`) and
   falls back to the filesystem
   (`src/app/api/proxy/memory/route.ts:46-48#"FILE_PATHS[file] ?? FILE_PATHS.memory"`).
-- `docker`: `src/components/widgets/DockerWidget.tsx:25-26#"'/api/proxy/docker'"`;
+- `docker`: `src/components/widgets/DockerWidget.tsx:29-30#"'/api/proxy/docker'"`;
   route `src/app/api/proxy/docker/route.ts:19-20#"docker ps -a"`.
 - `metrics`: `src/components/widgets/MetricsWidget.tsx:66-67#"/api/agents/"`
   and `src/components/widgets/MetricsWidget.tsx:94-95#"new EventSource('/api/stream/metrics')"`;
