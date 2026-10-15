@@ -2,6 +2,17 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-15T11:34:28Z, agent-registry-lifecycle, auth-and-config-loading and
+  widget-data-modes re-verified against the sources after the UI-action and
+  env-loading change. agent-registry-lifecycle: `DELETE /api/agents/<id>`
+  now exists and `lastUsedAt` is written on a persisted-token handshake, the
+  session-log route is gone. auth-and-config-loading: `server.ts` loads the
+  `.env` files first through `src/lib/env-bootstrap.ts`, so the old
+  "invisible to the server graph" cases no longer apply, and `plaintext` is
+  gone from `PasswordConfig`. widget-data-modes: `InstanceSwitcher` is
+  removed, the health and GitHub widgets read `SERVICE_HEALTH_URLS` and
+  `GITHUB_REPOS`. `okf-kit check --require-anchors docs/okf`: clean.
+
 - 2026-10-12T10:03:11Z, widget-data-modes re-verified against
   `src/app/api/proxy/docker/route.ts` after the proxy started reading the
   restart count from a batched `docker inspect`: the `docker` row names the
