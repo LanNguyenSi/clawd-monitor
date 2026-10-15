@@ -3,7 +3,7 @@ type: invariant
 title: Agent registry lifecycle, from WebSocket handshake to TTL eviction
 description: How a clawd-monitor-agent connection becomes an AgentRegistry entry (auth message first, static then persisted token check, newest connection wins), when an entry goes offline (only via its current socket), when it is evicted (lazily, only inside getAll), and what token revocation does and does not affect.
 tags: [agents, websocket, registry, tokens, ttl]
-timestamp: 2026-10-15T11:34:28Z
+timestamp: 2026-10-15T11:45:42Z
 sources:
   - server.ts
   - src/lib/agent-ws-handler.ts
@@ -69,20 +69,20 @@ those constants are read (after the `.env` files were loaded).
 4. The token is checked against the `AGENT_TOKENS` list first (exact string
    match), then with `bcrypt.compare` against every `tokenHash` in
    `tokens.json`
-   (`src/lib/agent-ws-handler.ts:51-56#"tokenValid = true"`). A miss sends
+   (`src/lib/agent-ws-handler.ts:51-54#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket
-   (`src/lib/agent-ws-handler.ts:73-76#"ws.close()"`).
+   (`src/lib/agent-ws-handler.ts:81-84#"ws.close()"`).
 5. On success the handler calls `registry.register()` with the agent's
    self-reported `agentId`, `name`, `version`, `gatewayUrl` and
    `gatewayToken`, then sends `auth_ok`
-   (`src/lib/agent-ws-handler.ts:80-91#"auth_ok"`).
+   (`src/lib/agent-ws-handler.ts:88-99#"auth_ok"`).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored
-(`src/lib/agent-ws-handler.ts:96-100#"type: 'pong'"`). A snapshot is stored
+(`src/lib/agent-ws-handler.ts:104-108#"type: 'pong'"`). A snapshot is stored
 under the connection's own `agentId`, not the `agentId` field inside the
 snapshot payload
-(`src/lib/agent-ws-handler.ts:97#"registry.update(agentId, msg.data)"`).
+(`src/lib/agent-ws-handler.ts:105#"registry.update(agentId, msg.data)"`).
 
 ## Tokens are not bound to an agent
 
@@ -91,10 +91,14 @@ Neither token source carries an `agentId`: a `TokenEntry` holds `id`,
 (`src/lib/data-store.ts:29-34#"lastUsedAt?: string"`), and the handshake
 only asks whether the token is valid. Any valid token can therefore register
 any `agentId`, including one another agent is using. A match against a
-persisted token stamps that entry's `lastUsedAt` and rewrites `tokens.json`;
-a failed write does not fail the handshake
-(`src/lib/agent-ws-handler.ts:64-66#"matched.lastUsedAt"`,
-`src/lib/agent-ws-handler.ts:68-70#"best effort"`). A static
+persisted token stamps that entry's `lastUsedAt`: the handler re-reads
+`tokens.json` after the bcrypt comparison, patches only the matched id and
+rewrites the file with no await in between, so a token created or revoked
+during the comparison is neither lost nor restored. If the matched id is
+no longer in the fresh read, the handshake is rejected with `auth_error`. A
+failed write does not fail the handshake
+(`src/lib/agent-ws-handler.ts:68-73#"current.lastUsedAt"`,
+`src/lib/agent-ws-handler.ts:76-78#"best effort"`). A static
 `AGENT_TOKENS` match has no entry and stamps nothing. The settings API passes
 the stored value through
 (`src/app/api/settings/tokens/route.ts:14#"id, name, createdAt, lastUsedAt"`).
@@ -121,7 +125,7 @@ never sends snapshots keeps `lastSnapshotAt` at its last snapshot (or `0`).
 ## Offline and eviction
 
 An entry goes offline only through `disconnect()` from the socket's `close`
-handler (`src/lib/agent-ws-handler.ts:104-106#"registry.disconnect(agentId, ws)"`).
+handler (`src/lib/agent-ws-handler.ts:112-114#"registry.disconnect(agentId, ws)"`).
 There is no server-side idle timeout: an entry whose socket stays open is
 online indefinitely, whether or not it sends snapshots.
 

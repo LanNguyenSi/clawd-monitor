@@ -245,6 +245,42 @@ describe('handleAgentConnection – valid bcrypt persisted token', () => {
     expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_ok')
   })
 
+  it('patches only the matched entry in a fresh read, keeping concurrent token changes', async () => {
+    const now = new Date().toISOString()
+    const matchedEntry = { id: 'tok-1', name: 'test-token', tokenHash: bcryptHash, createdAt: now }
+    const removed = { id: 'tok-gone', name: 'removed', tokenHash: 'x', createdAt: now }
+    const added = { id: 'tok-new', name: 'created-meanwhile', tokenHash: 'y', createdAt: now }
+    mockReadTokens
+      .mockReturnValueOnce([matchedEntry, removed])
+      .mockReturnValueOnce([{ ...matchedEntry }, added])
+    const ws = makeMockWs()
+    handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+
+    await emitAndWait(ws, { ...AUTH_MSG, token: BCRYPT_PLAINTEXT })
+
+    expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_ok')
+    expect(mockWriteTokens).toHaveBeenCalledOnce()
+    const written = mockWriteTokens.mock.calls[0][0]
+    expect(written.map((t) => t.id)).toEqual(['tok-1', 'tok-new'])
+    expect(written[0].lastUsedAt).toBeTypeOf('string')
+    expect(written[1].lastUsedAt).toBeUndefined()
+  })
+
+  it('rejects the handshake and writes nothing when the matched token was revoked meanwhile', async () => {
+    mockReadTokens
+      .mockReturnValueOnce([{ id: 'tok-1', name: 'test-token', tokenHash: bcryptHash, createdAt: new Date().toISOString() }])
+      .mockReturnValueOnce([])
+    const ws = makeMockWs()
+    handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+
+    await emitAndWait(ws, { ...AUTH_MSG, token: BCRYPT_PLAINTEXT })
+
+    expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_error')
+    expect(ws.close).toHaveBeenCalledOnce()
+    expect(mockWriteTokens).not.toHaveBeenCalled()
+    expect(mockRegistry.register).not.toHaveBeenCalled()
+  })
+
   it('does not write tokens when the token does not match', async () => {
     const ws = makeMockWs()
     handleAgentConnection(ws as unknown as WebSocket, fakeReq)

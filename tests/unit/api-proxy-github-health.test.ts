@@ -52,6 +52,46 @@ describe('GET /api/proxy/github', () => {
     const body = await (await githubGET(new NextRequest('http://localhost/api/proxy/github'))).json()
     expect(body.prs[0].ciStatus).toBe('unknown')
   })
+
+  it('does not re-query check-runs for a commit that already passed, but re-queries a failed one', async () => {
+    vi.stubEnv('GITHUB_REPOS', 'octo/cache')
+    const outcome: Record<string, string> = { green1: 'success', red1: 'failure' }
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/pulls?')) {
+        return json([
+          { id: 1, number: 1, title: 'a', html_url: 'u', state: 'open', draft: false, created_at: 'c', head: { sha: 'green1' } },
+          { id: 2, number: 2, title: 'b', html_url: 'u', state: 'open', draft: false, created_at: 'c', head: { sha: 'red1' } },
+        ])
+      }
+      const sha = /commits\/(\w+)\/check-runs/.exec(url)?.[1] ?? ''
+      return json({ check_runs: [{ status: 'completed', conclusion: outcome[sha] }] })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const req = () => new NextRequest('http://localhost/api/proxy/github')
+    await githubGET(req())
+    const second = await (await githubGET(req())).json()
+    const checkRunCalls = fetchMock.mock.calls.map((c) => (c as unknown[])[0] as string).filter((u) => u.includes('/check-runs'))
+    expect(checkRunCalls.filter((u) => u.includes('/green1/'))).toHaveLength(1)
+    expect(checkRunCalls.filter((u) => u.includes('/red1/'))).toHaveLength(2)
+    expect(second.prs.map((p: { ciStatus: string }) => p.ciStatus).sort()).toEqual(['failure', 'success'])
+  })
+
+  it('bounds the passed-commit cache by evicting the oldest entry', async () => {
+    vi.stubEnv('GITHUB_REPOS', 'octo/bounded')
+    const shas = Array.from({ length: 201 }, (_, i) => `sha${i}x`)
+    const fetchMock = vi.fn(async (url: string) =>
+      url.includes('/pulls?')
+        ? json(shas.map((sha, i) => ({ id: i, number: i, title: 't', html_url: 'u', state: 'open', draft: false, created_at: 'c', head: { sha } })))
+        : json({ check_runs: [{ status: 'completed', conclusion: 'success' }] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const req = () => new NextRequest('http://localhost/api/proxy/github')
+    await githubGET(req())
+    fetchMock.mockClear()
+    await githubGET(req())
+    const urls = fetchMock.mock.calls.map((c) => (c as unknown[])[0] as string).filter((u) => u.includes('/check-runs'))
+    expect(urls).toHaveLength(1)
+    expect(urls[0]).toContain('/commits/sha0x/')
+  })
 })
 
 describe('GET /api/proxy/health', () => {

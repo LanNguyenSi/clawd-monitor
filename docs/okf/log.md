@@ -2,6 +2,15 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-15T11:45:42Z, agent-registry-lifecycle, auth-and-config-loading and
+  widget-data-modes re-verified after the handshake and proxy follow-ups.
+  agent-registry-lifecycle: the `lastUsedAt` stamp re-reads `tokens.json` and
+  patches only the matched id, and a token revoked during the bcrypt
+  comparison is rejected; citations in `agent-ws-handler.ts` re-pointed.
+  auth-and-config-loading: the `$`-expansion caveat for a key set in both the
+  process environment and a file. widget-data-modes: GitHub route citations
+  re-pointed. `okf-kit check --require-anchors docs/okf`: clean.
+
 - 2026-10-15T11:34:28Z, agent-registry-lifecycle, auth-and-config-loading and
   widget-data-modes re-verified against the sources after the UI-action and
   env-loading change. agent-registry-lifecycle: `DELETE /api/agents/<id>`

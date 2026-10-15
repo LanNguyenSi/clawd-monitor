@@ -18,7 +18,16 @@ interface GitHubPR {
 
 const GH_HEADERS = (token: string) => ({ Authorization: `token ${token}`, 'User-Agent': 'clawd-monitor' })
 
+// A commit whose checks all passed does not change status, so repeated polls
+// reuse it. Failures are not cached (a re-run can flip them) and the map is
+// bounded, oldest entry first out.
+const CI_CACHE_MAX = 200
+const passedCi = new Map<string, GitHubPR['ciStatus']>()
+
 async function fetchCiStatus(owner: string, repo: string, sha: string, token: string): Promise<GitHubPR['ciStatus']> {
+  const key = `${owner}/${repo}@${sha}`
+  const cached = passedCi.get(key)
+  if (cached) return cached
   try {
     const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`, {
       headers: GH_HEADERS(token),
@@ -26,7 +35,12 @@ async function fetchCiStatus(owner: string, repo: string, sha: string, token: st
     })
     if (!res.ok) return 'unknown'
     const body = await res.json() as { check_runs?: CheckRun[] }
-    return summarizeCheckRuns(body.check_runs ?? [])
+    const status = summarizeCheckRuns(body.check_runs ?? [])
+    if (status === 'success') {
+      if (passedCi.size >= CI_CACHE_MAX) passedCi.delete(passedCi.keys().next().value as string)
+      passedCi.set(key, status)
+    }
+    return status
   } catch {
     return 'unknown'
   }

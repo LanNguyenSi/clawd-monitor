@@ -29,8 +29,12 @@ loads `.env` and `.env.local` (and the mode-specific variants Next.js knows)
 into the process environment before it reads any configuration, so a value
 set only in `.env.local` reaches the agent WebSocket handler, the token
 routes and the production startup check. A variable that is already in the
-process environment (the shell, or Docker Compose) is never overridden by
-these files. For `NODE_ENV=production npm start` set `JWT_SECRET` and
+process environment (the shell, or Docker Compose) keeps its value over
+these files. One caveat: when a key is set in both the process environment
+and a `.env` file, the process value is kept, but `@next/env` expands a `$`
+in it (`dotenv-expand`), so `pa$word` becomes `pa`. Escape it as `\$` or set
+the key in one place only. For `NODE_ENV=production npm start` set
+`JWT_SECRET` and
 `ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH`. `npm start` does not set
 `NODE_ENV`; without `NODE_ENV=production` the server skips the startup check
 and accepts the development fallbacks.

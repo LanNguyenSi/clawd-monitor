@@ -2,8 +2,9 @@ import { loadEnvConfig } from '@next/env'
 
 /**
  * Load `.env` / `.env.local` (and the mode-specific variants) into
- * `process.env`. Values already present in the process environment win, so
- * variables injected by Docker Compose or the shell are never overridden.
+ * `process.env`. Values already present in the process environment win over
+ * the files. When the same key is also in a file, `@next/env` still expands a
+ * `$` in the process value (dotenv-expand); escape it as `\$`.
  */
 export function loadServerEnv(dir: string = process.cwd(), dev: boolean = process.env.NODE_ENV !== 'production'): void {
   loadEnvConfig(dir, dev)

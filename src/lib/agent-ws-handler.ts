@@ -46,11 +46,9 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
 
       // Validate token — check static env tokens first, then persisted tokens.json
       let tokenValid = STATIC_TOKENS.includes(msg.token)
-      let persistedTokens: TokenEntry[] = []
       let matched: TokenEntry | null = null
       if (!tokenValid) {
-        persistedTokens = readTokens()
-        for (const entry of persistedTokens) {
+        for (const entry of readTokens()) {
           try {
             if (await bcrypt.compare(msg.token, entry.tokenHash)) {
               tokenValid = true
@@ -62,9 +60,19 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
       }
 
       if (matched) {
+        // The bcrypt loop above yields to the event loop, so the snapshot may
+        // be stale. Re-read synchronously and patch only the matched id, with
+        // no await between the read and the write, so a token created or
+        // revoked meanwhile is neither lost nor resurrected.
         try {
-          matched.lastUsedAt = new Date().toISOString()
-          writeTokens(persistedTokens)
+          const fresh = readTokens()
+          const current = fresh.find((t) => t.id === matched!.id)
+          if (!current) {
+            tokenValid = false
+          } else {
+            current.lastUsedAt = new Date().toISOString()
+            writeTokens(fresh)
+          }
         } catch {
           // best effort: a read-only data dir must not fail the handshake
         }
