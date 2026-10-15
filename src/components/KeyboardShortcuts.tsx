@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 
 interface Props {
   onRefresh: () => void
-  onScreenshot: () => void
   onToggleTheme: () => void
   onToggleEditMode: () => void
 }
@@ -15,14 +14,13 @@ interface ShortcutHelpOverlay {
 
 const SHORTCUTS = [
   { key: 'r', description: 'Refresh active widget' },
-  { key: 's', description: 'Screenshot dashboard (PNG)' },
   { key: 'e', description: 'Toggle edit / lock layout' },
   { key: 't', description: 'Toggle dark / light mode' },
   { key: '?', description: 'Show this help' },
   { key: 'Esc', description: 'Close this help' },
 ]
 
-export function KeyboardShortcuts({ onRefresh, onScreenshot, onToggleTheme, onToggleEditMode }: Props) {
+export function KeyboardShortcuts({ onRefresh, onToggleTheme, onToggleEditMode }: Props) {
   const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
@@ -33,9 +31,6 @@ export function KeyboardShortcuts({ onRefresh, onScreenshot, onToggleTheme, onTo
       switch (e.key) {
         case 'r':
           onRefresh()
-          break
-        case 's':
-          onScreenshot()
           break
         case 'e':
           onToggleEditMode()
@@ -54,7 +49,7 @@ export function KeyboardShortcuts({ onRefresh, onScreenshot, onToggleTheme, onTo
 
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [onRefresh, onScreenshot, onToggleTheme, onToggleEditMode])
+  }, [onRefresh, onToggleTheme, onToggleEditMode])
 
   if (!showHelp) return null
 

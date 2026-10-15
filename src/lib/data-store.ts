@@ -31,7 +31,7 @@ export interface TokenEntry {
   name: string
   tokenHash: string   // bcrypt hash of the actual token
   createdAt: string
-  lastUsedAt?: string
+  lastUsedAt?: string  // ISO timestamp, set on each successful agent handshake with this token
 }
 
 export function readTokens(): TokenEntry[] {
@@ -45,7 +45,6 @@ export function writeTokens(tokens: TokenEntry[]): void {
 // Password management
 export interface PasswordConfig {
   hash?: string
-  plaintext?: string
 }
 
 export function readPasswordConfig(): PasswordConfig {

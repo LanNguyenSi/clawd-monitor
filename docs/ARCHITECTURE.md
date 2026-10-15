@@ -16,9 +16,7 @@ dashboard and also accepts agent WebSocket connections. Two data paths coexist:
    `http://localhost:9500`). `/api/stream/metrics` reads `/proc` on the
    clawd-monitor host; the docker and system log sources run `docker logs`,
    `journalctl` or `tail` there; `alert-history`, `docker`, `github` and
-   `health` under `/api/proxy/*` read server-local or third-party data. With an
-   agent selected, `/api/agents/<id>/session-log` also contacts the gateway URL
-   the agent reported.
+   `health` under `/api/proxy/*` read server-local or third-party data.
 
 The first diagram shows the agent-push path, the browser-facing API routes, the
 persistent data store, and the unauthenticated health endpoint.
@@ -48,16 +46,14 @@ flowchart LR
   end
   subgraph remote["Remote services"]
     GW["default OpenClaw Gateway"]
-    AGW["agent-reported gatewayUrl"]
     GH["GitHub API"]
-    Svc["fixed service URL list"]
+    Svc["SERVICE_HEALTH_URLS list"]
   end
   Routes -->|"docker CLI"| Docker
   Routes -->|"system log source, openclaw fallback"| Journal
   Routes -->|"stream/metrics"| Proc
   Routes -->|"memory fallback, alert-history"| Clawd
   Routes -->|"proxy topics, stream/logs"| GW
-  Routes -->|"agents/id/session-log"| AGW
   Routes -->|"proxy/github"| GH
   Routes -->|"proxy/health"| Svc
 ```
@@ -146,7 +142,8 @@ All other API routes require the admin JWT.
 
 Static `AGENT_TOKENS` are compared in plaintext. Tokens created in Settings
 are stored as bcrypt hashes in `tokens.json` (file mode 0600) under
-`CLAWD_MONITOR_DATA_DIR`. Tokens are checked at connect time only, so revoking
+`CLAWD_MONITOR_DATA_DIR`; a successful handshake with one of them stamps its
+`lastUsedAt`, shown in Settings. Tokens are checked at connect time only, so revoking
 a token stops new connections but does not close an open one (restart the
 server to drop it). A token is not bound to an `agentId`: the newest
 connection for an `agentId` replaces the registry entry, including its gateway
@@ -181,7 +178,7 @@ clawd-monitor/
 │   │   │   ├── agents/list/route.ts                    → GET connected agents (JWT)
 │   │   │   ├── agents/[agentId]/snapshot/route.ts      → GET latest agent snapshot (JWT)
 │   │   │   ├── agents/[agentId]/logs/route.ts          → SSE: agent logs (JWT)
-│   │   │   ├── agents/[agentId]/session-log/route.ts   → GET session history via Gateway (JWT)
+│   │   │   ├── agents/[agentId]/route.ts               → DELETE remove an offline agent (JWT)
 │   │   │   ├── containers/route.ts                     → GET Docker container list
 │   │   │   ├── health/route.ts                         → GET server + registry health
 │   │   │   ├── settings/tokens/route.ts                → GET/POST agent tokens

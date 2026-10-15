@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
   } catch {
     return NextResponse.json({
       error: 'Memory files not accessible. Configure CLAWD_DIR or connect via OpenClaw Gateway.',
-      hint: 'Add this instance via the Instance Switcher with your OpenClaw Gateway URL + token.',
+      hint: 'Set CLAWD_DIR, configure the default gateway, or select a connected agent.',
     }, { status: 404 })
   }
 }

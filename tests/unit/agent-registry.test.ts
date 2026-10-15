@@ -299,3 +299,24 @@ describe('toPublicEntry – field stripping', () => {
     expect(pub.gatewayUrl).toBe('https://gw.example.com')
   })
 })
+
+describe('registry.remove', () => {
+  beforeEach(() => { registry.agents.clear() })
+
+  it('removes an offline agent', () => {
+    registry.register(makeMockWs(), makeMeta('rm-off'))
+    registry.disconnect('rm-off')
+    expect(registry.remove('rm-off')).toBe('removed')
+    expect(registry.getAgent('rm-off')).toBeNull()
+  })
+
+  it('refuses to remove an online agent', () => {
+    registry.register(makeMockWs(), makeMeta('rm-on'))
+    expect(registry.remove('rm-on')).toBe('online')
+    expect(registry.getAgent('rm-on')).not.toBeNull()
+  })
+
+  it('reports not_found for an unknown agent', () => {
+    expect(registry.remove('nope')).toBe('not_found')
+  })
+})

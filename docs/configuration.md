@@ -17,21 +17,27 @@ ALLOWED_GATEWAY_HOSTS=      # SSRF allowlist for per-instance gateway overrides 
 CLAWD_DIR=/root/.openclaw/workspace  # server-local OpenClaw workspace: Memory Viewer fallback (MEMORY.md / CURRENT.md / memory/*.md) and Alert History source (memory/smart-alert-state.json); code default when unset is /root/clawd
 CLAWD_MONITOR_DATA_DIR=/data   # persistent storage for tokens + password hash
 DOMAIN=monitor.yourdomain.com  # read by docker-compose.traefik.yml only, not by the server
-GITHUB_TOKEN=               # GitHub API token for the GitHub PRs widget; the repository list is the default in src/app/api/proxy/github/route.ts
+GITHUB_TOKEN=               # GitHub API token for the GitHub PRs widget (read-only; repo/PR and checks read scope)
+GITHUB_REPOS=owner/repo,owner/other  # repositories the GitHub PRs widget lists; empty means the widget shows a hint
+SERVICE_HEALTH_URLS=api=https://api.example.com/health,https://example.com  # Service Health widget targets, comma-separated `[name=]url`; empty means no checks
 PORT=3000                   # listen port (server.ts default)
 HOSTNAME=0.0.0.0            # listen address (server.ts default)
 ```
 
-When running outside Docker (`npm run dev`, `npm start`), set `AGENT_TOKENS`,
-`AGENT_TTL_MS` and `CLAWD_MONITOR_DATA_DIR` in the shell environment, and for
-`NODE_ENV=production npm start` also `JWT_SECRET` and `ADMIN_PASSWORD` or
-`ADMIN_PASSWORD_HASH`. `npm start` does not set `NODE_ENV`; without
-`NODE_ENV=production` the server skips the startup check and accepts the
-development fallbacks.
-The custom server reads these before Next.js loads `.env` / `.env.local`;
-values only in those files reach the API routes but not the agent WebSocket
-handler or the production startup check. Under Docker Compose all values come
-from the process environment.
+When running outside Docker (`npm run dev`, `npm start`), the custom server
+loads `.env` and `.env.local` (and the mode-specific variants Next.js knows)
+into the process environment before it reads any configuration, so a value
+set only in `.env.local` reaches the agent WebSocket handler, the token
+routes and the production startup check. A variable that is already in the
+process environment (the shell, or Docker Compose) keeps its value over
+these files. One caveat: when a key is set in both the process environment
+and a `.env` file, the process value is kept, but `@next/env` expands a `$`
+in it (`dotenv-expand`), so `pa$word` becomes `pa`. Escape it as `\$` or set
+the key in one place only. For `NODE_ENV=production npm start` set
+`JWT_SECRET` and
+`ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH`. `npm start` does not set
+`NODE_ENV`; without `NODE_ENV=production` the server skips the startup check
+and accepts the development fallbacks.
 
 Notes:
 
@@ -114,3 +120,7 @@ flowchart TD
 - **Switching compose files:** `docker-compose.yml` uses the external volume
   `clawd_monitor_data`, while `docker-compose.traefik.yml` creates a
   project-scoped volume, so tokens and the stored password do not carry over.
+  The two declarations differ on purpose and are not aligned: changing the
+  volume of an existing deployment points the container at an empty volume,
+  so it needs a data migration (copy the contents of the old volume into the
+  new one) planned first.

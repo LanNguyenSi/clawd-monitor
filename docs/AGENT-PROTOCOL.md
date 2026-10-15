@@ -40,7 +40,7 @@ Agent → server:
 - `gatewayUrl` and `gatewayToken` are optional.
 - Token validation: the token is matched against the static `AGENT_TOKENS` env
   list (exact match) first, then against persisted Settings-UI tokens
-  (bcrypt-compared). An invalid token yields `auth_error` ("Invalid token") and
+  (bcrypt-compared; a match updates that token's `lastUsedAt`). An invalid token yields `auth_error` ("Invalid token") and
   the socket is closed.
 
 Server → agent on success:

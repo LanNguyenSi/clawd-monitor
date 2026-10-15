@@ -12,12 +12,12 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Agent tokens and a changed admin password are written to
 `CLAWD_MONITOR_DATA_DIR` (default `/data`), which is usually not writable on a
-dev machine. Start the dev server with a writable directory set in the shell
-environment, not only in `.env.local`, for example
-`CLAWD_MONITOR_DATA_DIR=/path/to/writable/dir npm run dev`. If you use a
-directory inside the repository, add it to `.gitignore`. The same applies to
-`AGENT_TOKENS` and `AGENT_TTL_MS`: the custom server reads them before Next.js
-loads `.env.local` (see [configuration.md](configuration.md)).
+dev machine. Set a writable directory in `.env.local` or in the shell, for
+example `CLAWD_MONITOR_DATA_DIR=/path/to/writable/dir npm run dev`. If you use
+a directory inside the repository, add it to `.gitignore`. The custom server
+loads `.env.local` before it reads `CLAWD_MONITOR_DATA_DIR`, `AGENT_TOKENS` and
+`AGENT_TTL_MS`; a value already in the shell environment wins (see
+[configuration.md](configuration.md)).
 
 Without `ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH`, dev mode accepts the
 password `admin`; without `JWT_SECRET` it signs sessions with a fixed

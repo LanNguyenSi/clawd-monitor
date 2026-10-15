@@ -94,9 +94,9 @@ describe('data-store – readDataFile, writeDataFile, readTokens, writeTokens, r
   })
 
   it('readPasswordConfig / writePasswordConfig – round-trip', () => {
-    const cfg: import('@/lib/data-store').PasswordConfig = { hash: '$2b$12$xyz', plaintext: undefined }
+    const cfg: import('@/lib/data-store').PasswordConfig = { hash: '$2b$12$xyz' }
     mod.writePasswordConfig(cfg)
-    // JSON round-trip strips undefined keys
+    // the hash survives the JSON round-trip
     expect(mod.readPasswordConfig()).toEqual({ hash: '$2b$12$xyz' })
   })
 })

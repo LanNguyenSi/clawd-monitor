@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthenticated } from '@/lib/auth'
+import { parseServiceHealthUrls } from '@/lib/service-health'
 
 export const dynamic = 'force-dynamic'
-
-const DEFAULT_SERVICES = [
-  { name: 'depsight',      url: 'https://depsight.opentriologue.ai' },
-  { name: 'ci-insights',   url: 'https://ci-insights.opentriologue.ai' },
-  { name: 'project-forge', url: 'https://project-forge.opentriologue.ai' },
-]
 
 interface ServiceResult {
   name: string
@@ -24,9 +19,10 @@ export async function GET(req: NextRequest) {
   }
 
   const checkedAt = new Date().toISOString()
+  const services = parseServiceHealthUrls(process.env.SERVICE_HEALTH_URLS)
 
   const results = await Promise.all(
-    DEFAULT_SERVICES.map(async (svc): Promise<ServiceResult> => {
+    services.map(async (svc): Promise<ServiceResult> => {
       const start = Date.now()
       try {
         const res = await fetch(svc.url, {

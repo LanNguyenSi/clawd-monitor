@@ -84,6 +84,15 @@ class AgentRegistry {
     return toPublicEntry(entry)
   }
 
+  /** Remove an offline agent from the registry. Returns 'removed', 'not_found' or 'online' (refused). */
+  remove(agentId: string): 'removed' | 'not_found' | 'online' {
+    const entry = this.agents.get(agentId)
+    if (!entry) return 'not_found'
+    if (entry.online) return 'online'
+    this.agents.delete(agentId)
+    return 'removed'
+  }
+
   cleanup() {
     const now = Date.now()
     for (const [id, entry] of this.agents.entries()) {

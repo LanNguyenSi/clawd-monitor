@@ -16,9 +16,9 @@ below and [ARCHITECTURE.md](ARCHITECTURE.md).
 | Cron Jobs | Scheduled jobs with next/last run times |
 | Docker Containers | Container status, restart count (hidden at 0), time since creation |
 | Log Tail | Live log stream (local server) |
-| GitHub PRs | Open PRs for a repository list defined in `src/app/api/proxy/github/route.ts` (CI status is not populated yet) |
+| GitHub PRs | Open PRs for the repositories listed in `GITHUB_REPOS`, with a CI dot from the check runs of each PR's head commit (needs `GITHUB_TOKEN`; no repositories configured means the widget shows a hint) |
 | Heartbeat Pulse | Agent heartbeat health check |
-| Service Health | HEAD checks against a fixed URL list defined in `src/app/api/proxy/health/route.ts`; edit that list to monitor your own services |
+| Service Health | HEAD checks against the URLs listed in `SERVICE_HEALTH_URLS`; with the variable unset the widget is empty |
 | Alert History | Recent alerts from the last 7 days |
 
 Adding a new widget takes a component file in `src/components/widgets/`, an
@@ -55,5 +55,4 @@ selected.
 | `r` | Refresh |
 | `e` | Toggle edit mode (drag/resize/close widgets) |
 | `t` | Toggle dark/light mode |
-| `s` | Screenshot; currently does nothing visible, because the `html2canvas` package it loads is not a dependency |
 | `?` | Show shortcuts |

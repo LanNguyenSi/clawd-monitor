@@ -3,7 +3,7 @@ type: module
 title: Widget data modes, agent snapshot vs default gateway vs dashboard host
 description: For each dashboard widget, where its data comes from when an agent is selected (the agent's last WebSocket snapshot) and when none is (the default gateway or the dashboard host itself), which widgets ignore the selection, and how the selection is held.
 tags: [widgets, dashboard, agents, data-sources]
-timestamp: 2026-10-12T10:03:11Z
+timestamp: 2026-10-15T11:55:56Z
 sources:
   - src/lib/widgets.ts
   - src/lib/active-agent.tsx
@@ -11,7 +11,6 @@ sources:
   - src/lib/gateway.ts
   - src/app/dashboard/page.tsx
   - src/components/Nav/AgentSwitcher.tsx
-  - src/components/Nav/InstanceSwitcher.tsx
   - src/components/Nav/Navbar.tsx
   - src/components/widgets/AgentListWidget.tsx
   - src/components/widgets/AgentStatusWidget.tsx
@@ -34,6 +33,8 @@ sources:
   - src/app/api/proxy/docker/route.ts
   - src/app/api/proxy/health/route.ts
   - src/app/api/proxy/github/route.ts
+  - src/lib/service-health.ts
+  - src/lib/github-ci.ts
   - src/app/api/proxy/alert-history/route.ts
   - src/app/api/containers/route.ts
   - src/app/api/stream/metrics/route.ts
@@ -102,10 +103,8 @@ gateway URL and token
 `src/lib/gateway.ts:120#"options.token ?? DEFAULT_GATEWAY_TOKEN"`). No
 widget sets that header, so the widgets' requests to these routes always
 reach the default gateway.
-`src/lib/instance.ts` and the `InstanceSwitcher` component that uses it
-(`src/components/Nav/InstanceSwitcher.tsx:11#"export function InstanceSwitcher"`)
-still exist, but no component imports or renders the switcher; the navbar
-mounts `AgentSwitcher`, `AddWidgetMenu`, `UserMenu` and `AddAgentModal`
+There is no instance switcher: the navbar mounts `AgentSwitcher`,
+`AddWidgetMenu`, `UserMenu` and `AddAgentModal`
 (`src/components/Nav/Navbar.tsx:4-7#"import { AddAgentModal } from '@/components/AddAgentModal'"`).
 
 ## Per widget
@@ -121,8 +120,8 @@ mounts `AgentSwitcher`, `AddWidgetMenu`, `UserMenu` and `AddAgentModal`
 | `log-tail` | `/api/agents/<id>/logs` SSE, see below | `/api/stream/logs` SSE, see below |
 | `session-log` | snapshot `sessions[].recentMessages` | nothing, a prompt to select an agent |
 | `agent-list` | `/api/agents/list` (ignores the selection, sets it) | same |
-| `service-health` | ignores the selection | `/api/proxy/health`, `HEAD` requests from the dashboard host to a fixed service list |
-| `github-prs` | ignores the selection | `/api/proxy/github`, GitHub API with `GITHUB_TOKEN` |
+| `service-health` | ignores the selection | `/api/proxy/health`, `HEAD` requests from the dashboard host to the URLs in `SERVICE_HEALTH_URLS` |
+| `github-prs` | ignores the selection | `/api/proxy/github`, GitHub API with `GITHUB_TOKEN` for the repositories in `GITHUB_REPOS`, plus the check runs of each PR head commit |
 | `alert-history` | ignores the selection | `/api/proxy/alert-history`, `CLAWD_DIR/memory/smart-alert-state.json` on the dashboard host |
 
 Evidence for the switch in each component, agent URL first:
@@ -147,18 +146,21 @@ Evidence for the switch in each component, agent URL first:
   2 s (`src/app/api/stream/metrics/route.ts:85-89#"}, 2000)"`).
 - `session-log`: `src/components/widgets/SessionLogWidget.tsx:63#"recentMessages"`
   and `src/components/widgets/SessionLogWidget.tsx:70-73#"Select an agent to view session logs"`.
-  The widget does not call `GET /api/agents/<id>/session-log`; no
-  component under `src/components/` does.
+  The widget reads snapshot data only; there is no session-log route.
 - `agent-list`: `src/components/widgets/AgentListWidget.tsx:36#"'/api/agents/list'"`.
 - `service-health`: `src/components/widgets/ServiceHealthWidget.tsx:22#"'/api/proxy/health'"`;
-  the list is the constant `DEFAULT_SERVICES`
-  (`src/app/api/proxy/health/route.ts:6#"DEFAULT_SERVICES"`), probed with
-  `HEAD` (`src/app/api/proxy/health/route.ts:32-33#"method: 'HEAD'"`).
+  the list comes from `SERVICE_HEALTH_URLS`
+  (`src/app/api/proxy/health/route.ts:22#"process.env.SERVICE_HEALTH_URLS"`,
+  parsed by `src/lib/service-health.ts:5#"parseServiceHealthUrls"`; unset means an
+  empty list), probed with `HEAD`
+  (`src/app/api/proxy/health/route.ts:28-29#"method: 'HEAD'"`).
 - `github-prs`: `src/components/widgets/GitHubPRWidget.tsx:38#"'/api/proxy/github'"`;
-  token and repository list come from `GITHUB_TOKEN` and a default in the
-  route unless the request passes `token` and `repos` query parameters
-  (`src/app/api/proxy/github/route.ts:45-46#"searchParams.get('repos')"`).
-  The widget passes neither.
+  token and repository list come from `GITHUB_TOKEN` and `GITHUB_REPOS`
+  (no default list) unless the request passes `token` and `repos` query
+  parameters (`src/app/api/proxy/github/route.ts:81#"searchParams.get('repos')"`).
+  The widget passes neither. `ciStatus` comes from the check runs of each PR's
+  head commit (`src/app/api/proxy/github/route.ts:36#"check-runs"`, folded by
+  `src/lib/github-ci.ts:12#"summarizeCheckRuns"`).
 - `alert-history`: `src/components/widgets/AlertHistoryWidget.tsx:29#"'/api/proxy/alert-history'"`;
   route `src/app/api/proxy/alert-history/route.ts:16#"smart-alert-state.json"`.
 
