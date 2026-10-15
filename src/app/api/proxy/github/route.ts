@@ -18,16 +18,20 @@ interface GitHubPR {
 
 const GH_HEADERS = (token: string) => ({ Authorization: `token ${token}`, 'User-Agent': 'clawd-monitor' })
 
-// A commit whose checks all passed does not change status, so repeated polls
-// reuse it. Failures are not cached (a re-run can flip them) and the map is
-// bounded, oldest entry first out.
+// A commit whose checks all passed is remembered for CI_CACHE_TTL_MS so
+// repeated polls skip the lookup. A re-run or a later workflow can still add
+// check runs to the same commit, so an entry expires after the TTL and is
+// looked up again. Failures are never cached, and the map is bounded, oldest
+// entry first out.
 const CI_CACHE_MAX = 200
-const passedCi = new Map<string, GitHubPR['ciStatus']>()
+const CI_CACHE_TTL_MS = 5 * 60 * 1000
+const passedCi = new Map<string, { status: GitHubPR['ciStatus']; at: number }>()
 
 async function fetchCiStatus(owner: string, repo: string, sha: string, token: string): Promise<GitHubPR['ciStatus']> {
   const key = `${owner}/${repo}@${sha}`
   const cached = passedCi.get(key)
-  if (cached) return cached
+  if (cached && Date.now() - cached.at < CI_CACHE_TTL_MS) return cached.status
+  if (cached) passedCi.delete(key)
   try {
     const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`, {
       headers: GH_HEADERS(token),
@@ -38,7 +42,7 @@ async function fetchCiStatus(owner: string, repo: string, sha: string, token: st
     const status = summarizeCheckRuns(body.check_runs ?? [])
     if (status === 'success') {
       if (passedCi.size >= CI_CACHE_MAX) passedCi.delete(passedCi.keys().next().value as string)
-      passedCi.set(key, status)
+      passedCi.set(key, { status, at: Date.now() })
     }
     return status
   } catch {

@@ -2,6 +2,14 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-15T11:55:56Z, agent-registry-lifecycle, auth-and-config-loading and
+  widget-data-modes re-verified after the review follow-ups. The handshake
+  now fails closed when the fresh token re-read throws (only the write stays
+  best effort), and the GitHub route remembers a passed commit per
+  repository for five minutes instead of indefinitely. Citations in
+  `agent-ws-handler.ts` and the GitHub route re-pointed.
+  `okf-kit check --require-anchors docs/okf`: no citation findings.
+
 - 2026-10-15T11:45:42Z, agent-registry-lifecycle, auth-and-config-loading and
   widget-data-modes re-verified after the handshake and proxy follow-ups.
   agent-registry-lifecycle: the `lastUsedAt` stamp re-reads `tokens.json` and

@@ -3,7 +3,7 @@ type: module
 title: Widget data modes, agent snapshot vs default gateway vs dashboard host
 description: For each dashboard widget, where its data comes from when an agent is selected (the agent's last WebSocket snapshot) and when none is (the default gateway or the dashboard host itself), which widgets ignore the selection, and how the selection is held.
 tags: [widgets, dashboard, agents, data-sources]
-timestamp: 2026-10-15T11:45:42Z
+timestamp: 2026-10-15T11:55:56Z
 sources:
   - src/lib/widgets.ts
   - src/lib/active-agent.tsx
@@ -157,9 +157,9 @@ Evidence for the switch in each component, agent URL first:
 - `github-prs`: `src/components/widgets/GitHubPRWidget.tsx:38#"'/api/proxy/github'"`;
   token and repository list come from `GITHUB_TOKEN` and `GITHUB_REPOS`
   (no default list) unless the request passes `token` and `repos` query
-  parameters (`src/app/api/proxy/github/route.ts:77#"searchParams.get('repos')"`).
+  parameters (`src/app/api/proxy/github/route.ts:81#"searchParams.get('repos')"`).
   The widget passes neither. `ciStatus` comes from the check runs of each PR's
-  head commit (`src/app/api/proxy/github/route.ts:32#"check-runs"`, folded by
+  head commit (`src/app/api/proxy/github/route.ts:36#"check-runs"`, folded by
   `src/lib/github-ci.ts:12#"summarizeCheckRuns"`).
 - `alert-history`: `src/components/widgets/AlertHistoryWidget.tsx:29#"'/api/proxy/alert-history'"`;
   route `src/app/api/proxy/alert-history/route.ts:16#"smart-alert-state.json"`.

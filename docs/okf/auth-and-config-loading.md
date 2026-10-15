@@ -3,7 +3,7 @@ type: module
 title: Auth and config loading across the two module graphs
 description: Admin password precedence, the password.json and tokens.json data files, JWT cookie flags and lifetime, the production startup check, and how the custom server loads .env files before its modules read the environment, while the compiled route graph reads its own variables later.
 tags: [auth, config, env, jwt, startup]
-timestamp: 2026-10-15T11:45:42Z
+timestamp: 2026-10-15T11:55:56Z
 sources:
   - server.ts
   - tsconfig.server.json
@@ -87,7 +87,7 @@ The route-graph-only variables (`DEFAULT_GATEWAY_TOKEN` in
 `src/lib/gateway.ts:11#"process.env.ALLOWED_GATEWAY_HOSTS"`, `CLAWD_DIR` in
 `src/app/api/proxy/memory/route.ts:9#"CLAWD_DIR"` and
 `src/app/api/proxy/alert-history/route.ts:8#"CLAWD_DIR"`, `GITHUB_TOKEN` in
-`src/app/api/proxy/github/route.ts:76#"process.env.GITHUB_TOKEN"`) are read
+`src/app/api/proxy/github/route.ts:80#"process.env.GITHUB_TOKEN"`) are read
 by the routes at request time. `NEXT_PUBLIC_DEFAULT_GATEWAY_URL`
 (`src/lib/gateway.ts:6#"NEXT_PUBLIC_DEFAULT_GATEWAY_URL"`) is the exception
 in the other direction: when it is set while `next build` runs, Next.js
@@ -122,7 +122,7 @@ caller's default when a file is missing or not valid JSON
   (`src/app/api/settings/tokens/route.ts:35#"bcrypt.hash(rawToken, 10)"`);
   the raw token is returned once, in the `POST` response. A successful
   handshake with such a token stamps its `lastUsedAt`
-  (`src/lib/agent-ws-handler.ts:73#"current.lastUsedAt"`), which the `GET`
+  (`src/lib/agent-ws-handler.ts:80#"current.lastUsedAt"`), which the `GET`
   list returns and the settings page shows.
 
 ## Admin password precedence

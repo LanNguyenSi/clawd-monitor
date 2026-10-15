@@ -281,6 +281,21 @@ describe('handleAgentConnection – valid bcrypt persisted token', () => {
     expect(mockRegistry.register).not.toHaveBeenCalled()
   })
 
+  it('fails closed when the fresh token re-read throws', async () => {
+    mockReadTokens
+      .mockReturnValueOnce([{ id: 'tok-1', name: 'test-token', tokenHash: bcryptHash, createdAt: new Date().toISOString() }])
+      .mockImplementationOnce(() => { throw new Error('EIO') })
+    const ws = makeMockWs()
+    handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+
+    await emitAndWait(ws, { ...AUTH_MSG, token: BCRYPT_PLAINTEXT })
+
+    expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_error')
+    expect(ws.close).toHaveBeenCalledOnce()
+    expect(mockWriteTokens).not.toHaveBeenCalled()
+    expect(mockRegistry.register).not.toHaveBeenCalled()
+  })
+
   it('does not write tokens when the token does not match', async () => {
     const ws = makeMockWs()
     handleAgentConnection(ws as unknown as WebSocket, fakeReq)

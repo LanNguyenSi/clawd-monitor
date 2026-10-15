@@ -64,17 +64,25 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
         // be stale. Re-read synchronously and patch only the matched id, with
         // no await between the read and the write, so a token created or
         // revoked meanwhile is neither lost nor resurrected.
+        // A failing read rejects the handshake (fail closed): without it a
+        // revoked token could not be told apart from a valid one. Only the
+        // write stays best effort.
+        let fresh: TokenEntry[] = []
         try {
-          const fresh = readTokens()
-          const current = fresh.find((t) => t.id === matched!.id)
-          if (!current) {
-            tokenValid = false
-          } else {
-            current.lastUsedAt = new Date().toISOString()
-            writeTokens(fresh)
-          }
+          fresh = readTokens()
         } catch {
-          // best effort: a read-only data dir must not fail the handshake
+          console.warn('[agent-ws] Could not re-read tokens; rejecting handshake')
+        }
+        const current = fresh.find((t) => t.id === matched!.id)
+        if (!current) {
+          tokenValid = false
+        } else {
+          current.lastUsedAt = new Date().toISOString()
+          try {
+            writeTokens(fresh)
+          } catch {
+            // best effort: a read-only data dir must not fail the handshake
+          }
         }
       }
 

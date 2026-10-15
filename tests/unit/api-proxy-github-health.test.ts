@@ -76,6 +76,51 @@ describe('GET /api/proxy/github', () => {
     expect(second.prs.map((p: { ciStatus: string }) => p.ciStatus).sort()).toEqual(['failure', 'success'])
   })
 
+  it('keys the passed-commit cache per repository, so a failing repo sharing a head sha is still queried', async () => {
+    vi.stubEnv('GITHUB_REPOS', 'octo/keyed-ok,octo/keyed-bad')
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/pulls?')) {
+        return json([{ id: 1, number: 1, title: 't', html_url: 'u', state: 'open', draft: false, created_at: 'c', head: { sha: 'shared9' } }])
+      }
+      const conclusion = url.includes('/octo/keyed-ok/') ? 'success' : 'failure'
+      return json({ check_runs: [{ status: 'completed', conclusion }] })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const req = () => new NextRequest('http://localhost/api/proxy/github')
+    // The first poll caches the passing repo's commit; the second must still
+    // query the failing repo even though its PR has the same head sha.
+    await githubGET(req())
+    const body = await (await githubGET(req())).json()
+    const byRepo = Object.fromEntries(body.prs.map((p: { repo: string; ciStatus: string }) => [p.repo, p.ciStatus]))
+    expect(byRepo).toEqual({ 'octo/keyed-ok': 'success', 'octo/keyed-bad': 'failure' })
+    const urls = fetchMock.mock.calls.map((c) => (c as unknown[])[0] as string).filter((u) => u.includes('/check-runs'))
+    expect(urls.filter((u) => u.includes('/octo/keyed-bad/'))).toHaveLength(2)
+  })
+
+  it('treats a passed-commit cache entry older than five minutes as a miss', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.stubEnv('GITHUB_REPOS', 'octo/expiry')
+      const fetchMock = vi.fn(async (url: string) =>
+        url.includes('/pulls?')
+          ? json([{ id: 1, number: 1, title: 't', html_url: 'u', state: 'open', draft: false, created_at: 'c', head: { sha: 'exp1' } }])
+          : json({ check_runs: [{ status: 'completed', conclusion: 'success' }] }))
+      vi.stubGlobal('fetch', fetchMock)
+      const checkCalls = () => fetchMock.mock.calls.map((c) => (c as unknown[])[0] as string).filter((u) => u.includes('/check-runs')).length
+      const req = () => new NextRequest('http://localhost/api/proxy/github')
+      await githubGET(req())
+      expect(checkCalls()).toBe(1)
+      vi.advanceTimersByTime(5 * 60 * 1000 - 1000)
+      await githubGET(req())
+      expect(checkCalls()).toBe(1)
+      vi.advanceTimersByTime(2000)
+      await githubGET(req())
+      expect(checkCalls()).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('bounds the passed-commit cache by evicting the oldest entry', async () => {
     vi.stubEnv('GITHUB_REPOS', 'octo/bounded')
     const shas = Array.from({ length: 201 }, (_, i) => `sha${i}x`)
