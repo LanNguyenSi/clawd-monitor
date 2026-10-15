@@ -13,7 +13,7 @@ sources:
   - src/app/api/agents/list/route.ts
   - src/app/api/agents/[agentId]/snapshot/route.ts
   - src/app/api/agents/[agentId]/logs/route.ts
-  - src/app/api/agents/[agentId]/session-log/route.ts
+  - src/app/api/agents/[agentId]/route.ts
   - src/app/api/health/route.ts
   - src/app/api/settings/tokens/route.ts
   - src/app/api/settings/tokens/[id]/route.ts
@@ -35,27 +35,28 @@ single one of those files states.
   on `/api/agents/ws`; it is marked offline only by the close of the socket
   that currently owns it; it is removed only by `AgentRegistry.cleanup()`,
   which runs only inside `getAll()`, and only for an entry that is offline
-  and whose last snapshot is older than `AGENT_TTL_MS`.
+  and whose last snapshot is older than `AGENT_TTL_MS`, or by
+  `DELETE /api/agents/<id>` for an offline entry.
 
 ## One registry for two module graphs
 
 The registry is a singleton stored on `globalThis`
-(`src/lib/agent-registry.ts:97-102#"export const registry = globalForRegistry.agentRegistry"`).
+(`src/lib/agent-registry.ts:106-111#"export const registry = globalForRegistry.agentRegistry"`).
 The custom server (`server.ts`, run by `tsx` or compiled by `tsc`) and the
 Next.js-compiled API routes load `agent-registry.ts` as separate module
 instances; the `globalThis` slot is what makes the WebSocket handler and the
 routes see the same `agents` map. The server graph imports the handler
-statically (`server.ts:5#"handleAgentConnection"`), so it creates the
+statically (`server.ts:8#"handleAgentConnection"`), so it creates the
 singleton before Next.js starts. Module-level constants of the server-graph
 copy, `AGENT_TTL_MS` among them, are the ones the shared instance's methods
 use; see [auth and config loading](auth-and-config-loading.md) for when
-those constants are read.
+those constants are read (after the `.env` files were loaded).
 
 ## Handshake
 
 1. `server.ts` upgrades only the path `/api/agents/ws` and destroys every
    other upgrade request
-   (`server.ts:39-45#"socket.destroy()"`).
+   (`server.ts:42-48#"socket.destroy()"`).
 2. Every frame is JSON-parsed and validated against `wsMessageSchema`
    (`auth`, `snapshot` or `ping`). A frame that is not JSON is dropped
    without a reply
@@ -68,20 +69,20 @@ those constants are read.
 4. The token is checked against the `AGENT_TOKENS` list first (exact string
    match), then with `bcrypt.compare` against every `tokenHash` in
    `tokens.json`
-   (`src/lib/agent-ws-handler.ts:48-54#"tokenValid = true"`). A miss sends
+   (`src/lib/agent-ws-handler.ts:51-56#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket
-   (`src/lib/agent-ws-handler.ts:61-64#"ws.close()"`).
+   (`src/lib/agent-ws-handler.ts:73-76#"ws.close()"`).
 5. On success the handler calls `registry.register()` with the agent's
    self-reported `agentId`, `name`, `version`, `gatewayUrl` and
    `gatewayToken`, then sends `auth_ok`
-   (`src/lib/agent-ws-handler.ts:68-79#"auth_ok"`).
+   (`src/lib/agent-ws-handler.ts:80-91#"auth_ok"`).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored
-(`src/lib/agent-ws-handler.ts:84-88#"type: 'pong'"`). A snapshot is stored
+(`src/lib/agent-ws-handler.ts:96-100#"type: 'pong'"`). A snapshot is stored
 under the connection's own `agentId`, not the `agentId` field inside the
 snapshot payload
-(`src/lib/agent-ws-handler.ts:85#"registry.update(agentId, msg.data)"`).
+(`src/lib/agent-ws-handler.ts:97#"registry.update(agentId, msg.data)"`).
 
 ## Tokens are not bound to an agent
 
@@ -89,8 +90,13 @@ Neither token source carries an `agentId`: a `TokenEntry` holds `id`,
 `name`, `tokenHash`, `createdAt` and an optional `lastUsedAt`
 (`src/lib/data-store.ts:29-34#"lastUsedAt?: string"`), and the handshake
 only asks whether the token is valid. Any valid token can therefore register
-any `agentId`, including one another agent is using. No code path writes
-`lastUsedAt`; the settings API only passes the stored value through
+any `agentId`, including one another agent is using. A match against a
+persisted token stamps that entry's `lastUsedAt` and rewrites `tokens.json`;
+a failed write does not fail the handshake
+(`src/lib/agent-ws-handler.ts:64-66#"matched.lastUsedAt"`,
+`src/lib/agent-ws-handler.ts:68-70#"best effort"`). A static
+`AGENT_TOKENS` match has no entry and stamps nothing. The settings API passes
+the stored value through
 (`src/app/api/settings/tokens/route.ts:14#"id, name, createdAt, lastUsedAt"`).
 
 ## Newest connection wins
@@ -115,13 +121,13 @@ never sends snapshots keeps `lastSnapshotAt` at its last snapshot (or `0`).
 ## Offline and eviction
 
 An entry goes offline only through `disconnect()` from the socket's `close`
-handler (`src/lib/agent-ws-handler.ts:92-94#"registry.disconnect(agentId, ws)"`).
+handler (`src/lib/agent-ws-handler.ts:104-106#"registry.disconnect(agentId, ws)"`).
 There is no server-side idle timeout: an entry whose socket stays open is
 online indefinitely, whether or not it sends snapshots.
 
 Eviction is lazy. `cleanup()` deletes an entry when it is offline and
 `now - lastSnapshotAt > AGENT_TTL_MS`
-(`src/lib/agent-registry.ts:90#"now - entry.lastSnapshotAt > AGENT_TTL_MS"`),
+(`src/lib/agent-registry.ts:99#"now - entry.lastSnapshotAt > AGENT_TTL_MS"`),
 with `AGENT_TTL_MS` defaulting to 300000 ms
 (`src/lib/agent-registry.ts:22#"AGENT_TTL_MS"`). Only `getAll()` calls it
 (`src/lib/agent-registry.ts:76-77#"this.cleanup()"`), and only two routes
@@ -136,20 +142,22 @@ unauthenticated `GET /api/health`
   `GET /api/agents/<id>/snapshot` answers with the stale snapshot and
   `online: false`
   (`src/app/api/agents/[agentId]/snapshot/route.ts:16-23#"online: agent.online"`).
-- The logs and session-log routes read `registry.agents` directly and
-  answer 503 for an offline entry
-  (`src/app/api/agents/[agentId]/logs/route.ts:16-19#"Agent offline"`,
-  `src/app/api/agents/[agentId]/session-log/route.ts:16-19#"Agent offline"`).
+- The logs route reads `registry.agents` directly and answers 503 for an
+  offline entry
+  (`src/app/api/agents/[agentId]/logs/route.ts:16-19#"Agent offline"`).
 - An entry that never received a snapshot has `lastSnapshotAt` `0`, so
   the first `getAll()` after it goes offline evicts it.
 
-There is no route that removes an agent. The `AgentSwitcher` remove button
-sends `DELETE /api/agents/<id>`
-(`src/components/Nav/AgentSwitcher.tsx:63-64#"method: 'DELETE'"`), but no
-route file handles that path (the `src/app/api/agents/[agentId]/` directory
-holds only `logs`, `session-log` and `snapshot`). The switcher drops the
-agent from its local list, and its next 5-second poll of
-`/api/agents/list` brings it back while the entry exists.
+`DELETE /api/agents/<id>` removes an entry now, without waiting for the
+TTL: the `AgentSwitcher` remove button, shown for offline agents only,
+sends it (`src/components/Nav/AgentSwitcher.tsx:63-64#"method: 'DELETE'"`).
+The route calls `registry.remove()`
+(`src/app/api/agents/[agentId]/route.ts:17#"registry.remove(agentId)"`), which
+deletes an offline entry, refuses an online one with 409 and answers 404 for
+an unknown id
+(`src/lib/agent-registry.ts:88#"remove(agentId: string)"`). The switcher
+keeps the entry in its list on any failure other than 404, so a removed agent
+does not reappear on the next 5-second poll unless it reconnects.
 
 ## Token revocation affects new connections only
 

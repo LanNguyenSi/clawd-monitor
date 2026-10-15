@@ -19,6 +19,7 @@ import type { IncomingMessage } from 'http'
 
 vi.mock('@/lib/data-store', () => ({
   readTokens: vi.fn(() => []),
+  writeTokens: vi.fn(),
 }))
 
 vi.mock('@/lib/agent-registry', () => {
@@ -38,10 +39,11 @@ vi.mock('@/lib/agent-registry', () => {
 
 // ── imports (after mock declarations) ────────────────────────────────────────
 
-import { readTokens } from '@/lib/data-store'
+import { readTokens, writeTokens } from '@/lib/data-store'
 import { registry } from '@/lib/agent-registry'
 
 const mockReadTokens = vi.mocked(readTokens)
+const mockWriteTokens = vi.mocked(writeTokens)
 const mockRegistry = registry as typeof registry & {
   register: ReturnType<typeof vi.fn>
   update: ReturnType<typeof vi.fn>
@@ -218,6 +220,38 @@ describe('handleAgentConnection – valid bcrypt persisted token', () => {
     const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
     expect(sent.type).toBe('auth_ok')
     expect(ws.close).not.toHaveBeenCalled()
+  })
+
+  it('stamps lastUsedAt on the matching token entry and persists it', async () => {
+    const ws = makeMockWs()
+    handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+
+    await emitAndWait(ws, { ...AUTH_MSG, token: BCRYPT_PLAINTEXT })
+
+    expect(mockWriteTokens).toHaveBeenCalledOnce()
+    const written = mockWriteTokens.mock.calls[0][0]
+    expect(written).toHaveLength(1)
+    expect(written[0].id).toBe('tok-1')
+    expect(new Date(written[0].lastUsedAt as string).toISOString()).toBe(written[0].lastUsedAt)
+  })
+
+  it('still sends auth_ok when persisting lastUsedAt fails', async () => {
+    mockWriteTokens.mockImplementationOnce(() => { throw new Error('EROFS') })
+    const ws = makeMockWs()
+    handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+
+    await emitAndWait(ws, { ...AUTH_MSG, token: BCRYPT_PLAINTEXT })
+
+    expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_ok')
+  })
+
+  it('does not write tokens when the token does not match', async () => {
+    const ws = makeMockWs()
+    handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+
+    await emitAndWait(ws, { ...AUTH_MSG, token: 'wrong-plaintext' })
+
+    expect(mockWriteTokens).not.toHaveBeenCalled()
   })
 
   it('sends auth_error when the token does not match any persisted hash', async () => {

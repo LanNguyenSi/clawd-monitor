@@ -1,5 +1,5 @@
 /**
- * Gateway API client — proxies requests to the active OpenClaw instance.
+ * Gateway API client, proxies requests to the default OpenClaw gateway (or an allowlisted override).
  * Used server-side in API routes.
  */
 

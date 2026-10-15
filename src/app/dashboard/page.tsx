@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Navbar } from '@/components/Nav/Navbar'
 import { WidgetGrid } from '@/components/Grid/WidgetGrid'
@@ -20,7 +20,6 @@ function DashboardInner() {
   const [editMode, setEditMode] = useState(true)
   const [gridKey, setGridKey] = useState(0)
   const [activeWidgetIds, setActiveWidgetIds] = useState<string[]>([])
-  const dashboardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let mounted = true
@@ -96,20 +95,6 @@ function DashboardInner() {
     } catch {}
   }, [])
 
-  const handleScreenshot = useCallback(async () => {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { default: html2canvas } = await import('html2canvas' as any)
-      const canvas = await html2canvas(dashboardRef.current ?? document.body, { useCORS: true })
-      const link = document.createElement('a')
-      link.download = `clawd-monitor-${new Date().toISOString().slice(0, 19)}.png`
-      link.href = canvas.toDataURL()
-      link.click()
-    } catch {
-      console.warn('Screenshot: html2canvas not available')
-    }
-  }, [])
-
   const handleToggleEditMode = useCallback(() => {
     setEditMode((v) => !v)
   }, [])
@@ -118,7 +103,6 @@ function DashboardInner() {
 
   return (
     <div
-      ref={dashboardRef}
       className="flex flex-col h-screen bg-zinc-100 dark:bg-zinc-950"
     >
       <Navbar
@@ -140,7 +124,6 @@ function DashboardInner() {
 
       <KeyboardShortcuts
         onRefresh={handleRefresh}
-        onScreenshot={handleScreenshot}
         onToggleTheme={toggleTheme}
         onToggleEditMode={handleToggleEditMode}
       />

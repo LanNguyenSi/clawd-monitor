@@ -98,22 +98,6 @@ export async function GET(req: NextRequest, { params }: Props) {
           // Send informative message immediately so widget doesn't hang on "Connecting…"
           send('[info] Log streaming not available for remote agents.')
           send('[info] The agent runs on a different host — logs cannot be proxied via this server.')
-          send('[info] Wave 9: log push via WebSocket will enable real-time remote logs.')
-        }
-
-        function tryDockerLogs() {
-          // Fallback: try docker logs for clawd-monitor-agent container
-          child = spawn('docker', ['logs', '--tail', '100', '--follow', 'clawd-monitor-agent'], {
-            stdio: ['ignore', 'pipe', 'pipe'],
-          })
-          child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
-          child.stderr?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
-          child.on('error', () => {
-            // Last resort: tail /var/log/syslog
-            child = spawn('tail', ['-f', '-n', '100', '/var/log/syslog'], { stdio: ['ignore', 'pipe', 'pipe'] })
-            child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
-            child.on('error', () => send('[info] No log source available on this host'))
-          })
         }
       }
     }

@@ -13,8 +13,8 @@ the root `README.md`; these docs point to them instead of duplicating them.
 
 - [Auth and config loading](auth-and-config-loading.md), admin password
   precedence, `password.json` and `tokens.json`, JWT cookie flags, and which
-  environment variables the custom-server graph reads before Next.js loads
-  its `.env` files.
+  how the custom server loads its `.env` files before its modules read the
+  environment.
 - [Widget data modes](widget-data-modes.md), per widget: the agent-snapshot
   source when an agent is selected, the default-gateway or dashboard-host
   source when none is, and the widgets that ignore the selection.

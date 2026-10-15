@@ -2,7 +2,7 @@ import type WebSocket from 'ws'
 import type { IncomingMessage } from 'http'
 import bcrypt from 'bcryptjs'
 import { registry } from './agent-registry.js'
-import { readTokens } from './data-store.js'
+import { readTokens, writeTokens, type TokenEntry } from './data-store.js'
 import { wsMessageSchema, type ValidatedWsMessage } from './schemas.js'
 
 // Static tokens from env (for backward compat + default setup)
@@ -46,15 +46,27 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
 
       // Validate token — check static env tokens first, then persisted tokens.json
       let tokenValid = STATIC_TOKENS.includes(msg.token)
+      let persistedTokens: TokenEntry[] = []
+      let matched: TokenEntry | null = null
       if (!tokenValid) {
-        const persistedTokens = readTokens()
+        persistedTokens = readTokens()
         for (const entry of persistedTokens) {
           try {
             if (await bcrypt.compare(msg.token, entry.tokenHash)) {
               tokenValid = true
+              matched = entry
               break
             }
           } catch {}
+        }
+      }
+
+      if (matched) {
+        try {
+          matched.lastUsedAt = new Date().toISOString()
+          writeTokens(persistedTokens)
+        } catch {
+          // best effort: a read-only data dir must not fail the handshake
         }
       }
 

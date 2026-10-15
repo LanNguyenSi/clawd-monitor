@@ -1,7 +1,7 @@
 ---
 type: module
 title: Auth and config loading across the two module graphs
-description: Admin password precedence, the password.json and tokens.json data files, JWT cookie flags and lifetime, the production startup check, and which environment variables the custom-server graph reads before Next.js loads its .env files.
+description: Admin password precedence, the password.json and tokens.json data files, JWT cookie flags and lifetime, the production startup check, and how the custom server loads .env files before its modules read the environment, while the compiled route graph reads its own variables later.
 tags: [auth, config, env, jwt, startup]
 timestamp: 2026-10-11T16:21:35Z
 sources:
@@ -13,6 +13,7 @@ sources:
   - docker-compose.traefik.yml
   - src/lib/auth.ts
   - src/lib/data-store.ts
+  - src/lib/env-bootstrap.ts
   - src/lib/agent-ws-handler.ts
   - src/lib/agent-registry.ts
   - src/lib/gateway.ts
@@ -42,7 +43,7 @@ authentication that sit in more than one file.
   checked in the WebSocket handshake, see
   [agent registry lifecycle](agent-registry-lifecycle.md).
 
-## Two module graphs, two env read times
+## Two module graphs and env loading
 
 `npm run dev` runs `tsx server.ts`; the production build compiles
 `server.ts` with `tsc` and starts `node dist/server.js`
@@ -52,50 +53,45 @@ authentication that sit in more than one file.
 `src/app/` is compiled by Next.js into a separate module graph.
 
 The server graph reads its environment at module load, before Next.js
-exists:
+exists. `server.ts` imports `./src/lib/env-bootstrap.js` first
+(`server.ts:3#"env-bootstrap"`), which calls `loadEnvConfig()` from
+`@next/env` (`src/lib/env-bootstrap.ts:9#"loadEnvConfig(dir, dev)"`) and so puts
+`.env`, `.env.local` and the mode-specific variants into `process.env`
+before any module below it is evaluated. `@next/env` never replaces a
+variable that is already in the process environment, so values from the
+shell or from Docker Compose win over the files. After that import:
 
 - `server.ts` reads `NODE_ENV`, `PORT` and `HOSTNAME`
-  (`server.ts:7-9#"process.env.HOSTNAME"`) and runs the startup check on
+  (`server.ts:10-12#"process.env.HOSTNAME"`) and runs the startup check on
   `JWT_SECRET`, `ADMIN_PASSWORD`, `ADMIN_PASSWORD_HASH` and, in development
-  only, `AGENT_TOKENS` (`server.ts:12-23#"AGENT_TOKENS not set"`) before it
+  only, `AGENT_TOKENS` (`server.ts:15-26#"AGENT_TOKENS not set"`) before it
   calls
-  `next({ dev, hostname, port })` (`server.ts:26#"next({ dev, hostname, port })"`).
-- Its static import of the WebSocket handler (`server.ts:5#"handleAgentConnection"`)
-  evaluates three more module-level reads first: `AGENT_TOKENS`
+  `next({ dev, hostname, port })` (`server.ts:29#"next({ dev, hostname, port })"`).
+- Its static import of the WebSocket handler (`server.ts:8#"handleAgentConnection"`)
+  evaluates three more module-level reads: `AGENT_TOKENS`
   (`src/lib/agent-ws-handler.ts:9-12#".filter(Boolean)"`), `AGENT_TTL_MS`
   (`src/lib/agent-registry.ts:22#"AGENT_TTL_MS"`) and
   `CLAWD_MONITOR_DATA_DIR` (`src/lib/data-store.ts:4#"CLAWD_MONITOR_DATA_DIR"`).
 
-Next.js loads `.env*` files from the project directory into `process.env`
-during its own initialisation, after these reads. A variable set only in
-such a file is therefore invisible to the server graph but visible to the
-routes, which read it later:
-
-- `JWT_SECRET` set only in a `.env` file: with `NODE_ENV=production` the
-  startup check exits the process
-  (`server.ts:12-18#"process.exit(1)"`); in development it warns, while the
-  routes sign with the `.env` value.
-- `AGENT_TOKENS` or `AGENT_TTL_MS` set only in a `.env` file: ignored. The
-  handshake uses the server-graph `STATIC_TOKENS`, and the shared registry
-  instance was created by the server graph with its `AGENT_TTL_MS`.
-- `CLAWD_MONITOR_DATA_DIR` set only in a `.env` file: the two graphs
-  disagree. Each evaluates `data-store.ts` separately, so the token routes
-  write `tokens.json` to the configured directory while the handshake
-  reads it from the default `/data`.
+Because the bootstrap import is first, a variable set only in a `.env` or
+`.env.local` file reaches both graphs: the startup check, the handshake's
+`STATIC_TOKENS`, the registry's `AGENT_TTL_MS`, and the data directory the
+handshake and the token routes share. Next.js later calls the same loader
+for its own graph; it finds the files already loaded.
 
 The route-graph-only variables (`DEFAULT_GATEWAY_TOKEN` in
 `src/lib/gateway.ts:7#"DEFAULT_GATEWAY_TOKEN"`, `ALLOWED_GATEWAY_HOSTS` in
 `src/lib/gateway.ts:11#"process.env.ALLOWED_GATEWAY_HOSTS"`, `CLAWD_DIR` in
 `src/app/api/proxy/memory/route.ts:9#"CLAWD_DIR"` and
 `src/app/api/proxy/alert-history/route.ts:8#"CLAWD_DIR"`, `GITHUB_TOKEN` in
-`src/app/api/proxy/github/route.ts:45#"process.env.GITHUB_TOKEN"`) see
-`.env` values. `NEXT_PUBLIC_DEFAULT_GATEWAY_URL`
+`src/app/api/proxy/github/route.ts:62#"process.env.GITHUB_TOKEN"`) are read
+by the routes at request time. `NEXT_PUBLIC_DEFAULT_GATEWAY_URL`
 (`src/lib/gateway.ts:6#"NEXT_PUBLIC_DEFAULT_GATEWAY_URL"`) is the exception
 in the other direction: when it is set while `next build` runs, Next.js
 inlines its build-time value into the compiled code, and a later runtime
 value does not replace it.
 
-The Docker image avoids the split: the runtime stage copies only `.next`,
+Under Docker the environment is already complete at process start: the runtime stage copies only `.next`,
 `public`, `node_modules`, `package.json` and `dist`
 (`Dockerfile:35-40#"COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist"`),
 and both compose files pass the environment through `environment:` and
@@ -117,13 +113,14 @@ caller's default when a file is missing or not valid JSON
 `tokens.json` as "no UI-created tokens".
 
 - `password.json` holds `{hash}` once the password was changed in the UI
-  (`src/lib/data-store.ts:51-52#"'password.json'"`). The type also has a
-  `plaintext` field (`src/lib/data-store.ts:46-48#"plaintext?: string"`)
-  that no code reads or writes.
+  (`src/lib/data-store.ts:51-52#"'password.json'"`).
 - `tokens.json` holds the agent tokens created in the settings UI, each as
   a bcrypt hash with cost 10
   (`src/app/api/settings/tokens/route.ts:35#"bcrypt.hash(rawToken, 10)"`);
-  the raw token is returned once, in the `POST` response.
+  the raw token is returned once, in the `POST` response. A successful
+  handshake with such a token stamps its `lastUsedAt`
+  (`src/lib/agent-ws-handler.ts:66#"matched.lastUsedAt"`), which the `GET`
+  list returns and the settings page shows.
 
 ## Admin password precedence
 
@@ -141,7 +138,7 @@ It verifies the current password with the same chain, except that it has no
 production branch: with nothing configured it compares against `admin`
 (`src/app/api/auth/change-password/route.ts:36-44#"currentPassword === 'admin'"`).
 In production the startup check exits when neither `ADMIN_PASSWORD` nor
-`ADMIN_PASSWORD_HASH` is set (`server.ts:15-18#"process.exit(1)"`), so this
+`ADMIN_PASSWORD_HASH` is set (`server.ts:18-21#"process.exit(1)"`), so this
 fallback is reached only in development.
 It stores a bcrypt hash with cost 12
 (`src/app/api/auth/change-password/route.ts:52-53#"writePasswordConfig({ hash: newHash })"`).

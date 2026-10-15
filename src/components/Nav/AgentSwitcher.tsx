@@ -60,9 +60,12 @@ export function AgentSwitcher() {
     e.stopPropagation()
     setRemoving(agentId)
     try {
-      await fetch(`/api/agents/${agentId}`, {
+      const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}`, {
         method: 'DELETE',
       })
+      // 404: already gone from the registry; drop it locally too. Any other
+      // failure (401, 409 agent came back online) keeps the entry listed.
+      if (!res.ok && res.status !== 404) return
       if (activeAgentId === agentId) select(null)
       setAgents((prev) => prev.filter((a) => a.agentId !== agentId))
     } finally {

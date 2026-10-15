@@ -1,3 +1,6 @@
+// Must stay the first import: it loads .env / .env.local into process.env
+// before the modules below read their configuration at load time.
+import './src/lib/env-bootstrap.js'
 import { createServer } from 'http'
 import { parse } from 'url'
 import next from 'next'
