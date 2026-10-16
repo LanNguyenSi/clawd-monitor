@@ -1,10 +1,10 @@
 # Self-hosted fonts (next/font/local)
 
 Fonts are vendored here and loaded through `next/font/local` in
-`src/app/layout.tsx`. A build must never reach the network for fonts — do not
-add a `next/font/google` import. The CI build job (`type check` job's sibling,
-the `build` job in `.github/workflows/ci.yml`) has a **font guard** step that
-fails when `next/font/google` appears in any `.ts/.tsx/.js/.jsx/.mjs/.cjs` file.
+`src/app/layout.tsx`. A build must never reach the network for fonts, so do not
+add a `next/font/google` import. The `build` job in `.github/workflows/ci.yml`
+has a **font guard** step that fails when `next/font/google` appears in any
+`.ts/.tsx/.js/.jsx/.mjs/.cjs/.mts/.cts` file, and when grep itself errors.
 
 ## Why one `@font-face` per subset
 
@@ -16,7 +16,9 @@ The preloaded `latin` call also gets a size-adjusted `Inter Fallback` face
 (`adjustFontFallback` default); the other subsets set `adjustFontFallback: false`
 so no extra fallback faces are emitted. Only `latin` is `preload`ed. This mirrors
 what `next/font/google` produced for this app (one face per subset, latin
-preloaded), so the rendered result is unchanged.
+preloaded), so the font family stack, the glyphs and the subsets are unchanged.
+The fallback metrics used during the swap are now computed from the vendored
+file, so they differ slightly from the values the Google loader used.
 
 ## Why every subset, even though only `latin` is preloaded
 
@@ -48,10 +50,10 @@ The `unicode-range` values in `src/app/layout.tsx` are taken from the package's
 
 ## How to update a font
 
-`@fontsource-variable/inter` is **not** a dependency — it is only used to obtain
+`@fontsource-variable/inter` is **not** a dependency; it is only used to obtain
 the files, so this adds nothing to `package.json` or the lockfile.
 
-1. From the worktree root, fetch and unpack the package into a throwaway dir:
+1. From the repository root, fetch and unpack the package into a throwaway dir:
 
    ```sh
    mkdir -p .scratch

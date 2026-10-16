@@ -8,7 +8,7 @@ import './globals.css'
 // next/font/local cannot attach a unicode-range to an individual file, so each
 // subset is declared with its own localFont call. Every call sets
 // font-family: "Inter" via `declarations`, so next/font keeps that single family
-// name across all faces and the browser picks the face by unicode-range — the
+// name across all faces and the browser picks the face by unicode-range, the
 // same one-face-per-subset result the Google Fonts loader produced before (it
 // also emitted latin, latin-ext, cyrillic, cyrillic-ext, greek, greek-ext and
 // vietnamese for Inter). Only the latin subset is preloaded.
@@ -27,8 +27,8 @@ const inter = localFont({
 
 // The remaining subsets are not preloaded and set adjustFontFallback: false
 // (the previous Google Fonts build generated a fallback face only for the
-// preloaded latin subset). Their `variable` is never applied in the markup; it
-// exists only so the call, and hence its @font-face rule, is kept.
+// preloaded latin subset). Their `variable` is never applied in the markup; next/font
+// emits each call's @font-face whether or not its className is used.
 const interLatinExt = localFont({
   src: [{ path: '../fonts/inter-latin-ext-wght-normal.woff2', weight: '100 900', style: 'normal' }],
   display: 'swap',
@@ -123,7 +123,7 @@ const interVietnamese = localFont({
 
 // The subset calls above exist only for their generated CSS (@font-face); their
 // className/variable is deliberately not applied anywhere. Referencing the
-// consts here keeps the calls (and thus their @font-face rules) in the bundle.
+// consts here only keeps the unused-variable lint quiet.
 void [interLatinExt, interCyrillic, interCyrillicExt, interGreek, interGreekExt, interVietnamese]
 
 export const metadata: Metadata = {
