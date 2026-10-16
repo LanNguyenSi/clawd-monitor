@@ -3,7 +3,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
-  Tailwind v4 redrawd the default palette in OKLCH (e.g. indigo-600 moved from
+  Tailwind v4 redrew the default palette in OKLCH (e.g. indigo-600 moved from
   #4f46e5 to #4f39f6). Pin the v3 values for every color family this app uses
   so the UI renders with the exact colors it had on Tailwind v3.
 */
