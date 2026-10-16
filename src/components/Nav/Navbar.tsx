@@ -34,7 +34,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
         <div className="hidden md:flex items-center gap-3">
           <button
             onClick={() => setAddAgentOpen(true)}
-            className="text-xs px-2.5 py-1 rounded border border-zinc-300 text-zinc-600 hover:text-zinc-900 hover:border-zinc-400 dark:border-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:border-zinc-700 transition-colors"
+            className="text-xs px-2.5 py-1 rounded-sm border border-zinc-300 text-zinc-600 hover:text-zinc-900 hover:border-zinc-400 dark:border-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:border-zinc-700 transition-colors"
             title="Add a new monitoring agent"
           >
             + Add Agent
@@ -43,7 +43,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
           {onToggleEditMode && (
             <button
               onClick={onToggleEditMode}
-              className={`text-xs px-2 py-1 rounded transition-colors border ${
+              className={`text-xs px-2 py-1 rounded-sm transition-colors border ${
                 editMode
                   ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-600 dark:border-indigo-600/40 dark:bg-indigo-600/10 dark:text-indigo-400'
                   : 'border-zinc-300 text-zinc-500 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-600 dark:hover:text-zinc-400'
@@ -61,7 +61,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
                 onClick={() => onColsChange(c)}
                 className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                   cols === c
-                    ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-100'
+                    ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
                     : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-300'
                 }`}
                 title={`${c} columns`}
@@ -96,7 +96,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
             {onToggleEditMode && (
               <button
                 onClick={onToggleEditMode}
-                className={`text-xs px-2 py-1 rounded transition-colors border ${
+                className={`text-xs px-2 py-1 rounded-sm transition-colors border ${
                   editMode
                     ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-600 dark:border-indigo-600/40 dark:bg-indigo-600/10 dark:text-indigo-400'
                     : 'border-zinc-300 text-zinc-500 dark:border-zinc-800 dark:text-zinc-600'
@@ -113,7 +113,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
                   onClick={() => onColsChange(c)}
                   className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                     cols === c
-                      ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-100'
+                      ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
                       : 'text-zinc-500 dark:text-zinc-500'
                   }`}
                 >
@@ -128,7 +128,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
 
             <button
               onClick={() => setAddAgentOpen(true)}
-              className="text-xs px-2.5 py-1 rounded border border-zinc-300 text-zinc-600 dark:border-zinc-800 dark:text-zinc-400"
+              className="text-xs px-2.5 py-1 rounded-sm border border-zinc-300 text-zinc-600 dark:border-zinc-800 dark:text-zinc-400"
             >
               + Add Agent
             </button>

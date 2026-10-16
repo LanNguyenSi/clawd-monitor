@@ -80,7 +80,7 @@ export function AgentSwitcher() {
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-xs border border-zinc-200 dark:border-zinc-800 rounded px-2.5 py-1 hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors max-w-[160px]"
+        className="flex items-center gap-1.5 text-xs border border-zinc-200 dark:border-zinc-800 rounded-sm px-2.5 py-1 hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors max-w-[160px]"
       >
         {activeAgent ? (
           <>

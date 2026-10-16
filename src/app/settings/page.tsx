@@ -167,14 +167,14 @@ function SettingsInner() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-zinc-800 dark:text-zinc-200">Theme</p>
-                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Keyboard shortcut: <kbd className="font-mono bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-1">t</kbd></p>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Keyboard shortcut: <kbd className="font-mono bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-sm px-1">t</kbd></p>
               </div>
               <div className="flex items-center gap-0.5 bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-lg p-0.5">
                 <button
                   onClick={() => setTheme('light')}
                   className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                     theme === 'light'
-                      ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-100'
+                      ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
                       : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
                   }`}
                 >
@@ -184,7 +184,7 @@ function SettingsInner() {
                   onClick={() => setTheme('dark')}
                   className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                     theme === 'dark'
-                      ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-100'
+                      ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
                       : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
                   }`}
                 >
@@ -207,13 +207,13 @@ function SettingsInner() {
                 <input type="password" value={pwForm[field]}
                   onChange={(e) => setPwForm({ ...pwForm, [field]: e.target.value })}
                   required minLength={field !== 'current' ? 8 : undefined}
-                  className="w-full bg-zinc-50 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-zinc-50 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
             ))}
             {pwMsg && <p className={`text-sm ${pwStatus === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>{pwMsg}</p>}
             <button type="submit" disabled={pwStatus === 'loading'}
-              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-medium transition-colors">
+              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm font-medium transition-colors">
               {pwStatus === 'loading' ? 'Updating…' : 'Update Password'}
             </button>
           </form>
@@ -238,7 +238,7 @@ function SettingsInner() {
                             value={editName}
                             onChange={(e) => setEditName(e.target.value)}
                             autoFocus
-                            className="bg-zinc-50 border border-indigo-500 dark:bg-zinc-800 rounded px-2 py-0.5 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none w-40"
+                            className="bg-zinc-50 border border-indigo-500 dark:bg-zinc-800 rounded-sm px-2 py-0.5 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-hidden w-40"
                           />
                           <button type="submit" className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-200 px-1.5">Save</button>
                           <button type="button" onClick={() => setEditingId(null)} className="text-xs text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 px-1.5">Cancel</button>
@@ -260,7 +260,7 @@ function SettingsInner() {
                     </div>
                     {editingId !== t.id && (
                       <button onClick={() => void handleRevokeToken(t.id)}
-                        className="text-xs text-zinc-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors px-2 py-1 rounded border border-zinc-200 dark:border-zinc-800 hover:border-red-300 dark:hover:border-red-800">
+                        className="text-xs text-zinc-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors px-2 py-1 rounded-sm border border-zinc-200 dark:border-zinc-800 hover:border-red-300 dark:hover:border-red-800">
                         Revoke
                       </button>
                     )}
@@ -274,10 +274,10 @@ function SettingsInner() {
               <form onSubmit={handleGenerateToken} className="flex gap-2">
                 <input type="text" value={tokenName} onChange={(e) => setTokenName(e.target.value)}
                   placeholder="Agent name (e.g. Lava VPS)" required
-                  className="flex-1 bg-zinc-50 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="flex-1 bg-zinc-50 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                 />
                 <button type="submit" disabled={tokenLoading}
-                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded text-sm transition-colors whitespace-nowrap">
+                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm transition-colors whitespace-nowrap">
                   {tokenLoading ? '…' : '+ Generate Token'}
                 </button>
               </form>
@@ -294,11 +294,11 @@ function SettingsInner() {
               <p className="text-xs text-yellow-600 dark:text-yellow-500">⚠ Copy this token now — it won&apos;t be shown again.</p>
 
               <div className="flex items-center gap-2">
-                <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-800 dark:text-zinc-200 px-3 py-2 rounded font-mono break-all">
+                <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-800 dark:text-zinc-200 px-3 py-2 rounded-sm font-mono break-all">
                   {newToken.token}
                 </code>
                 <button onClick={() => copyToClipboard(newToken.token)}
-                  className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded transition-colors">
+                  className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded-sm transition-colors">
                   Copy
                 </button>
               </div>
@@ -306,9 +306,9 @@ function SettingsInner() {
               <div className="space-y-2">
                 <p className="text-xs text-zinc-500">Install command (run on the target host as root):</p>
                 <div className="flex items-start gap-2">
-                  <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded font-mono whitespace-pre-wrap break-all">{installSnippet}</code>
+                  <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-sm font-mono whitespace-pre-wrap break-all">{installSnippet}</code>
                   <button onClick={() => copyToClipboard(installSnippet)}
-                    className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded transition-colors">
+                    className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded-sm transition-colors">
                     Copy
                   </button>
                 </div>

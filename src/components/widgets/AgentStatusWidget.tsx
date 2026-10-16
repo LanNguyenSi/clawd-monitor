@@ -40,7 +40,7 @@ function ModelBadge({ model }: { model?: string }) {
   if (!model) return null
   const short = model.split('/').pop()?.replace('claude-', '') ?? model
   return (
-    <span className="text-xs bg-indigo-100 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-700/40 px-1.5 py-0.5 rounded font-mono">
+    <span className="text-xs bg-indigo-100 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:border-indigo-700/40 px-1.5 py-0.5 rounded-sm font-mono">
       {short}
     </span>
   )
