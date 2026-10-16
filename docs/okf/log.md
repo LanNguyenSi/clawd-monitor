@@ -2,6 +2,11 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-16T12:38:23Z, agent-registry-lifecycle, auth-and-config-loading and
+  widget-data-modes re-stamped after the Tailwind CSS 4 migration: their
+  sources `src/app/dashboard/page.tsx` and `src/components/Nav/AgentSwitcher.tsx`
+  changed only in class names, and `package.json` only in its Tailwind
+  devDependencies; the claims are unaffected.
 - 2026-10-15T11:55:56Z, agent-registry-lifecycle, auth-and-config-loading and
   widget-data-modes re-verified after the review follow-ups. The handshake
   now fails closed when the fresh token re-read throws (only the write stays
