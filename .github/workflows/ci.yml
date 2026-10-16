@@ -14,6 +14,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Guard against next/font/google
+        run: |
+          set +e
+          grep -rn --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' --include='*.mjs' --include='*.cjs' --exclude-dir=node_modules --exclude-dir=.next "next/font/google" .
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then echo "next/font/google is not allowed, vendor the font (see src/fonts/README.md)"; exit 1; fi
+          if [ "$rc" -ne 1 ]; then echo "font guard: grep failed with exit $rc"; exit 1; fi
+          echo "font guard: OK, no next/font/google import found"
+
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
