@@ -104,7 +104,7 @@ export function LogTailWidget() {
         <select
           value={source}
           onChange={(e) => setSource(e.target.value as LogSource)}
-          className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300"
+          className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300"
         >
           <option value="openclaw">OpenClaw</option>
           <option value="docker">Docker</option>
@@ -115,7 +115,7 @@ export function LogTailWidget() {
           <select
             value={container}
             onChange={(e) => { setContainer(e.target.value); connect('docker', e.target.value, activeAgentId) }}
-            className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 max-w-[10rem]"
+            className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 max-w-40"
           >
             <option value="">Select container…</option>
             {(containerData?.containers ?? []).map((name) => (
@@ -127,7 +127,7 @@ export function LogTailWidget() {
         <div className="flex-1" />
 
         {activeAgentId && (
-          <span className="text-xs bg-indigo-900/30 text-indigo-400 px-1.5 rounded border border-indigo-800/30">
+          <span className="text-xs bg-indigo-900/30 text-indigo-400 px-1.5 rounded-sm border border-indigo-800/30">
             agent
           </span>
         )}
@@ -135,7 +135,7 @@ export function LogTailWidget() {
         {/* Auto-scroll toggle */}
         <button
           onClick={() => setAutoScroll((v) => !v)}
-          className={`text-xs px-2 py-0.5 rounded transition-colors ${
+          className={`text-xs px-2 py-0.5 rounded-sm transition-colors ${
             autoScroll ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-600/20 dark:text-indigo-400' : 'text-zinc-400 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400'
           }`}
         >

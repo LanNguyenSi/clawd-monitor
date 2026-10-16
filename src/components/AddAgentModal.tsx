@@ -177,7 +177,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-agent-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
       onClick={handleBackdropClick}
     >
       <div
@@ -217,7 +217,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. lava-vps-01"
                 required
-                className="w-full bg-zinc-50 border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full bg-zinc-50 border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-sm px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
               />
               <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-1.5">
                 Used as the token label in Settings. The agent itself defaults to <code>/etc/hostname</code> for its display name on the dashboard.
@@ -242,7 +242,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
               <button
                 type="submit"
                 disabled={submitting || !originValid}
-                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm font-medium transition-colors"
               >
                 {submitting ? 'Generating…' : 'Generate token'}
               </button>
@@ -264,13 +264,13 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
             <div className="space-y-2">
               <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Token</p>
               <div className="flex items-center gap-2">
-                <code className="flex-1 bg-zinc-100 dark:bg-zinc-900 text-xs text-zinc-800 dark:text-zinc-200 px-3 py-2 rounded font-mono break-all border border-zinc-200 dark:border-zinc-800">
+                <code className="flex-1 bg-zinc-100 dark:bg-zinc-900 text-xs text-zinc-800 dark:text-zinc-200 px-3 py-2 rounded-sm font-mono break-all border border-zinc-200 dark:border-zinc-800">
                   {token}
                 </code>
                 <button
                   ref={tokenCopyButtonRef}
                   onClick={() => void copy(token, 'token')}
-                  className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded transition-colors"
+                  className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded-sm transition-colors"
                 >
                   {copied === 'token' ? 'Copied' : 'Copy'}
                 </button>
@@ -282,12 +282,12 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
                 Run on the target host (root required)
               </p>
               <div className="flex items-start gap-2">
-                <pre className="flex-1 bg-zinc-100 dark:bg-zinc-900 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded font-mono whitespace-pre-wrap break-all border border-zinc-200 dark:border-zinc-800 m-0">
+                <pre className="flex-1 bg-zinc-100 dark:bg-zinc-900 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-sm font-mono whitespace-pre-wrap break-all border border-zinc-200 dark:border-zinc-800 m-0">
                   {snippet}
                 </pre>
                 <button
                   onClick={() => void copy(snippet, 'snippet')}
-                  className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded transition-colors"
+                  className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded-sm transition-colors"
                 >
                   {copied === 'snippet' ? 'Copied' : 'Copy'}
                 </button>
@@ -300,7 +300,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
             <div className="flex justify-end pt-2">
               <button
                 onClick={onClose}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-sm text-sm font-medium transition-colors"
               >
                 Done
               </button>

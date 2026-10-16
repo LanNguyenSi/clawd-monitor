@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Security
 
+- **Tailwind CSS 4** (GHSA-rj75-hqrm-r3gf): the UI moves from Tailwind CSS 3.4 to 4.3 (`@tailwindcss/postcss`, theme and dark variant in `src/app/globals.css`, `tailwind.config.ts` and `autoprefixer` removed), which drops `postcss-selector-parser` 6.x from the tree. The Tailwind 3 colour palette is pinned in `@theme`, so colours are unchanged. One intentional exception: in dark mode the focused login password field no longer shows its grey border inside the focus ring (`focus:border-transparent` now takes effect).
 - **next 15.5.27** (GHSA-mcj8-r9mp-w47p, GHSA-4jqv-mc3x-m676): the lockfile resolves 15.5.27 with its matching `@next/env` and `@next/swc-*` packages and the `next` dependency floor is now `^15.5.27`.
 - **`npm audit` gate now classifies with an ID-scoped, dated allowlist.** The audit workflow's gate step hands `npm audit --audit-level=high --json` output to `scripts/audit-gate.mjs` (dependency-free, vendored verbatim from depsight commit be8c7ea) and reads `.github/audit-allowlist.json`. The one entry excepts GHSA-vfj7-8cjw-p6xm (`braces` 3.0.3, dev dependency only, no upstream fix) by exact advisory id until its `reviewBy` date (2026-11-06); every other HIGH or CRITICAL advisory still fails the gate, as does an expired entry. A self-test (`scripts/audit-gate.test.mjs`, `node --test`) runs in the audit job before the gate.
 

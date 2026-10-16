@@ -52,7 +52,7 @@ export function AgentListWidget() {
           <span className="text-2xl">🔌</span>
           <p className="text-xs text-zinc-400 dark:text-zinc-600">No agents connected</p>
           <p className="text-xs text-zinc-400 dark:text-zinc-700">
-            Run <code className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 rounded">clawd-monitor-agent --server ...</code> on your OpenClaw VPS
+            Run <code className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 rounded-sm">clawd-monitor-agent --server ...</code> on your OpenClaw VPS
           </p>
         </div>
       )}

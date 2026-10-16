@@ -105,7 +105,7 @@ export function MemoryWidget() {
         <select
           value={selectedFile}
           onChange={(e) => setSelectedFile(e.target.value as MemFile)}
-          className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 flex-1"
+          className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 flex-1"
         >
           {(Object.entries(FILE_LABELS) as [MemFile, string][]).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
@@ -127,7 +127,7 @@ export function MemoryWidget() {
         )}
 
         {activeAgentId && (
-          <span className="text-xs bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 px-1.5 rounded border border-indigo-200 dark:border-indigo-800/30">
+          <span className="text-xs bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 px-1.5 rounded-sm border border-indigo-200 dark:border-indigo-800/30">
             agent
           </span>
         )}
@@ -147,7 +147,7 @@ export function MemoryWidget() {
           </div>
         )}
         {!isLoading && content && (
-          <div className="prose prose-zinc dark:prose-invert prose-xs max-w-none text-xs [&>*]:text-zinc-700 dark:[&>*]:text-zinc-300 [&>h1]:text-sm [&>h2]:text-xs [&>h3]:text-xs [&_code]:text-xs [&_pre]:text-xs">
+          <div className="prose prose-zinc dark:prose-invert prose-xs max-w-none text-xs *:text-zinc-700 dark:*:text-zinc-300 [&>h1]:text-sm [&>h2]:text-xs [&>h3]:text-xs [&_code]:text-xs [&_pre]:text-xs">
             <ReactMarkdown>{content}</ReactMarkdown>
           </div>
         )}

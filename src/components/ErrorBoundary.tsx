@@ -32,7 +32,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </span>
           <button
             onClick={() => this.setState({ error: null })}
-            className="mt-1 px-2 py-0.5 text-[10px] rounded bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors"
+            className="mt-1 px-2 py-0.5 text-[10px] rounded-sm bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors"
           >
             Retry
           </button>
