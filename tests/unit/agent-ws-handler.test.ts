@@ -127,6 +127,36 @@ describe('handleAgentConnection – invalid token (no static, no persisted)', ()
     expect(ws.close).toHaveBeenCalledOnce()
   })
 
+  it('sends auth_error and closes with 1008 when the token store read throws', async () => {
+    mockReadTokens.mockImplementationOnce(() => {
+      throw new Error('corrupt tokens.json')
+    })
+    const ws = makeMockWs()
+    handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+
+    // The handler is invoked by ws.emit, which discards its promise, so watch
+    // for a rejected handler promise at the process level: before the fix the
+    // throwing readTokens() escaped as an unhandled rejection.
+    const rejections: unknown[] = []
+    const onUnhandledRejection = (err: unknown) => {
+      rejections.push(err)
+    }
+    process.on('unhandledRejection', onUnhandledRejection)
+    try {
+      await emitAndWait(ws, { ...AUTH_MSG, token: 'not-a-static-token' })
+      await new Promise<void>((resolve) => setTimeout(resolve, 50))
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection)
+    }
+    expect(rejections).toHaveLength(0)
+
+    const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
+    expect(sent.type).toBe('auth_error')
+    expect(ws.close).toHaveBeenCalledWith(1008, expect.any(String))
+    expect(mockRegistry.register).not.toHaveBeenCalled()
+    expect(mockWriteTokens).not.toHaveBeenCalled()
+  })
+
   it('sends auth_error when a snapshot is received before auth', async () => {
     const ws = makeMockWs()
     handleAgentConnection(ws as unknown as WebSocket, fakeReq)
@@ -174,6 +204,22 @@ describe('handleAgentConnection – valid static env token', () => {
     const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
     expect(sent.type).toBe('auth_ok')
     expect(ws.close).not.toHaveBeenCalled()
+  })
+
+  it('authenticates a valid static token even when the token store read throws', async () => {
+    mockReadTokens.mockImplementation(() => {
+      throw new Error('corrupt tokens.json')
+    })
+    const ws = makeMockWs()
+    handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+
+    await emitAndWait(ws, { ...AUTH_MSG, token: STATIC_TOKEN })
+
+    const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
+    expect(sent.type).toBe('auth_ok')
+    expect(ws.close).not.toHaveBeenCalled()
+    // Static env tokens are checked before the store, so the store is never read
+    expect(mockReadTokens).not.toHaveBeenCalled()
   })
 
   it('does not close the ws after a successful static-token auth', async () => {

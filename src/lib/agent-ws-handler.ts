@@ -48,7 +48,20 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
       let tokenValid = STATIC_TOKENS.includes(msg.token)
       let matched: TokenEntry | null = null
       if (!tokenValid) {
-        for (const entry of readTokens()) {
+        // A failing store read fails closed: access is denied like for any
+        // invalid token, but the client is answered and the socket closed with
+        // 1008 instead of left open until it times out. The message stays
+        // generic so nothing about the broken store leaks to the client.
+        let entries: TokenEntry[]
+        try {
+          entries = readTokens()
+        } catch {
+          console.warn('[agent-ws] Could not read tokens; rejecting handshake')
+          send(ws, { type: 'auth_error', message: 'Invalid token' })
+          ws.close(1008, 'Invalid token')
+          return
+        }
+        for (const entry of entries) {
           try {
             if (await bcrypt.compare(msg.token, entry.tokenHash)) {
               tokenValid = true
