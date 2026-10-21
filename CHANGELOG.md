@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Agent handshake closes with 1008 on every rejected token, and logs why the token store could not be read.** A token that failed validation (including a failed re-read of the token store after a hash match) closed the socket without a close code; it now closes with 1008 (policy violation). The warning for a failing token store read now carries the error message (never a token value), so a corrupt file and a permission error can be told apart.
+- **The Docker proxy inspects containers only.** Its batched `docker inspect` passes `--type container`, so an image, volume or network that shares a name with a container id cannot answer in its place.
+
 ### Added
 
 - **`DELETE /api/agents/<id>` removes an offline agent from the registry.** The remove button in the navbar agent switcher sent this request, but no route handled it, so the agent came back on the next 5-second poll. The route answers 200 after removing an offline agent, 409 for an agent that is online and 404 for an unknown id; the switcher keeps the entry listed on any failure other than 404.

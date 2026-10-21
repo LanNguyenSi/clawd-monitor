@@ -55,8 +55,8 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
         let entries: TokenEntry[]
         try {
           entries = readTokens()
-        } catch {
-          console.warn('[agent-ws] Could not read tokens; rejecting handshake')
+        } catch (err) {
+          console.warn(`[agent-ws] Could not read tokens; rejecting handshake: ${err instanceof Error ? err.message : 'unknown error'}`)
           send(ws, { type: 'auth_error', message: 'Invalid token' })
           ws.close(1008, 'Invalid token')
           return
@@ -102,7 +102,7 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
       if (!tokenValid) {
         console.warn(`[agent-ws] Auth failed for agentId=${msg.agentId} — invalid token`)
         send(ws, { type: 'auth_error', message: 'Invalid token' })
-        ws.close()
+        ws.close(1008, 'Invalid token')
         return
       }
 

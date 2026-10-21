@@ -38,7 +38,7 @@ function collectRestartCounts(ids: string[]): Map<string, number> {
   }
   try {
     parse(execSync(
-      `docker inspect --format "{{.Id}} {{.RestartCount}}" ${safeIds.join(' ')}`,
+      `docker inspect --type container --format "{{.Id}} {{.RestartCount}}" ${safeIds.join(' ')}`,
       { encoding: 'utf-8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }
     ))
   } catch (err) {

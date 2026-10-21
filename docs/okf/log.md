@@ -2,6 +2,13 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-21T08:30:00Z, agent-registry-lifecycle, auth-and-config-loading and
+  widget-data-modes re-verified and re-stamped. The shared invalid-token
+  branch of `src/lib/agent-ws-handler.ts` now closes with 1008 (also after a
+  failed token re-read) and the first store-read failure logs the error
+  message; the registry doc's step 4 says so. The Docker proxy route passes
+  `--type container` to its one batched `docker inspect`; the claims of the
+  other two docs are unaffected.
 - 2026-10-16T12:38:23Z, agent-registry-lifecycle, auth-and-config-loading and
   widget-data-modes re-stamped after the Tailwind CSS 4 migration: their
   sources `src/app/dashboard/page.tsx` and `src/components/Nav/AgentSwitcher.tsx`
