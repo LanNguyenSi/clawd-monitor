@@ -62,6 +62,8 @@ describe('GET /api/proxy/docker', () => {
     const calls = execMock.mock.calls.map((c) => String(c[0]))
     expect(calls).toHaveLength(2)
     expect(calls[1]).toContain(`${A} ${B}`)
+    // --type container keeps a same-named image/volume/network from answering
+    expect(calls[1]).toContain('docker inspect --type container --format')
   })
 
   it('keeps the other counts when one id vanished and inspect exits non-zero', async () => {

@@ -3,7 +3,7 @@ type: invariant
 title: Agent registry lifecycle, from WebSocket handshake to TTL eviction
 description: How a clawd-monitor-agent connection becomes an AgentRegistry entry (auth message first, static then persisted token check, newest connection wins), when an entry goes offline (only via its current socket), when it is evicted (lazily, only inside getAll), and what token revocation does and does not affect.
 tags: [agents, websocket, registry, tokens, ttl]
-timestamp: 2026-10-16T12:38:23Z
+timestamp: 2026-10-21T06:28:30Z
 sources:
   - server.ts
   - src/lib/agent-ws-handler.ts
@@ -69,20 +69,24 @@ those constants are read (after the `.env` files were loaded).
 4. The token is checked against the `AGENT_TOKENS` list first (exact string
    match), then with `bcrypt.compare` against every `tokenHash` in
    `tokens.json`
-   (`src/lib/agent-ws-handler.ts:51-54#"tokenValid = true"`). A miss sends
-   `auth_error` and closes the socket
-   (`src/lib/agent-ws-handler.ts:89-92#"ws.close()"`).
+   (`src/lib/agent-ws-handler.ts:66-68#"tokenValid = true"`). A miss sends
+   `auth_error` and closes the socket with code 1008
+   (`src/lib/agent-ws-handler.ts:105#"ws.close(1008"`). A `tokens.json` read
+   that throws is handled the same way: `auth_error`, close 1008, and a
+   warning that carries only the error message, so the client learns
+   nothing about the store
+   (`src/lib/agent-ws-handler.ts:58-62#"ws.close(1008, 'Invalid token')"`).
 5. On success the handler calls `registry.register()` with the agent's
    self-reported `agentId`, `name`, `version`, `gatewayUrl` and
    `gatewayToken`, then sends `auth_ok`
-   (`src/lib/agent-ws-handler.ts:96-107#"auth_ok"`).
+   (`src/lib/agent-ws-handler.ts:109-120#"auth_ok"`).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored
-(`src/lib/agent-ws-handler.ts:115-117#"type: 'pong'"`). A snapshot is stored
+(`src/lib/agent-ws-handler.ts:125-130#"type: 'pong'"`). A snapshot is stored
 under the connection's own `agentId`, not the `agentId` field inside the
 snapshot payload
-(`src/lib/agent-ws-handler.ts:113#"registry.update(agentId, msg.data)"`).
+(`src/lib/agent-ws-handler.ts:126#"registry.update(agentId, msg.data)"`).
 
 ## Tokens are not bound to an agent
 
@@ -98,8 +102,8 @@ during the comparison is neither lost nor restored. If the matched id is
 no longer in the fresh read, or the re-read itself fails, the handshake is
 rejected with `auth_error` (fail closed). A failed write does not fail the
 handshake
-(`src/lib/agent-ws-handler.ts:79-80#"current.lastUsedAt"`,
-`src/lib/agent-ws-handler.ts:84#"best effort"`). A static
+(`src/lib/agent-ws-handler.ts:93-94#"current.lastUsedAt"`,
+`src/lib/agent-ws-handler.ts:97#"best effort"`). A static
 `AGENT_TOKENS` match has no entry and stamps nothing. The settings API passes
 the stored value through
 (`src/app/api/settings/tokens/route.ts:14#"id, name, createdAt, lastUsedAt"`).
@@ -126,7 +130,7 @@ never sends snapshots keeps `lastSnapshotAt` at its last snapshot (or `0`).
 ## Offline and eviction
 
 An entry goes offline only through `disconnect()` from the socket's `close`
-handler (`src/lib/agent-ws-handler.ts:122#"registry.disconnect(agentId, ws)"`).
+handler (`src/lib/agent-ws-handler.ts:135#"registry.disconnect(agentId, ws)"`).
 There is no server-side idle timeout: an entry whose socket stays open is
 online indefinitely, whether or not it sends snapshots.
 

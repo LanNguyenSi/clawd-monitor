@@ -127,6 +127,25 @@ describe('handleAgentConnection – invalid token (no static, no persisted)', ()
     expect(ws.close).toHaveBeenCalledOnce()
   })
 
+  it('logs the store read error message but no token value when the token store read throws', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      mockReadTokens.mockImplementationOnce(() => {
+        throw new Error('EACCES: permission denied, open tokens.json')
+      })
+      const ws = makeMockWs()
+      handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+      await emitAndWait(ws, { ...AUTH_MSG, token: 'secret-token-value-123' })
+
+      const logged = warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
+      expect(logged).toContain('Could not read tokens')
+      expect(logged).toContain('EACCES: permission denied')
+      expect(logged).not.toContain('secret-token-value-123')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('sends auth_error and closes with 1008 when the token store read throws', async () => {
     mockReadTokens.mockImplementationOnce(() => {
       throw new Error('corrupt tokens.json')
@@ -338,6 +357,7 @@ describe('handleAgentConnection – valid bcrypt persisted token', () => {
 
     expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_error')
     expect(ws.close).toHaveBeenCalledOnce()
+    expect(ws.close).toHaveBeenCalledWith(1008, expect.any(String))
     expect(mockWriteTokens).not.toHaveBeenCalled()
     expect(mockRegistry.register).not.toHaveBeenCalled()
   })
