@@ -2,6 +2,7 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-23T04:59:17Z, auth-and-config-loading re-verified and re-stamped after the `next` and `@next/env` dependency lines of `package.json` moved from 15.5.27 to 15.5.28. The doc's only `package.json` citation is the `start` script (`package.json:7-9`), which did not move, and its `@next/env` statements describe behaviour, not a version; claims unchanged.
 - 2026-10-21T06:28:30Z, agent-registry-lifecycle, auth-and-config-loading and
   widget-data-modes re-verified and re-stamped against the sources. Checked
   against the code: the shared invalid-token branch of
