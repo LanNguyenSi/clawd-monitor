@@ -586,6 +586,12 @@ describe('isPrivateHost (address classes)', () => {
     ['1:2:3:4:5:6:7:8::9::10', 'three parts around :: (fails closed)'],
     ['1:2:3:4:5:6:7:8::', ':: with no group to stand for (fails closed)'],
     ['1:2:3:4:5:6:7::8', ':: next to seven groups (fails closed)'],
+    // The same malformed shapes inside 2000::/3, where a parse that let them
+    // through would judge them public.
+    ['2001:4860:1:2:3:4:5:6::9::10', 'three parts around :: inside 2000::/3 (fails closed)'],
+    ['2001:4860:3:4:5:6:7:8::', ':: with no group to stand for, inside 2000::/3 (fails closed)'],
+    ['2001:4860:3:4:5:6:7::8', ':: next to seven groups, inside 2000::/3 (fails closed)'],
+    ['2001:4860:3:4:5:6:7:8:9', 'nine groups inside 2000::/3 (fails closed)'],
     ['1:2:3:4:5:6:7:8:9', 'nine groups (fails closed)'],
     ['xyz::1', 'non-hex group (fails closed)'],
     ['12345::1', 'five-digit group (fails closed)'],

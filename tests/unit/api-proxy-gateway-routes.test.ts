@@ -82,6 +82,14 @@ describe('gateway proxy routes, x-gateway-url from the signed-in browser', () =>
   )
 })
 
+describe('gateway proxy routes, OK answers', () => {
+  it('heartbeat passes the status data of an OK answer through', async () => {
+    fetchMock.mockImplementation(async () => new Response('{"version":"1.2.3"}', { status: 200 }))
+    const res = await routes.find((r) => r.name === 'heartbeat')!.call({})
+    expect(await res.json()).toMatchObject({ ok: true, status: 200, data: { version: '1.2.3' } })
+  })
+})
+
 // A gateway answer whose body is never read keeps its connection open until
 // the response is collected, so every route either reads the body or cancels it.
 describe('gateway proxy routes, non-OK answers', () => {
