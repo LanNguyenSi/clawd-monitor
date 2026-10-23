@@ -12,7 +12,6 @@
   widget-data-modes moved with the new lines, the `route.ts` citations moved by
   the added comment. auth-and-config-loading only had its source changed, its
   citations are unaffected.
-- 2026-10-23T04:40:40Z, agent-registry-lifecycle, auth-and-config-loading and
 - 2026-10-23T05:16:15Z, agent-registry-lifecycle, auth-and-config-loading and
   widget-data-modes re-verified and re-stamped against the sources. Checked
   against the code: the agent logs route runs `assertGatewayUrlAllowed` on the
