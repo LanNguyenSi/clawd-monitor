@@ -37,6 +37,8 @@ export async function GET(req: NextRequest) {
     if (res.ok) {
       return NextResponse.json(await res.json())
     }
+    // An unread body keeps its connection open until it is collected.
+    await res.body?.cancel()
   } catch {
     // Gateway doesn't support this — fall through to filesystem
   }

@@ -15,6 +15,8 @@ export async function GET(req: NextRequest) {
   try {
     const res = await gatewayFetch('/sessions', { gatewayUrl, urlSource: 'operator', token })
     if (!res.ok) {
+      // An unread body keeps its connection open until it is collected.
+      await res.body?.cancel()
       return NextResponse.json({ sessions: [], error: `Gateway returned ${res.status}` })
     }
     const data = await res.json()

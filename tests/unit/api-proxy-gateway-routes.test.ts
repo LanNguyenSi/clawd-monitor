@@ -81,3 +81,39 @@ describe('gateway proxy routes, x-gateway-url from the signed-in browser', () =>
     },
   )
 })
+
+// A gateway answer whose body is never read keeps its connection open until
+// the response is collected, so every route either reads the body or cancels it.
+describe('gateway proxy routes, non-OK answers', () => {
+  /** A 500 answer with a streamed body, and whether it was cancelled. */
+  function errorAnswer() {
+    const cancel = vi.fn()
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('{"error":"down"}'))
+        c.close()
+      },
+      cancel,
+    })
+    return { res: new Response(body, { status: 500, headers: { 'content-type': 'application/json' } }), cancel }
+  }
+
+  it.each(['heartbeat', 'sessions', 'cron', 'memory', 'catch-all'])(
+    '%s reads or cancels the body of a non-OK gateway answer',
+    async (name) => {
+      const answer = errorAnswer()
+      fetchMock.mockImplementation(async () => answer.res)
+      const route = routes.find((r) => r.name === name)!
+      await route.call({})
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(answer.res.bodyUsed).toBe(true)
+    },
+  )
+
+  it.each(['heartbeat', 'sessions', 'memory'])('%s cancels the body it does not read', async (name) => {
+    const answer = errorAnswer()
+    fetchMock.mockImplementation(async () => answer.res)
+    await routes.find((r) => r.name === name)!.call({})
+    expect(answer.cancel).toHaveBeenCalledTimes(1)
+  })
+})

@@ -407,3 +407,55 @@ describe('GET /api/stream/logs, docker source', () => {
     await res.body!.cancel()
   })
 })
+
+// A gateway answer whose body is never read keeps its connection open until
+// the response is collected, so a log route that does not stream a non-OK
+// answer cancels its body.
+describe('log routes, non-OK gateway answers', () => {
+  function errorAnswer() {
+    const cancel = vi.fn()
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('not found'))
+        c.close()
+      },
+      cancel,
+    })
+    return { res: new Response(body, { status: 404 }), cancel }
+  }
+
+  it('the agent route cancels the body and answers the not-available lines', async () => {
+    addAgent({ gatewayUrl: 'https://gw.example.com', gatewayToken: 'secret-token' })
+    const answer = errorAnswer()
+    h.pinnedFetch.mockResolvedValue(answer.res)
+    const { agentGET } = await loadRoutes()
+    const res = await agentGET(agentReq('source=openclaw'), params)
+    const lines = await readLines(res, 2)
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toBe('[info] Log streaming not available for remote agents.')
+    expect(answer.cancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('the stream route cancels the body of a caller-chosen gateway and falls back to the journal', async () => {
+    const answer = errorAnswer()
+    h.pinnedFetch.mockResolvedValue(answer.res)
+    const { streamGET } = await loadRoutes()
+    const res = await streamGET(new NextRequest('http://localhost/api/stream/logs?source=openclaw', {
+      headers: { 'x-gateway-url': 'https://gw.example.com' },
+    }))
+    await vi.waitFor(() => expect(h.spawn).toHaveBeenCalledTimes(1))
+    expect(h.spawn.mock.calls[0][0]).toBe('journalctl')
+    expect(answer.cancel).toHaveBeenCalledTimes(1)
+    await res.body!.cancel()
+  })
+
+  it('the stream route cancels the body of the default gateway as well', async () => {
+    const answer = errorAnswer()
+    vi.stubGlobal('fetch', vi.fn(async () => answer.res))
+    const { streamGET } = await loadRoutes()
+    const res = await streamGET(new NextRequest('http://localhost/api/stream/logs?source=openclaw'))
+    await vi.waitFor(() => expect(h.spawn).toHaveBeenCalledTimes(1))
+    expect(answer.cancel).toHaveBeenCalledTimes(1)
+    await res.body!.cancel()
+  })
+})

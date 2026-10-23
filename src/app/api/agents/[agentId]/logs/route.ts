@@ -91,7 +91,9 @@ export async function GET(req: NextRequest, { params }: Props) {
             signal: req.signal,
           }).then(async (res) => {
             if (!res.ok || !res.body) {
-              // Gateway doesn't have /logs/stream, so show the info lines
+              // Gateway doesn't have /logs/stream, so show the info lines.
+              // An unread body keeps its connection open until it is collected.
+              await res.body?.cancel()
               spawnJournalctl()
               return
             }

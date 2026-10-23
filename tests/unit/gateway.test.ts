@@ -482,6 +482,16 @@ describe('gatewayJson – ok and not-ok responses', () => {
 
     await expect(mod.gatewayJson('/missing')).rejects.toThrow(/returned 404/)
   })
+
+  it('cancels the body of a not-ok response it does not read, so the connection is released', async () => {
+    const cancel = vi.fn()
+    const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{"error":"x"}')) }, cancel })
+    const res = new Response(body, { status: 502 })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(res))
+
+    await expect(mod.gatewayJson('/api/data')).rejects.toThrow(/returned 502/)
+    expect(cancel).toHaveBeenCalledTimes(1)
+  })
 })
 
 // ── isPrivateHost: address classes a resolved name can answer with ───────────

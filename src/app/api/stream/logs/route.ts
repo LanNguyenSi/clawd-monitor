@@ -110,6 +110,8 @@ export async function GET(req: NextRequest) {
           signal: req.signal,
         }).then(async (res) => {
           if (!res.ok || !res.body) {
+            // An unread body keeps its connection open until it is collected.
+            await res.body?.cancel()
             startJournalFallback()
             return
           }

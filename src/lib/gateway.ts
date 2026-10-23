@@ -263,6 +263,8 @@ export async function gatewayJson<T>(
 ): Promise<T> {
   const res = await gatewayFetch(path, options)
   if (!res.ok) {
+    // An unread body keeps its connection open until it is collected.
+    await res.body?.cancel()
     throw new Error(`Gateway ${path} returned ${res.status}`)
   }
   return res.json() as Promise<T>
