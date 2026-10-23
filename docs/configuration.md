@@ -60,16 +60,25 @@ Notes:
     a port allows port 443 only. An entry with a port allows only that port, so
     a gateway on 443 and one on 8443 need two entries. A request to any other
     port of an allowlisted host is rejected, and an entry with a port that is
-    not 1-65535 is ignored.
+    not 1-65535 is ignored. Write an entry in the serialised form of the host
+    that appears in the URL (case is ignored): punycode for international
+    names and compressed lower-case IPv6 (`[2606:4700::1111]`, not
+    `[2606:4700:0:0:0:0:0:1111]`); an entry in another spelling never matches.
   - **Resolved address.** The host name is resolved when the request connects.
     If any address it resolves to is loopback, private, link-local,
-    carrier-grade NAT (`100.64.0.0/10`), unspecified, multicast or reserved
-    (IPv4, IPv6 and IPv4-mapped IPv6 alike), the request is rejected. The
-    connection goes to exactly the addresses that were checked, so a DNS
-    answer that changes between the check and the connect has no effect. TLS
-    still verifies the certificate against the host name. A redirect answer is
+    carrier-grade NAT (`100.64.0.0/10`), unspecified, multicast, reserved,
+    documentation (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`,
+    `2001:db8::/32`), Teredo (`2001::/32`) or discard-only (`100::/64`), or an
+    IPv4-translated or local-use NAT64 IPv6 address (IPv4, IPv6 and IPv4-mapped
+    IPv6 alike), the request is rejected. The connection goes to exactly the
+    addresses that were checked, so a DNS answer that changes between the check
+    and the connect has no effect. TLS still verifies the certificate against the host name. A redirect answer is
     never followed. An allowlisted name that points at a private address
     (an internal gateway reached by name, for example) no longer works.
+  - **Time limits.** For an override, connecting (lookup, TCP and TLS) must
+    finish within 10 seconds, the response headers must arrive within 300
+    seconds of the connection, and the body must not stall for more than 300
+    seconds; otherwise the request is cut off and fails.
   - **Agent-reported URLs.** The same rule applies to the `gatewayUrl` a
     connected agent reports: the Log Tail widget fetches it only when it is
     `https`, its host and port are in the list and it resolves to public

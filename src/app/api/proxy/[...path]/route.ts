@@ -30,6 +30,7 @@ async function handler(req: NextRequest, { params }: Props) {
   try {
     const res = await gatewayFetch(fullPath, {
       gatewayUrl,
+      urlSource: 'operator',
       token,
       method: req.method,
       body,

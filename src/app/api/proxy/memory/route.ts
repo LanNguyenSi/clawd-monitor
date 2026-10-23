@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
 
   // 1. Try Gateway /workspace/memory (remote instances)
   try {
-    const res = await gatewayFetch(`/workspace/memory?file=${encodeURIComponent(file)}`, { gatewayUrl, token })
+    const res = await gatewayFetch(`/workspace/memory?file=${encodeURIComponent(file)}`, { gatewayUrl, urlSource: 'operator', token })
     if (res.ok) {
       return NextResponse.json(await res.json())
     }

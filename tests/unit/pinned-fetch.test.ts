@@ -12,7 +12,14 @@ import https from 'node:https'
 import zlib from 'node:zlib'
 import type { AddressInfo } from 'node:net'
 import { EventEmitter } from 'node:events'
-import { createPinnedLookup, pinnedFetch, type ResolvedAddress } from '@/lib/pinned-fetch'
+import net from 'node:net'
+import {
+  createPinnedLookup,
+  pinnedFetch,
+  DEFAULT_PINNED_TIMEOUTS,
+  PinnedFetchTimeoutError,
+  type ResolvedAddress,
+} from '@/lib/pinned-fetch'
 import { GatewayUrlError } from '@/lib/gateway-policy'
 
 const v4 = (address: string): ResolvedAddress => ({ address, family: 4 })
@@ -50,6 +57,14 @@ describe('createPinnedLookup, address policy', () => {
     ['IPv6 link-local', [v6('fe80::1')]],
     ['IPv4-mapped loopback, dotted', [v6('::ffff:127.0.0.1')]],
     ['IPv4-mapped loopback, hex', [v6('::ffff:7f00:1')]],
+    ['documentation range 203.0.113.0/24', [v4('203.0.113.9')]],
+    ['documentation range 192.0.2.0/24', [v4('192.0.2.1')]],
+    ['documentation range 198.51.100.0/24', [v4('198.51.100.1')]],
+    ['IPv6 documentation range', [v6('2001:db8::1')]],
+    ['Teredo', [v6('2001:0:4136:e378:8000:63bf:3fff:fdd2')]],
+    ['IPv4-translated', [v6('::ffff:0:808:808')]],
+    ['local-use NAT64', [v6('64:ff9b:1::1')]],
+    ['discard-only prefix', [v6('100::1')]],
   ])('rejects a name that resolves to %s', async (_label, answers) => {
     const { err, address } = await runLookup(answers)
     expect(err).toBeInstanceOf(GatewayUrlError)
@@ -170,7 +185,7 @@ describe('pinnedFetch, local server', () => {
       calls += 1
       // First answer: the address the check saw. Any later answer: where a
       // rebinding DNS server would point the second lookup.
-      return calls === 1 ? [v4('127.0.0.1')] : [v4('203.0.113.9')]
+      return calls === 1 ? [v4('127.0.0.1')] : [v4('93.184.216.34')]
     })
     const res = await pinnedFetch(`http://gw.test:${port}/status?x=1`, {}, { resolve, isPublicAddress: allowAll })
     expect(await res.json()).toEqual({ ok: true, path: '/status?x=1' })
@@ -311,5 +326,212 @@ describe('pinnedFetch, https', () => {
     expect(typeof seen[0].options.lookup).toBe('function')
     expect(seen[0].options.agent).toBe(false)
     expect(seen[0].options.servername).toBeUndefined()
+  })
+})
+
+// ── time limits and unrepresentable answers ───────────────────────────────────
+//
+// A raw TCP server stands in for a misbehaving gateway: it can stay silent,
+// stop after the headers, or send a status line that fetch cannot represent.
+// Limits are set to a few hundred milliseconds; the defaults are only pinned
+// as numbers, never waited for.
+
+describe('pinnedFetch, time limits', () => {
+  type Behaviour = (socket: net.Socket) => void
+  let server: net.Server
+  let port: number
+  let behaviour: Behaviour
+  const sockets = new Set<net.Socket>()
+  let closedByServerSide = 0
+
+  beforeAll(async () => {
+    server = net.createServer((socket) => {
+      sockets.add(socket)
+      socket.on('error', () => { /* the client destroys the connection */ })
+      socket.on('close', () => { sockets.delete(socket); closedByServerSide += 1 })
+      socket.once('data', () => behaviour(socket))
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    port = (server.address() as AddressInfo).port
+  })
+
+  afterAll(async () => {
+    sockets.forEach((s) => s.destroy())
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  })
+
+  afterEach(() => { closedByServerSide = 0 })
+
+  const resolve = async () => [v4('127.0.0.1')]
+  const allowAll = () => true
+  const deps = (timeouts: Partial<typeof DEFAULT_PINNED_TIMEOUTS>) => ({ resolve, isPublicAddress: allowAll, timeouts })
+  const until = async (predicate: () => boolean) => {
+    for (let i = 0; i < 100 && !predicate(); i++) await new Promise((r) => setTimeout(r, 20))
+  }
+
+  it('defaults to the limits of the global fetch it replaced, none above 300 s', () => {
+    expect(DEFAULT_PINNED_TIMEOUTS).toEqual({ connectMs: 10_000, headersMs: 300_000, bodyMs: 300_000 })
+  })
+
+  it('rejects and closes the socket when the server never sends the response headers', async () => {
+    behaviour = () => { /* accept the request, never answer */ }
+    const started = Date.now()
+    const failure = await pinnedFetch(`http://gw.test:${port}/`, {}, deps({ headersMs: 150 })).catch((e: unknown) => e)
+    expect(failure).toBeInstanceOf(PinnedFetchTimeoutError)
+    expect((failure as Error).message).toContain('headers')
+    expect(Date.now() - started).toBeLessThan(3000)
+    await until(() => closedByServerSide > 0)
+    expect(closedByServerSide).toBe(1)
+  })
+
+  it('rejects when the name resolves too slowly (connect limit includes the lookup)', async () => {
+    const never = () => new Promise<ResolvedAddress[]>(() => { /* resolver hangs */ })
+    const failure = await pinnedFetch(
+      `http://gw.test:${port}/`, {}, { resolve: never, isPublicAddress: allowAll, timeouts: { connectMs: 150 } },
+    ).catch((e: unknown) => e)
+    expect(failure).toBeInstanceOf(PinnedFetchTimeoutError)
+    expect((failure as Error).message).toContain('connect')
+  })
+
+  it('completes when the answer arrives within the headers limit', async () => {
+    behaviour = (socket) => { socket.end('HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok') }
+    const res = await pinnedFetch(`http://gw.test:${port}/`, {}, deps({ connectMs: 5000, headersMs: 2000 }))
+    expect(await res.text()).toBe('ok')
+  })
+
+  it('fails the body read, and closes the socket, when the server goes silent after the first chunk', async () => {
+    behaviour = (socket) => { socket.write('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nfirst\r\n') }
+    const res = await pinnedFetch(`http://gw.test:${port}/`, {}, deps({ bodyMs: 150 }))
+    const reader = res.body!.getReader()
+    const first = await reader.read()
+    expect(new TextDecoder().decode(first.value)).toBe('first')
+    const failure = await reader.read().catch((e: unknown) => e)
+    expect(failure).toBeInstanceOf(PinnedFetchTimeoutError)
+    expect((failure as Error).message).toContain('body')
+    await until(() => closedByServerSide > 0)
+    expect(closedByServerSide).toBe(1)
+  })
+
+  it('treats the body limit as an idle limit: a slow trickle that keeps sending is not cut off', async () => {
+    behaviour = (socket) => {
+      socket.write('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n')
+      let n = 0
+      const tick = setInterval(() => {
+        n += 1
+        if (n > 8) { clearInterval(tick); socket.end('0\r\n\r\n'); return }
+        socket.write('1\r\nx\r\n')
+      }, 60)
+      socket.on('close', () => clearInterval(tick))
+    }
+    // 8 chunks over ~480 ms with a 200 ms idle limit.
+    const res = await pinnedFetch(`http://gw.test:${port}/`, {}, deps({ bodyMs: 200 }))
+    expect(await res.text()).toBe('xxxxxxxx')
+  })
+
+  it('does not start the body limit while the caller is not reading (backpressure pauses it)', async () => {
+    const chunk = 'a'.repeat(1024)
+    behaviour = (socket) => {
+      socket.write('HTTP/1.1 200 OK\r\nContent-Length: 4194304\r\n\r\n')
+      let sent = 0
+      const pump = () => {
+        while (sent < 4096) {
+          sent += 1
+          if (!socket.write(chunk.repeat(1))) { socket.once('drain', pump); return }
+        }
+        socket.end()
+      }
+      pump()
+    }
+    const res = await pinnedFetch(`http://gw.test:${port}/`, {}, deps({ bodyMs: 300 }))
+    const reader = res.body!.getReader()
+    const first = await reader.read()
+    // The reader stops pulling for longer than the idle limit; the stream must stay usable.
+    await new Promise((r) => setTimeout(r, 600))
+    let bytes = first.value!.length
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      bytes += value.length
+    }
+    expect(bytes).toBe(4096 * 1024)
+  })
+
+  it('still honours the caller AbortSignal while waiting for headers', async () => {
+    behaviour = () => { /* never answer */ }
+    const controller = new AbortController()
+    const promise = pinnedFetch(`http://gw.test:${port}/`, { signal: controller.signal }, deps({ headersMs: 5000 }))
+    setTimeout(() => controller.abort(), 100)
+    const failure = await promise.catch((e: unknown) => e)
+    expect(failure).not.toBeInstanceOf(PinnedFetchTimeoutError)
+    expect((failure as Error).name).toBe('AbortError')
+  })
+})
+
+describe('pinnedFetch, answers that fetch cannot represent', () => {
+  let server: net.Server
+  let port: number
+  let raw = ''
+
+  beforeAll(async () => {
+    server = net.createServer((socket) => {
+      socket.on('error', () => { /* the client may destroy the connection */ })
+      socket.once('data', () => socket.end(raw))
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    port = (server.address() as AddressInfo).port
+  })
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  })
+
+  const run = () =>
+    pinnedFetch(`http://gw.test:${port}/`, {}, {
+      resolve: async () => [v4('127.0.0.1')],
+      isPublicAddress: () => true,
+      timeouts: { headersMs: 2000, bodyMs: 2000 },
+    })
+
+  // Each of these used to throw inside the response listener: an uncaught
+  // exception for the process and a promise that never settled.
+  it.each([
+    ['600', 'HTTP/1.1 600 Nope\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok'],
+    ['999', 'HTTP/1.1 999 Nope\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok'],
+    ['101', 'HTTP/1.1 101 Switching Protocols\r\nConnection: close\r\n\r\n'],
+  ])('rejects a %s status with a clear error instead of hanging', async (status, answer) => {
+    raw = answer
+    const failure = await Promise.race([
+      run().catch((e: unknown) => e),
+      new Promise((r) => setTimeout(() => r('HUNG'), 3000)),
+    ])
+    expect(failure).toBeInstanceOf(Error)
+    expect((failure as Error).message).toContain(`unsupported HTTP status (${status})`)
+  })
+
+  it.each([
+    ['a control byte', 'HTTP/1.1 200 O\x01K\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok'],
+    ['DEL', 'HTTP/1.1 200 O\x7fK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok'],
+  ])('answers with an empty status text when the reason phrase has %s', async (_label, answer) => {
+    raw = answer
+    const res = await Promise.race([run(), new Promise<'HUNG'>((r) => setTimeout(() => r('HUNG'), 3000))])
+    expect(res).not.toBe('HUNG')
+    const response = res as Response
+    expect(response.status).toBe(200)
+    expect(response.statusText).toBe('')
+    expect(await response.text()).toBe('ok')
+  })
+
+  it('keeps a valid reason phrase', async () => {
+    raw = 'HTTP/1.1 503 Gateway Down\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
+    const res = await run()
+    expect(res.status).toBe(503)
+    expect(res.statusText).toBe('Gateway Down')
+  })
+
+  it('answers the lowest and highest representable statuses', async () => {
+    raw = 'HTTP/1.1 599 Edge\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
+    expect((await run()).status).toBe(599)
+    raw = 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
+    expect((await run()).status).toBe(200)
   })
 })

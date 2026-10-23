@@ -175,27 +175,53 @@ export function remoteGatewayFetch(
   return gatewayRequest(base, path, init, { trustDefault: false })
 }
 
-export interface GatewayOptions {
-  gatewayUrl?: string
+/**
+ * Who chose the `gatewayUrl` passed to gatewayFetch.
+ *
+ * - `'operator'`: the operator, or a signed-in user's own browser (the
+ *   `x-gateway-url` header). A URL equal to the operator default skips the
+ *   https/allowlist/port/private-range checks, as the default may legitimately
+ *   be http or loopback.
+ * - `'remote'`: a remote party (for example the URL an agent reports at its
+ *   handshake). The default gets no exception. Prefer remoteGatewayFetch.
+ */
+export type GatewayUrlSource = 'operator' | 'remote'
+
+interface GatewayOptionsBase {
   token?: string
   method?: string
   body?: unknown
   headers?: Record<string, string>
   signal?: AbortSignal
-  /**
-   * Set when `gatewayUrl` was chosen by a remote party. The operator default
-   * then gets no exception, exactly as with remoteGatewayFetch. Leave unset
-   * for the operator default and for the URL a signed-in user's own browser
-   * sends in `x-gateway-url`.
-   */
-  remoteChosen?: boolean
+}
+
+/**
+ * Passing a `gatewayUrl` (even one that may be undefined at run time) requires
+ * a `urlSource`, so a caller has to decide who chose the URL; leaving it out is
+ * a compile error. With neither, the operator default gateway is used.
+ */
+export type GatewayOptions = GatewayOptionsBase &
+  (
+    | { gatewayUrl?: string; urlSource: GatewayUrlSource }
+    | { gatewayUrl?: undefined; urlSource?: undefined }
+  )
+
+/**
+ * The default exemption applies to the operator default (no URL, no source)
+ * and to a URL the operator chose. It fails closed for a remote source and for
+ * a URL without a source (a caller that bypassed the type).
+ */
+function isOperatorChosen(options: GatewayOptions): boolean {
+  if (options.urlSource === 'operator') return true
+  return options.gatewayUrl === undefined && options.urlSource === undefined
 }
 
 /**
  * Fetch from the OpenClaw Gateway.
  * Falls back to env-configured default if no instance provided.
  *
- * A URL other than the operator default is checked against the allowlist and
+ * A `gatewayUrl` needs a `urlSource` (see GatewayUrlSource). A URL other than
+ * the operator default is checked against the allowlist and
  * port rule, and its host name is resolved once and pinned (see pinnedFetch).
  */
 export async function gatewayFetch(
@@ -224,7 +250,7 @@ export async function gatewayFetch(
       body: options.body ? JSON.stringify(options.body) : undefined,
       signal: options.signal,
     },
-    { trustDefault: !options.remoteChosen },
+    { trustDefault: isOperatorChosen(options) },
   )
 }
 

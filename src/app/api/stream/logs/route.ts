@@ -105,6 +105,7 @@ export async function GET(req: NextRequest) {
         // rejection, use the local journal instead.
         gatewayFetch('/logs/stream', {
           gatewayUrl,
+          urlSource: 'operator',
           token,
           signal: req.signal,
         }).then(async (res) => {

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const start = Date.now()
-    const res = await gatewayFetch('/status', { gatewayUrl, token })
+    const res = await gatewayFetch('/status', { gatewayUrl, urlSource: 'operator', token })
     const responseMs = Date.now() - start
     const data = res.ok ? await res.json().catch(() => ({})) : {}
     return NextResponse.json({

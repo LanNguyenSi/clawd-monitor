@@ -27,6 +27,9 @@ function isPrivateIPv4(a: number, b: number, c: number): boolean {
   if (a === 192 && b === 168) return true // 192.168.0.0/16
   if (a === 192 && b === 0 && c === 0) return true // 192.0.0.0/24 IETF protocol assignments
   if (a === 198 && (b === 18 || b === 19)) return true // 198.18.0.0/15 benchmarking
+  if (a === 192 && b === 0 && c === 2) return true // 192.0.2.0/24 documentation (TEST-NET-1)
+  if (a === 198 && b === 51 && c === 100) return true // 198.51.100.0/24 documentation (TEST-NET-2)
+  if (a === 203 && b === 0 && c === 113) return true // 203.0.113.0/24 documentation (TEST-NET-3)
   if (a >= 224) return true // 224.0.0.0/4 multicast, 240.0.0.0/4 reserved, broadcast
   return false
 }
@@ -73,6 +76,12 @@ function isPrivateIPv6(host: string): boolean {
   if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) {
     return embedded(g[6], g[7]) // 64:ff9b::/96 NAT64
   }
+  // ::ffff:0:0:0/96 IPv4-translated (SIIT): non-public whatever it embeds.
+  if (leadingZeros(4) && g[4] === 0xffff && g[5] === 0) return true
+  if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 1) return true // 64:ff9b:1::/48 local-use NAT64 (RFC 8215)
+  if (g[0] === 0x100 && g[1] === 0 && g[2] === 0 && g[3] === 0) return true // 100::/64 discard-only
+  if (g[0] === 0x2001 && g[1] === 0) return true // 2001::/32 Teredo
+  if (g[0] === 0x2001 && g[1] === 0xdb8) return true // 2001:db8::/32 documentation
   if (g[0] === 0x2002) return embedded(g[1], g[2]) // 2002::/16 6to4
   if ((g[0] & 0xfe00) === 0xfc00) return true // fc00::/7 unique-local
   if ((g[0] & 0xffc0) === 0xfe80) return true // fe80::/10 link-local

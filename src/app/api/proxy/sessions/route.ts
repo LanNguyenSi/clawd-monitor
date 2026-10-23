@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const token = req.headers.get('x-gateway-token') ?? undefined
 
   try {
-    const res = await gatewayFetch('/sessions', { gatewayUrl, token })
+    const res = await gatewayFetch('/sessions', { gatewayUrl, urlSource: 'operator', token })
     if (!res.ok) {
       return NextResponse.json({ sessions: [], error: `Gateway returned ${res.status}` })
     }

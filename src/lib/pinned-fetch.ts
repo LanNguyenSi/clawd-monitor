@@ -12,6 +12,11 @@
  * host name for SNI and certificate verification, and a redirect answer is
  * returned as it is, never followed. Each request uses a fresh agent, so no
  * pooled socket that was connected earlier is reused.
+ *
+ * The request is bounded in time, as the global fetch it replaces was: a
+ * connect timeout (including the lookup and the TLS handshake), a timeout for
+ * the response headers, and an idle timeout for the body. When one expires the
+ * socket is destroyed and the request fails with a PinnedFetchTimeoutError.
  */
 import dns from 'node:dns'
 import http from 'node:http'
@@ -33,10 +38,40 @@ export interface PinnedFetchInit {
   signal?: AbortSignal
 }
 
+export interface PinnedFetchTimeouts {
+  /** Lookup, TCP connect and TLS handshake together. */
+  connectMs: number
+  /** From the end of the handshake until the response headers arrive. */
+  headersMs: number
+  /** Without any byte from the server, while the caller is reading the body. */
+  bodyMs: number
+}
+
+/**
+ * The connect limit is the one undici's global fetch used (10 s); the headers
+ * and body limits are its 300 s defaults, so a slow but working gateway behaves
+ * as before while a server that never answers no longer holds the request, its
+ * socket and the caller indefinitely.
+ */
+export const DEFAULT_PINNED_TIMEOUTS: PinnedFetchTimeouts = {
+  connectMs: 10_000,
+  headersMs: 300_000,
+  bodyMs: 300_000,
+}
+
 /** Replaceable pieces, for tests; production uses the defaults. */
 export interface PinnedFetchDeps {
   resolve?: (hostname: string) => Promise<ResolvedAddress[]>
   isPublicAddress?: (address: string) => boolean
+  timeouts?: Partial<PinnedFetchTimeouts>
+}
+
+/** The server did not connect, answer or send data within the allowed time. */
+export class PinnedFetchTimeoutError extends Error {
+  constructor(phase: 'connect' | 'headers' | 'body', ms: number) {
+    super(`Gateway request timed out (${phase}, no progress for ${ms} ms)`)
+    this.name = 'PinnedFetchTimeoutError'
+  }
 }
 
 const defaultResolve = (hostname: string): Promise<ResolvedAddress[]> =>
@@ -86,18 +121,34 @@ export function createPinnedLookup(deps: PinnedFetchDeps = {}) {
   }
 }
 
-const NULL_BODY_STATUS = new Set([101, 204, 205, 304])
+const NULL_BODY_STATUS = new Set([204, 205, 304])
 
+// A reason phrase the Response constructor accepts: tab, printable ASCII and
+// obs-text. The HTTP parser lets other bytes (control characters, DEL) through.
+const VALID_STATUS_TEXT = /^[\t\x20-\x7e\x80-\xff]*$/
+
+/**
+ * Turn the node response into a fetch Response. Throws a plain Error when the
+ * status cannot be represented (fetch only allows 200-599: a 1xx that reaches
+ * here, such as 101, or a 6xx-9xx status is a protocol error for a gateway, and
+ * the global fetch rejects 1xx too); a reason phrase with illegal bytes is
+ * dropped instead, as the global fetch tolerates it.
+ */
 function toResponse(res: http.IncomingMessage, method: string): Response {
+  const status = res.statusCode ?? 0
+  if (!Number.isInteger(status) || status < 200 || status > 599) {
+    throw new Error(`Gateway answered with an unsupported HTTP status (${status})`)
+  }
+  const reason = res.statusMessage ?? ''
+  const statusText = VALID_STATUS_TEXT.test(reason) ? reason : ''
   const headers = new Headers()
   for (const [name, value] of Object.entries(res.headers)) {
     if (Array.isArray(value)) value.forEach((v) => headers.append(name, v))
     else if (value !== undefined) headers.set(name, value)
   }
-  const status = res.statusCode ?? 502
   if (method === 'HEAD' || NULL_BODY_STATUS.has(status)) {
     res.resume()
-    return new Response(null, { status, statusText: res.statusMessage, headers })
+    return new Response(null, { status, statusText, headers })
   }
 
   let source: Readable = res
@@ -114,7 +165,7 @@ function toResponse(res: http.IncomingMessage, method: string): Response {
   }
   return new Response(Readable.toWeb(source) as unknown as ReadableStream, {
     status,
-    statusText: res.statusMessage,
+    statusText,
     headers,
   })
 }
@@ -143,15 +194,55 @@ export async function pinnedFetch(
   const headers: Record<string, string> = { 'accept-encoding': 'identity', ...init.headers }
   const transport = url.protocol === 'https:' ? https : http
 
+  const timeouts = { ...DEFAULT_PINNED_TIMEOUTS, ...deps.timeouts }
+  const connectedEvent = url.protocol === 'https:' ? 'secureConnect' : 'connect'
+
   return new Promise<Response>((resolve, reject) => {
+    let timer: NodeJS.Timeout | undefined
+    const disarm = () => {
+      if (timer) clearTimeout(timer)
+      timer = undefined
+    }
+    const arm = (phase: 'connect' | 'headers', ms: number) => {
+      disarm()
+      timer = setTimeout(() => req.destroy(new PinnedFetchTimeoutError(phase, ms)), ms)
+    }
+    const fail = (err: Error) => {
+      disarm()
+      reject(err)
+    }
+
     const req = transport.request(url, {
       method,
       headers,
       signal: init.signal,
       agent: false,
       lookup: createPinnedLookup(deps) as unknown as net.LookupFunction,
-    }, (res) => resolve(toResponse(res, method)))
-    req.on('error', reject)
+    }, (res) => {
+      disarm()
+      // The caller reads the body when it likes; the socket's idle timer runs
+      // only while the stream is flowing, so a slow reader is not a timeout.
+      const socket = res.socket
+      const expire = () => res.destroy(new PinnedFetchTimeoutError('body', timeouts.bodyMs))
+      socket.setTimeout(timeouts.bodyMs)
+      socket.once('timeout', expire)
+      res.on('pause', () => socket.setTimeout(0))
+      res.on('resume', () => socket.setTimeout(timeouts.bodyMs))
+      // A destroyed response with no other error listener would be fatal.
+      res.on('error', () => { /* surfaces through the body stream */ })
+      try {
+        resolve(toResponse(res, method))
+      } catch (err) {
+        res.destroy()
+        reject(err)
+      }
+    })
+    req.on('error', fail)
+    req.on('close', disarm)
+    req.on('socket', (socket: net.Socket) => {
+      socket.once(connectedEvent, () => arm('headers', timeouts.headersMs))
+    })
+    arm('connect', timeouts.connectMs)
     req.end(init.body)
   })
 }

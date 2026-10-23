@@ -423,7 +423,7 @@ describe('gatewayFetch – SSRF rejection (attacker-supplied http URL)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     // 'http://evil.com' is not the default URL and is not https → GatewayUrlError
-    await expect(mod.gatewayFetch('/x', { gatewayUrl: 'http://evil.com' }))
+    await expect(mod.gatewayFetch('/x', { gatewayUrl: 'http://evil.com', urlSource: 'operator' }))
       .rejects.toBeInstanceOf(mod.GatewayUrlError)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -433,7 +433,7 @@ describe('gatewayFetch – SSRF rejection (attacker-supplied http URL)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     // 'https://example.com' passes protocol check but fails allowlist (empty allowlist)
-    await expect(mod.gatewayFetch('/x', { gatewayUrl: 'https://example.com' }))
+    await expect(mod.gatewayFetch('/x', { gatewayUrl: 'https://example.com', urlSource: 'operator' }))
       .rejects.toBeInstanceOf(mod.GatewayUrlError)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -509,6 +509,12 @@ describe('isPrivateHost (address classes)', () => {
     ['192.0.0.8', 'IETF protocol assignments'],
     ['198.18.0.1', 'benchmarking start'],
     ['198.19.255.255', 'benchmarking end'],
+    ['192.0.2.0', 'TEST-NET-1 start'],
+    ['192.0.2.255', 'TEST-NET-1 end'],
+    ['198.51.100.0', 'TEST-NET-2 start'],
+    ['198.51.100.255', 'TEST-NET-2 end'],
+    ['203.0.113.0', 'TEST-NET-3 start'],
+    ['203.0.113.255', 'TEST-NET-3 end'],
     ['224.0.0.1', 'multicast'],
     ['240.0.0.1', 'reserved'],
     ['255.255.255.255', 'broadcast'],
@@ -529,6 +535,22 @@ describe('isPrivateHost (address classes)', () => {
     ['::127.0.0.1', 'IPv4-compatible loopback, dotted'],
     ['64:ff9b::7f00:1', 'NAT64 embedding loopback'],
     ['2002:7f00:1::', '6to4 embedding loopback'],
+    ['::ffff:0:808:808', 'IPv4-translated (SIIT), even for a public embedded address'],
+    ['::ffff:0:0:0', 'IPv4-translated, all zero'],
+    ['64:ff9b:1::1', 'local-use NAT64 (RFC 8215) start'],
+    ['64:ff9b:1:ffff:ffff:ffff:ffff:ffff', 'local-use NAT64 end'],
+    ['100::', 'discard-only prefix start'],
+    ['100::ffff:ffff:ffff:ffff', 'discard-only prefix end'],
+    ['2001::', 'Teredo start'],
+    ['2001:0:ffff:ffff:ffff:ffff:ffff:ffff', 'Teredo end'],
+    ['2001:db8::', 'documentation start'],
+    ['2001:db8:ffff:ffff:ffff:ffff:ffff:ffff', 'documentation end'],
+    ['2001:0db8::1', 'documentation, leading zero'],
+    ['LOCALHOST', 'name in upper case'],
+    ['API.LOCALHOST', 'name under .localhost in upper case'],
+    ['::FFFF:7F00:1', 'IPv4-mapped loopback in upper case'],
+    ['FE80::1', 'link-local in upper case'],
+    ['[::1]', 'bracketed loopback'],
     ['fe80::1%en0', 'zone id (unparseable, fails closed)'],
     ['1:2:3', 'malformed (fails closed)'],
     ['1::2::3', 'two compressions (fails closed)'],
@@ -559,6 +581,25 @@ describe('isPrivateHost (address classes)', () => {
     '223.255.255.254',
     '2606:4700::1111',
     '2001:4860:4860::8888',
+    '192.0.3.1',
+    '192.0.1.255',
+    '198.51.99.255',
+    '198.51.101.1',
+    '203.0.112.255',
+    '203.0.114.1',
+    '::ffff:1:808:808',
+    '::fffe:0:808:808',
+    '64:ff9b:2::1',
+    '64:ff9a:1::1',
+    '100:0:0:1::1',
+    '101::',
+    '2001:1::1',
+    '2001:db9::1',
+    '2001:db7:ffff::1',
+    '2001:4000::1',
+    '2A00:1450::1',
+    '::FFFF:808:808',
+    'EXAMPLE.COM',
     '2002:808:808::',
     '64:ff9b::808:808',
     '::ffff:8.8.8.8',
@@ -735,6 +776,7 @@ describe('gatewayFetch and remoteGatewayFetch, transport', () => {
   it('sends an allowlisted URL through the pinned fetch, never the global one', async () => {
     const res = await mod.gatewayFetch('/status', {
       gatewayUrl: 'https://gw.example.com',
+      urlSource: 'operator',
       token: 'tok',
       method: 'POST',
       body: { a: 1 },
@@ -750,27 +792,55 @@ describe('gatewayFetch and remoteGatewayFetch, transport', () => {
   })
 
   it('checks the URL before any transport: a rejected URL reaches neither', async () => {
-    await expect(mod.gatewayFetch('/x', { gatewayUrl: 'https://gw.example.com:9999' })).rejects.toThrow('Gateway port not allowed')
+    await expect(mod.gatewayFetch('/x', { gatewayUrl: 'https://gw.example.com:9999', urlSource: 'operator' })).rejects.toThrow('Gateway port not allowed')
     expect(globalFetch).not.toHaveBeenCalled()
     expect(pinned).not.toHaveBeenCalled()
   })
 
-  it('treats a remote-chosen gatewayUrl that equals the default as unexempt', async () => {
-    await expect(mod.gatewayFetch('/x', { gatewayUrl: 'http://localhost:9500', remoteChosen: true }))
+  it('treats a remote-sourced gatewayUrl that equals the default as unexempt', async () => {
+    await expect(mod.gatewayFetch('/x', { gatewayUrl: 'http://localhost:9500', urlSource: 'remote' }))
       .rejects.toBeInstanceOf(mod.GatewayUrlError)
     expect(globalFetch).not.toHaveBeenCalled()
     expect(pinned).not.toHaveBeenCalled()
   })
 
-  it('applies the remote rule when remoteChosen is set without a gatewayUrl (the default is not exempt)', async () => {
-    await expect(mod.gatewayFetch('/x', { remoteChosen: true })).rejects.toBeInstanceOf(mod.GatewayUrlError)
+  it('applies the remote rule when the source is remote without a gatewayUrl (the default is not exempt)', async () => {
+    await expect(mod.gatewayFetch('/x', { urlSource: 'remote' })).rejects.toBeInstanceOf(mod.GatewayUrlError)
     expect(globalFetch).not.toHaveBeenCalled()
   })
 
-  it('still exempts the default when remoteChosen is false or absent', async () => {
-    await mod.gatewayFetch('/x', { gatewayUrl: 'http://localhost:9500', remoteChosen: false })
-    await mod.gatewayFetch('/x', { gatewayUrl: 'http://localhost:9500' })
-    expect(globalFetch).toHaveBeenCalledTimes(2)
+  it('exempts the default only for an operator-sourced URL or no URL at all', async () => {
+    await mod.gatewayFetch('/x', { gatewayUrl: 'http://localhost:9500', urlSource: 'operator' })
+    await mod.gatewayFetch('/x')
+    await mod.gatewayFetch('/x', { urlSource: 'operator' })
+    expect(globalFetch).toHaveBeenCalledTimes(3)
+    expect(globalFetch.mock.calls.map((c) => c[0])).toEqual(Array(3).fill('http://localhost:9500/x'))
+  })
+
+  it('requires a urlSource whenever a gatewayUrl is passed (compile-time)', () => {
+    // The checks below are type-level (type-check:tests compiles this file):
+    // a call that leaves the trust decision out must not compile.
+    const compileOnly = async () => {
+      // @ts-expect-error a gatewayUrl without a urlSource
+      await mod.gatewayFetch('/x', { gatewayUrl: 'http://localhost:9500' })
+      // @ts-expect-error a possibly undefined gatewayUrl is still a gatewayUrl
+      await mod.gatewayFetch('/x', { gatewayUrl: process.env.NOPE as string | undefined })
+      // @ts-expect-error the former opt-out flag is gone
+      await mod.gatewayFetch('/x', { gatewayUrl: 'http://localhost:9500', remoteChosen: true })
+      // @ts-expect-error an unknown source
+      await mod.gatewayFetch('/x', { gatewayUrl: 'http://localhost:9500', urlSource: 'user' })
+      await mod.gatewayFetch('/x', { gatewayUrl: process.env.NOPE, urlSource: 'operator' })
+      await mod.gatewayFetch('/x', { gatewayUrl: 'http://localhost:9500', urlSource: 'remote', token: 't' })
+      await mod.gatewayFetch('/x', { token: 't' })
+    }
+    expect(typeof compileOnly).toBe('function')
+  })
+
+  it('fails closed at run time when a caller bypasses the type and omits the source', async () => {
+    await expect(mod.gatewayFetch('/x', { gatewayUrl: 'http://localhost:9500' } as never))
+      .rejects.toBeInstanceOf(mod.GatewayUrlError)
+    expect(globalFetch).not.toHaveBeenCalled()
+    expect(pinned).not.toHaveBeenCalled()
   })
 
   it('remoteGatewayFetch rejects the default URL as a promise and fetches nothing', async () => {
@@ -809,16 +879,16 @@ describe('operator default that is itself https and allowlisted', () => {
     vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules()
   })
 
-  it('uses the global fetch for the trusted default and the pinned one when it was remote-chosen', async () => {
+  it('uses the global fetch for the trusted default and the pinned one when the source is remote', async () => {
     pinned.mockResolvedValue(new Response('pinned'))
     globalFetch.mockResolvedValue(new Response('global'))
     vi.stubGlobal('fetch', globalFetch)
 
-    await mod.gatewayFetch('/a', { gatewayUrl: 'https://gw.example.com' })
+    await mod.gatewayFetch('/a', { gatewayUrl: 'https://gw.example.com', urlSource: 'operator' })
     expect(globalFetch).toHaveBeenCalledTimes(1)
     expect(pinned).not.toHaveBeenCalled()
 
-    await mod.gatewayFetch('/a', { gatewayUrl: 'https://gw.example.com', remoteChosen: true })
+    await mod.gatewayFetch('/a', { gatewayUrl: 'https://gw.example.com', urlSource: 'remote' })
     expect(pinned).toHaveBeenCalledTimes(1)
     expect(globalFetch).toHaveBeenCalledTimes(1)
   })
