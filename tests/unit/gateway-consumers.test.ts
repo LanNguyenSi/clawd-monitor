@@ -10,6 +10,9 @@
  *   URL a remote party chose) fetches through remoteGatewayFetch only, which
  *   has no default-URL exemption, and never through gatewayFetch.
  * - No route calls the URL assertions itself instead of a fetch helper.
+ * - No route imports an HTTP or socket client of its own (node:http,
+ *   node:https, node:net, node:tls, node:http2 or undici), which would reach a
+ *   gateway around the guard as a raw fetch would.
  *
  * The rules are text scans, so they are generic over files: a new route, or an
  * edit to an existing one, is judged without this file being touched. They do
@@ -36,6 +39,13 @@ function stripComments(text: string): string {
 /** Any use of the identifier `fetch` or `pinnedFetch` (a call, an alias, `globalThis.fetch`). */
 function usesRawFetch(text: string): boolean {
   return /\b(?:pinnedFetch|fetch)\b/.test(stripComments(text))
+}
+
+/** Imports, requires or dynamically imports an HTTP or socket client module. */
+function importsRawTransport(text: string): boolean {
+  return /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|^\s*import\s+)['"`](?:node:)?(?:http|https|http2|net|tls|undici)['"`]/m.test(
+    stripComments(text),
+  )
 }
 
 /** Reads an agent's reported gateway fields: `x.gatewayUrl`, `x?.gatewayToken`, `x['gatewayUrl']`, `{ gatewayUrl } = x`. */
@@ -94,6 +104,26 @@ describe('gateway consumers, scan rules on sample sources', () => {
     expect(usesRawFetch("const u = 'http://x'; await fetch(u)")).toBe(true)
   })
 
+  it('flags every way of loading an HTTP or socket client', () => {
+    expect(importsRawTransport("import http from 'node:http'")).toBe(true)
+    expect(importsRawTransport('import { request } from "https"')).toBe(true)
+    expect(importsRawTransport("import * as net from 'node:net'")).toBe(true)
+    expect(importsRawTransport("import { connect } from 'node:tls'")).toBe(true)
+    expect(importsRawTransport("import { connect } from 'http2'")).toBe(true)
+    expect(importsRawTransport("import { request } from 'undici'")).toBe(true)
+    expect(importsRawTransport("import 'node:net'")).toBe(true)
+    expect(importsRawTransport("const { Agent } = require('undici')")).toBe(true)
+    expect(importsRawTransport("const m = await import('node:https')")).toBe(true)
+  })
+
+  it('does not flag other modules, names that merely contain a client name, or comments', () => {
+    expect(importsRawTransport("import { NextRequest } from 'next/server'")).toBe(false)
+    expect(importsRawTransport("import { spawn } from 'child_process'")).toBe(false)
+    expect(importsRawTransport("import { x } from '@/lib/http-helpers'")).toBe(false)
+    expect(importsRawTransport("import { y } from 'node:netlink'")).toBe(false)
+    expect(importsRawTransport("// import http from 'node:http'\nconst a = 1")).toBe(false)
+  })
+
   it('flags every way of reading the agent-reported gateway fields', () => {
     expect(readsAgentGatewayFields("const u = registry.agents.get(id)?.gatewayUrl")).toBe(true)
     expect(readsAgentGatewayFields('const t = agent.gatewayToken')).toBe(true)
@@ -136,6 +166,11 @@ describe('gateway consumers', () => {
       expect(callsGatewayFetch(route.text) || callsRemoteGatewayFetch(route.text)).toBe(false)
       expect(importsAgentRegistry(route.text)).toBe(false)
     }
+  })
+
+  it('has no route that loads an HTTP or socket client of its own', () => {
+    const offenders = routes.filter((r) => importsRawTransport(r.text)).map((r) => r.rel)
+    expect(offenders).toEqual([])
   })
 
   it('has no route that calls the URL assertion itself instead of a fetch helper', () => {
