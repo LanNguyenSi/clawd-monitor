@@ -13,7 +13,7 @@ AGENT_TOKENS=token1,token2  # static tokens (also manageable via Settings UI)
 AGENT_TTL_MS=300000         # offline-agent TTL in ms (default 5min)
 NEXT_PUBLIC_DEFAULT_GATEWAY_URL=http://localhost:9500
 DEFAULT_GATEWAY_TOKEN=      # default OpenClaw API token
-ALLOWED_GATEWAY_HOSTS=      # SSRF allowlist for per-instance gateway overrides (comma-separated hostnames)
+ALLOWED_GATEWAY_HOSTS=      # SSRF allowlist for per-instance gateway overrides (comma-separated hostnames, each optionally host:port)
 CLAWD_DIR=/root/.openclaw/workspace  # server-local OpenClaw workspace: Memory Viewer fallback (MEMORY.md / CURRENT.md / memory/*.md) and Alert History source (memory/smart-alert-state.json); code default when unset is /root/clawd
 CLAWD_MONITOR_DATA_DIR=/data   # persistent storage for tokens + password hash
 DOMAIN=monitor.yourdomain.com  # read by docker-compose.traefik.yml only, not by the server
@@ -54,12 +54,55 @@ Notes:
   subsequent logins).
 - `ALLOWED_GATEWAY_HOSTS` overrides must be `https` and may not point at
   private or loopback IPs; leave it empty to forbid all per-instance
-  overrides and use only the default gateway. The same rule applies to the
-  `gatewayUrl` a connected agent reports: the Log Tail widget fetches it only
-  when it is `https`, its host is in the list and it is not a private or
-  loopback address, otherwise it shows that log streaming is not available.
-  That includes a URL equal to the default gateway URL: the default's
-  exemption does not apply to agent-reported URLs.
+  overrides and use only the default gateway. Rules for an override:
+  - **Port.** An entry is a host name, optionally followed by `:port`
+    (`gw.example.com:8443`; IPv6 as `[2606:4700::1111]:8443`). An entry without
+    a port allows port 443 only. An entry with a port allows only that port, so
+    a gateway on 443 and one on 8443 need two entries. A request to any other
+    port of an allowlisted host is rejected, and an entry with a port that is
+    not 1-65535 is ignored. Write an entry in the serialised form of the host
+    that appears in the URL (case is ignored): punycode for international
+    names and compressed lower-case IPv6 (`[2606:4700::1111]`, not
+    `[2606:4700:0:0:0:0:0:1111]`); an entry in another spelling never matches.
+  - **Resolved address.** The host name is resolved when the request connects.
+    If any address it resolves to is not public, the request is rejected.
+    Not public are loopback, private, link-local, carrier-grade NAT
+    (`100.64.0.0/10`), unspecified, multicast, reserved, benchmarking
+    (`198.18.0.0/15`), documentation (`192.0.2.0/24`, `198.51.100.0/24`,
+    `203.0.113.0/24`) and 6to4 relay (`192.88.99.0/24`) IPv4 addresses; every
+    IPv6 address outside the global unicast range `2000::/3` (so the
+    IPv4-compatible range `::/96` is never public); and inside it all of
+    `2001::/23` except the globally reachable blocks `2001:1::1` to
+    `2001:1::3`, `2001:3::/32`, `2001:4:112::/48`, `2001:20::/28` and
+    `2001:30::/28`, plus documentation (`2001:db8::/32`, `3fff::/20`). An IPv6
+    address that carries an IPv4 address (IPv4-mapped, NAT64 `64:ff9b::/96`
+    and 6to4 `2002::/16`) is judged by that IPv4 address. The
+    connection goes to exactly the addresses that were checked, so a DNS answer
+    that changes between the check and the connect has no effect. TLS still
+    verifies the certificate against the host name. A redirect answer is never
+    followed. An allowlisted name that points at a private address (an
+    internal gateway reached by name, for example) no longer works.
+  - **Time limits.** For an override, connecting (lookup, TCP and TLS) must
+    finish within 10 seconds and the response headers must arrive within 300
+    seconds of sending the request; otherwise the request fails. While the
+    body is being read, the gateway must not stay silent for more than 300
+    seconds, or the read fails. When nobody reads the body and its buffer is
+    full, the limit pauses, so a route that does not read a non-OK answer
+    cancels its body, which releases the connection at once.
+  - **Agent-reported URLs.** The same rule applies to the `gatewayUrl` a
+    connected agent reports: the Log Tail widget fetches it only when it is
+    `https`, its host and port are in the list and it resolves to public
+    addresses, otherwise it shows that log streaming is not available. That
+    includes a URL equal to the default gateway URL: the default's exemption
+    does not apply to agent-reported URLs.
+  The operator default (`NEXT_PUBLIC_DEFAULT_GATEWAY_URL`) is trusted as
+  configured, including `http` and a loopback address.
+- With an agent selected, the Log Tail widget's Docker source is not
+  available: `/api/agents/<id>/logs?source=docker` answers two "not
+  available" lines and never starts `docker` on the clawd-monitor host. Clear
+  the agent selection to tail containers on the clawd-monitor host. The log
+  routes accept only the sources `openclaw`, `docker` and `system` (otherwise
+  400).
 - `GITHUB_TOKEN` and `GITHUB_REPOS` are read from the server environment only;
   the GitHub PRs route ignores a `token` or `repos` query parameter.
 - Agent tokens can also be issued and revoked from the Settings UI instead of

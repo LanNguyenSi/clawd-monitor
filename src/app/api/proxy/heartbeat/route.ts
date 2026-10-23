@@ -15,9 +15,12 @@ export async function GET(req: NextRequest) {
 
   try {
     const start = Date.now()
-    const res = await gatewayFetch('/status', { gatewayUrl, token })
+    const res = await gatewayFetch('/status', { gatewayUrl, urlSource: 'operator', token })
     const responseMs = Date.now() - start
-    const data = res.ok ? await res.json().catch(() => ({})) : {}
+    let data = {}
+    if (res.ok) data = await res.json().catch(() => ({}))
+    // An unread body keeps its connection open until it is collected.
+    else await res.body?.cancel()
     return NextResponse.json({
       ok: res.ok,
       status: res.status,

@@ -3,12 +3,14 @@ type: module
 title: Widget data modes, agent snapshot vs default gateway vs dashboard host
 description: For each dashboard widget, where its data comes from when an agent is selected (the agent's last WebSocket snapshot) and when none is (the default gateway or the dashboard host itself), which widgets ignore the selection, and how the selection is held.
 tags: [widgets, dashboard, agents, data-sources]
-timestamp: 2026-10-23T04:47:43Z
+timestamp: 2026-10-23T12:02:22Z
 sources:
   - src/lib/widgets.ts
   - src/lib/active-agent.tsx
   - src/lib/schemas.ts
   - src/lib/gateway.ts
+  - src/lib/pinned-fetch.ts
+  - src/lib/input-validators.ts
   - src/app/dashboard/page.tsx
   - src/components/Nav/AgentSwitcher.tsx
   - src/components/Nav/Navbar.tsx
@@ -99,10 +101,12 @@ heartbeat widget shows `SILENT`
 Without a selection, each widget calls its own route. Routes that use
 `gatewayFetch()` without an `x-gateway-url` header go to the default
 gateway URL and token
-(`src/lib/gateway.ts:131#"options.gatewayUrl ?? DEFAULT_GATEWAY_URL"`,
-`src/lib/gateway.ts:135#"options.token ?? DEFAULT_GATEWAY_TOKEN"`). No
+(`src/lib/gateway.ts:231#"options.gatewayUrl ?? DEFAULT_GATEWAY_URL"`,
+`src/lib/gateway.ts:232#"options.token ?? DEFAULT_GATEWAY_TOKEN"`). No
 widget sets that header, so the widgets' requests to these routes always
-reach the default gateway.
+reach the default gateway. A route that does not read the body of a non-OK
+answer cancels it, so its connection is released at once
+(`src/app/api/proxy/sessions/route.ts:19#"await res.body?.cancel()"`).
 There is no instance switcher: the navbar mounts `AgentSwitcher`,
 `AddWidgetMenu`, `UserMenu` and `AddAgentModal`
 (`src/components/Nav/Navbar.tsx:4-7#"import { AddAgentModal } from '@/components/AddAgentModal'"`).
@@ -136,7 +140,7 @@ Evidence for the switch in each component, agent URL first:
   route tries the gateway
   (`src/app/api/proxy/memory/route.ts:36#"/workspace/memory?file="`) and
   falls back to the filesystem
-  (`src/app/api/proxy/memory/route.ts:46-48#"FILE_PATHS[file] ?? FILE_PATHS.memory"`).
+  (`src/app/api/proxy/memory/route.ts:48-50#"FILE_PATHS[file] ?? FILE_PATHS.memory"`).
 - `docker`: `src/components/widgets/DockerWidget.tsx:29-30#"'/api/proxy/docker'"`;
   route `src/app/api/proxy/docker/route.ts:56#"docker ps -a"`.
 - `metrics`: `src/components/widgets/MetricsWidget.tsx:66-67#"/api/agents/"`
@@ -159,7 +163,7 @@ Evidence for the switch in each component, agent URL first:
   only (no default list); query parameters named `token` or `repos` are
   ignored (`src/app/api/proxy/github/route.ts:85#"process.env.GITHUB_REPOS"`).
   An entry that is not exactly `owner/repo` with GitHub-legal characters is
-  skipped (`src/lib/input-validators.ts:34#"return { owner, repo }"`).
+  skipped (`src/lib/input-validators.ts:43#"return { owner, repo }"`).
   `ciStatus` comes from the check runs of each PR's
   head commit (`src/app/api/proxy/github/route.ts:37#"check-runs"`, folded by
   `src/lib/github-ci.ts:12#"summarizeCheckRuns"`).
@@ -180,43 +184,69 @@ Without an agent (`/api/stream/logs`):
 
 - `docker`: `docker logs --follow` for the chosen container on the
   dashboard host, with `--` before the name
-  (`src/app/api/stream/logs/route.ts:43#"'logs', '--tail', '50', '--follow', '--', name"`).
+  (`src/app/api/stream/logs/route.ts:45#"'logs', '--tail', '50', '--follow', '--', name"`).
   A name that does not match `^[a-zA-Z0-9][a-zA-Z0-9_.-]*$` is answered with
   400 before the stream starts and `docker` is not started
-  (`src/app/api/stream/logs/route.ts:22#"!isValidContainerName(container)"`,
+  (`src/app/api/stream/logs/route.ts:24#"!isValidContainerName(container)"`,
   rule in `src/lib/input-validators.ts:13#"CONTAINER_NAME_RE.test(name)"`).
 - `system`: `journalctl -f` on the dashboard host, then `tail -f
   /var/log/syslog` when journalctl writes to stderr
-  (`src/app/api/stream/logs/route.ts:68#"/var/log/syslog"`).
-- `openclaw`: the default gateway's `/logs/stream`
-  (`src/app/api/stream/logs/route.ts:113#"/logs/stream"`). When the gateway
-  answers without an OK streaming body, the route falls back to
+  (`src/app/api/stream/logs/route.ts:70#"/var/log/syslog"`).
+- `openclaw`: the gateway's `/logs/stream` through `gatewayFetch`, called
+  with `urlSource: 'operator'` (the option is required whenever a `gatewayUrl`
+  is passed, so the choice cannot be left out), which trusts the default
+  gateway URL and sends any `x-gateway-url` override through the URL rule and
+  the pinned-address transport
+  (`src/app/api/stream/logs/route.ts:106#"gatewayFetch('/logs/stream'"`,
+  `src/app/api/stream/logs/route.ts:108#"urlSource: 'operator'"`).
+  When the gateway answers without an OK streaming body, or the URL is
+  rejected (an error line first), the route falls back to
   `journalctl -u openclaw` on the dashboard host
-  (`src/app/api/stream/logs/route.ts:87#"'-u', 'openclaw'"`); when the
-  request itself fails, it sends one informational line and no fallback
-  (`src/app/api/stream/logs/route.ts:130-131#"Connecting to OpenClaw Gateway"`).
+  (`src/app/api/stream/logs/route.ts:89#"'-u', 'openclaw'"`); the body of a
+  non-OK answer is cancelled first, so its connection is released
+  (`src/app/api/stream/logs/route.ts:114#"await res.body?.cancel()"`). When the
+  request itself fails for another reason, it sends one informational line and
+  no fallback
+  (`src/app/api/stream/logs/route.ts:131#"Connecting to OpenClaw Gateway"`).
+- Any other `source` value is answered with 400
+  (`src/lib/input-validators.ts:22#"(LOG_SOURCES as readonly string[]).includes(value)"`).
 
 With an agent (`/api/agents/<id>/logs`), the `docker` and `system`
-sources do not read logs from the agent's host:
+sources do not read logs from the agent's host, and a `source` outside
+`openclaw`, `docker` and `system` is answered with 400:
 
-- `docker`: `docker logs --follow` on the dashboard host, not on the
-  agent's host, with the same name check (400 without starting `docker`) and
-  `--` before the name as the no-agent route
-  (`src/app/api/agents/[agentId]/logs/route.ts:53#"'logs', '--tail', '50', '--follow', '--', name"`).
+- `docker`: not read at all. The route answers two informational lines and
+  never starts `docker`, because `docker logs` would read the dashboard host's
+  containers, not the agent's; the request is not forwarded to the agent's
+  gateway either
+  (`src/app/api/agents/[agentId]/logs/route.ts:52#"Docker logs are not available for agents"`).
 - `system`: when the agent reported a `gatewayUrl`, two informational lines
   and no log stream
-  (`src/app/api/agents/[agentId]/logs/route.ts:62-63#"System log streaming not available"`);
+  (`src/app/api/agents/[agentId]/logs/route.ts:58#"System log streaming not available"`);
   otherwise `journalctl` on the dashboard host.
 - `openclaw`: the agent's own `gatewayUrl` plus `/logs/stream`, fetched only
-  when `assertGatewayUrlAllowed` accepts the URL (https, host in
-  `ALLOWED_GATEWAY_HOSTS`, no private range; called with `trustDefault: false`,
-  so a URL equal to the default gateway URL gets no exception, unlike the
-  callers that fetch the default) and without following redirects
-  (`src/app/api/agents/[agentId]/logs/route.ts:90#"assertGatewayUrlAllowed(agent.gatewayUrl, { trustDefault: false })"`,
-  `src/app/api/agents/[agentId]/logs/route.ts:105#"redirect: 'manual'"`). A
-  rejected URL, a non-OK answer and a failed request all end in the same two
-  "log streaming not available" lines. The handshake stores whatever URL the
-  agent reported, so this check is the only one.
+  through `remoteGatewayFetch`
+  (`src/app/api/agents/[agentId]/logs/route.ts:89#"remoteGatewayFetch(agent.gatewayUrl"`,
+  defined at `src/lib/gateway.ts:170#"export function remoteGatewayFetch("`).
+  It applies the URL rule (https, host and port in `ALLOWED_GATEWAY_HOSTS`, no
+  private range) with no exception for the default gateway URL, unlike the
+  callers that fetch the default, then connects through `pinnedFetch`,
+  undici's fetch over an undici Agent whose connector uses the pinned lookup
+  (`src/lib/pinned-fetch.ts:162#"dispatcher: agentFor(deps)"`): the host name
+  is resolved once in the connection's own lookup, any non-public answer
+  rejects the request, the socket connects to the checked addresses, and a
+  redirect answer is returned, never followed
+  (`src/lib/pinned-fetch.ts:121#"lookup: createPinnedLookup(deps)"`). The
+  request has the Agent's time limits: 10 s to connect, 300 s to the response
+  headers and 300 s of silence while the body is read, after which the request
+  or the read fails like any other failure (a log stream that sends no line
+  for 300 s ends in the same "not available" lines)
+  (`src/lib/pinned-fetch.ts:52-54#"bodyMs: 300_000"`). A
+  rejected URL, a non-OK answer (its body cancelled unread,
+  `src/app/api/agents/[agentId]/logs/route.ts:96#"await res.body?.cancel()"`)
+  and a failed request all end in the same two "log streaming not available"
+  lines. The handshake stores whatever URL the agent reported, so this check
+  is the only one.
 
 ## Invariants enforced here
 

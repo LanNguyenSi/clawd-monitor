@@ -2,6 +2,43 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-23T12:02:22Z, agent-registry-lifecycle, auth-and-config-loading and
+  widget-data-modes re-verified and re-stamped against the sources. Checked
+  against the code: `pinnedFetch` now sends the request through undici's
+  fetch over an undici Agent whose connector uses the pinned lookup (host
+  resolved once, any non-public answer rejects the request, connection only
+  to the checked addresses, redirects not followed), with the Agent's
+  connect, headers and body limits (10 s, 300 s, 300 s); the proxy routes,
+  both log routes and `gatewayJson` cancel the body of a non-OK answer they
+  do not read; `undici` is a new dependency in `package.json`, whose
+  scripts are unchanged. widget-data-modes: the `pinned-fetch.ts`, memory
+  route and stream logs route citations were re-pointed to the current
+  lines, and the body cancel is cited in the no-agent section and both log
+  route paragraphs (the agent route citations, bracketed path, checked by
+  hand). agent-registry-lifecycle and auth-and-config-loading only had
+  sources changed; their claims and citations still hold.
+- 2026-10-23T11:07:01Z, auth-and-config-loading and widget-data-modes re-verified and
+  re-stamped against the sources. Checked against the code: `gatewayFetch`
+  requires a `urlSource` ('operator' or 'remote') whenever a `gatewayUrl` is
+  passed, the proxy routes and the stream logs route pass 'operator' and the
+  agent logs route still uses only `remoteGatewayFetch`; the pinned request is
+  bounded in time (10 s connect, 300 s headers, 300 s body idle) and rejects a
+  status outside 200-599 instead of hanging. The citations into `gateway.ts`,
+  `pinned-fetch.ts` and the stream logs route were re-pointed to the current
+  lines; auth-and-config-loading only had its sources changed, its citations
+  are unaffected.
+- 2026-10-23T10:09:49Z, agent-registry-lifecycle, auth-and-config-loading and
+  widget-data-modes re-verified and re-stamped against the sources. Checked
+  against the code: the agent logs route fetches the agent-reported
+  `gatewayUrl` only through `remoteGatewayFetch` (full URL rule with a port
+  check, no default-gateway exception, host resolved once and the connection
+  pinned to the checked addresses, redirects not followed), answers its
+  `docker` source with two informational lines without starting `docker`, and
+  answers 400 for a `source` outside `openclaw`, `docker` and `system`; the
+  stream logs route sends the gateway fetch through `gatewayFetch` and the
+  same 400 rule. The citations into `gateway.ts` and both log routes were
+  re-pointed to the current lines; the agent route citations (bracketed path,
+  which the checker does not resolve) were checked by hand against the file.
 - 2026-10-23T05:16:15Z, agent-registry-lifecycle, auth-and-config-loading and
   widget-data-modes re-verified and re-stamped against the sources. Checked
   against the code: `assertGatewayUrlAllowed` takes an optional

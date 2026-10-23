@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const gatewayUrl = req.headers.get('x-gateway-url') ?? undefined
   const token = req.headers.get('x-gateway-token') ?? undefined
   try {
-    const res = await gatewayFetch('/cron/jobs', { gatewayUrl, token })
+    const res = await gatewayFetch('/cron/jobs', { gatewayUrl, urlSource: 'operator', token })
     const data = await res.json()
     return NextResponse.json(data)
   } catch (err) {

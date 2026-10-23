@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthenticated } from '@/lib/auth'
 import { registry } from '@/lib/agent-registry'
-import { assertGatewayUrlAllowed } from '@/lib/gateway'
-import { isValidContainerName } from '@/lib/input-validators'
+import { remoteGatewayFetch } from '@/lib/gateway'
+import { isLogSource } from '@/lib/input-validators'
 import { spawn } from 'child_process'
 
 export const dynamic = 'force-dynamic'
@@ -20,13 +20,11 @@ export async function GET(req: NextRequest, { params }: Props) {
   if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
   if (!agent.online) return NextResponse.json({ error: 'Agent offline' }, { status: 503 })
 
+  // The source ends up in the URL of the agent's gateway, so only the known
+  // values are accepted.
   const source = req.nextUrl.searchParams.get('source') ?? 'openclaw'
-  const container = req.nextUrl.searchParams.get('container') ?? ''
-
-  // Reject before the stream starts: the name becomes an argument of
-  // `docker logs`, and an invalid one must not reach spawn.
-  if (source === 'docker' && container && !isValidContainerName(container)) {
-    return NextResponse.json({ error: 'Invalid container name' }, { status: 400 })
+  if (!isLogSource(source)) {
+    return NextResponse.json({ error: 'Invalid source' }, { status: 400 })
   }
 
   const encoder = new TextEncoder()
@@ -48,14 +46,11 @@ export async function GET(req: NextRequest, { params }: Props) {
       req.signal.addEventListener('abort', abort)
 
       if (source === 'docker') {
-        if (!container) { send('[error] no container selected'); return }
-        const name = container
-        child = spawn('docker', ['logs', '--tail', '50', '--follow', '--', name], {
-          stdio: ['ignore', 'pipe', 'pipe'],
-        })
-        child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
-        child.stderr?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
-        child.on('error', () => send('[error] docker not available'))
+        // `docker logs` would read this server's containers, not the agent's.
+        // Container logs of an agent are not available through this route, and
+        // the server never starts docker for a request that names an agent.
+        send('[info] Docker logs are not available for agents.')
+        send('[info] Clear the agent selection to tail containers on the clawd-monitor host.')
 
       } else if (source === 'system') {
         // Remote agent: system logs are on the agent host, not on this server
@@ -76,37 +71,29 @@ export async function GET(req: NextRequest, { params }: Props) {
         }
 
       } else {
-        // openclaw: try gateway /logs/stream, then fall back to journalctl on agent's host
+        // openclaw: try gateway /logs/stream, then fall back to the "not available" lines
         // The gateway URL is whatever the agent reported at its handshake, so
-        // it is checked here, at its only consumer, with the same rule as the
-        // proxy routes (https, ALLOWED_GATEWAY_HOSTS, no private range), except
-        // that the operator's default gateway URL gets no exception here: an
-        // agent that reports it must not make the server fetch that gateway
-        // with the agent's token. The handshake itself accepts any URL because
-        // the documented agent protocol sends a loopback one.
-        let gatewayAllowed = false
+        // remoteGatewayFetch checks it, at its only consumer, with the same
+        // rule as the proxy routes (https, ALLOWED_GATEWAY_HOSTS with a
+        // matching port, no private range), resolves its host once and
+        // connects to the checked address. The operator's default gateway URL
+        // gets no exception: an agent that reports it must not make the server
+        // fetch that gateway with the agent's token. The handshake itself
+        // accepts any URL because the documented agent protocol sends a
+        // loopback one. A rejected URL fails closed into the "not available"
+        // lines below.
         if (agent.gatewayUrl) {
-          try {
-            assertGatewayUrlAllowed(agent.gatewayUrl, { trustDefault: false })
-            gatewayAllowed = true
-          } catch {
-            // GatewayUrlError (or anything else): fail closed, show the
-            // "not available" lines below instead of fetching.
-          }
-        }
-
-        if (agent.gatewayUrl && gatewayAllowed) {
           const headers: Record<string, string> = {}
           if (agent.gatewayToken) headers['Authorization'] = `Bearer ${agent.gatewayToken}`
 
-          fetch(`${agent.gatewayUrl.replace(/\/$/, '')}/logs/stream?source=${source}`, {
+          remoteGatewayFetch(agent.gatewayUrl, `/logs/stream?source=${source}`, {
             headers,
-            // Do not follow a redirect from an allowed host to an internal one.
-            redirect: 'manual',
             signal: req.signal,
           }).then(async (res) => {
             if (!res.ok || !res.body) {
-              // Gateway doesn't have /logs/stream — fall back to journalctl (server-side)
+              // Gateway doesn't have /logs/stream, so show the info lines.
+              // An unread body keeps its connection open until it is collected.
+              await res.body?.cancel()
               spawnJournalctl()
               return
             }

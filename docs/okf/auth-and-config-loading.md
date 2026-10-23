@@ -3,7 +3,7 @@ type: module
 title: Auth and config loading across the two module graphs
 description: Admin password precedence, the password.json and tokens.json data files, JWT cookie flags and lifetime, the production startup check, and how the custom server loads .env files before its modules read the environment, while the compiled route graph reads its own variables later.
 tags: [auth, config, env, jwt, startup]
-timestamp: 2026-10-23T05:16:15Z
+timestamp: 2026-10-23T12:02:22Z
 sources:
   - server.ts
   - tsconfig.server.json
@@ -83,13 +83,13 @@ handshake and the token routes share. Next.js later calls the same loader
 for its own graph; it finds the files already loaded.
 
 The route-graph-only variables (`DEFAULT_GATEWAY_TOKEN` in
-`src/lib/gateway.ts:7#"DEFAULT_GATEWAY_TOKEN"`, `ALLOWED_GATEWAY_HOSTS` in
-`src/lib/gateway.ts:11#"process.env.ALLOWED_GATEWAY_HOSTS"`, `CLAWD_DIR` in
+`src/lib/gateway.ts:9#"DEFAULT_GATEWAY_TOKEN"`, `ALLOWED_GATEWAY_HOSTS` in
+`src/lib/gateway.ts:47#"process.env.ALLOWED_GATEWAY_HOSTS"`, `CLAWD_DIR` in
 `src/app/api/proxy/memory/route.ts:9#"CLAWD_DIR"` and
 `src/app/api/proxy/alert-history/route.ts:8#"CLAWD_DIR"`, `GITHUB_TOKEN` in
 `src/app/api/proxy/github/route.ts:84#"process.env.GITHUB_TOKEN"`) are read
 by the routes at request time. `NEXT_PUBLIC_DEFAULT_GATEWAY_URL`
-(`src/lib/gateway.ts:6#"NEXT_PUBLIC_DEFAULT_GATEWAY_URL"`) is the exception
+(`src/lib/gateway.ts:8#"NEXT_PUBLIC_DEFAULT_GATEWAY_URL"`) is the exception
 in the other direction: when it is set while `next build` runs, Next.js
 inlines its build-time value into the compiled code, and a later runtime
 value does not replace it.
