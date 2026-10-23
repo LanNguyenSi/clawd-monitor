@@ -2,7 +2,7 @@
 
 <!-- Add new entries at the top, newest first. -->
 
-- 2026-10-23T09:56:26Z, agent-registry-lifecycle, auth-and-config-loading and
+- 2026-10-23T10:09:49Z, agent-registry-lifecycle, auth-and-config-loading and
   widget-data-modes re-verified and re-stamped against the sources. Checked
   against the code: the agent logs route fetches the agent-reported
   `gatewayUrl` only through `remoteGatewayFetch` (full URL rule with a port

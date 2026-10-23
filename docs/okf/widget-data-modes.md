@@ -3,7 +3,7 @@ type: module
 title: Widget data modes, agent snapshot vs default gateway vs dashboard host
 description: For each dashboard widget, where its data comes from when an agent is selected (the agent's last WebSocket snapshot) and when none is (the default gateway or the dashboard host itself), which widgets ignore the selection, and how the selection is held.
 tags: [widgets, dashboard, agents, data-sources]
-timestamp: 2026-10-23T09:56:26Z
+timestamp: 2026-10-23T10:09:49Z
 sources:
   - src/lib/widgets.ts
   - src/lib/active-agent.tsx
@@ -101,8 +101,8 @@ heartbeat widget shows `SILENT`
 Without a selection, each widget calls its own route. Routes that use
 `gatewayFetch()` without an `x-gateway-url` header go to the default
 gateway URL and token
-(`src/lib/gateway.ts:210#"options.gatewayUrl ?? DEFAULT_GATEWAY_URL"`,
-`src/lib/gateway.ts:211#"options.token ?? DEFAULT_GATEWAY_TOKEN"`). No
+(`src/lib/gateway.ts:205#"options.gatewayUrl ?? DEFAULT_GATEWAY_URL"`,
+`src/lib/gateway.ts:206#"options.token ?? DEFAULT_GATEWAY_TOKEN"`). No
 widget sets that header, so the widgets' requests to these routes always
 reach the default gateway.
 There is no instance switcher: the navbar mounts `AgentSwitcher`,
@@ -220,14 +220,14 @@ sources do not read logs from the agent's host, and a `source` outside
 - `openclaw`: the agent's own `gatewayUrl` plus `/logs/stream`, fetched only
   through `remoteGatewayFetch`
   (`src/app/api/agents/[agentId]/logs/route.ts:89#"remoteGatewayFetch(agent.gatewayUrl"`,
-  defined at `src/lib/gateway.ts:175#"export function remoteGatewayFetch("`).
+  defined at `src/lib/gateway.ts:170#"export function remoteGatewayFetch("`).
   It applies the URL rule (https, host and port in `ALLOWED_GATEWAY_HOSTS`, no
   private range) with no exception for the default gateway URL, unlike the
   callers that fetch the default, then connects through `pinnedFetch`: the
   host name is resolved once in the connection's own lookup, any non-public
   answer rejects the request, the socket connects to the checked addresses,
   and a redirect answer is returned, never followed
-  (`src/lib/pinned-fetch.ts:150#"lookup: createPinnedLookup(deps)"`). A
+  (`src/lib/pinned-fetch.ts:152#"lookup: createPinnedLookup(deps)"`). A
   rejected URL, a non-OK answer and a failed request all end in the same two
   "log streaming not available" lines. The handshake stores whatever URL the
   agent reported, so this check is the only one.
