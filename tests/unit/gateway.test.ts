@@ -539,6 +539,7 @@ describe('isPrivateHost (address classes)', () => {
     ['xyz::1', 'non-hex group (fails closed)'],
     ['12345::1', 'five-digit group (fails closed)'],
     ['::ffff:300.1.1.1', 'bad octet (fails closed)'],
+    ['::ffff:8.8.8.256', 'octet 256 (fails closed)'],
     ['localhost', 'name'],
     ['api.localhost', 'name under .localhost'],
   ])('flags %s (%s)', (address) => {

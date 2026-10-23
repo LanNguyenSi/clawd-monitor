@@ -66,11 +66,12 @@ export function createPinnedLookup(deps: PinnedFetchDeps = {}) {
   // public, or none has the requested family.
   const checked = async (hostname: string, options: LookupOptions): Promise<ResolvedAddress[]> => {
     const answers = await resolve(hostname)
-    if (answers.length === 0 || answers.some((a) => !isPublic(a.address))) {
+    if (answers.some((a) => !isPublic(a.address))) {
       throw new GatewayUrlError(NOT_ALLOWED)
     }
     const wanted = Number(options.family) === 4 || Number(options.family) === 6 ? Number(options.family) : 0
     const usable = wanted ? answers.filter((a) => a.family === wanted) : answers
+    // Also the case for an empty answer.
     if (usable.length === 0) throw new GatewayUrlError(NOT_ALLOWED)
     return usable
   }
@@ -140,7 +141,6 @@ export async function pinnedFetch(
 
   const method = init.method ?? 'GET'
   const headers: Record<string, string> = { 'accept-encoding': 'identity', ...init.headers }
-  if (init.body !== undefined) headers['content-length'] = String(Buffer.byteLength(init.body))
   const transport = url.protocol === 'https:' ? https : http
 
   return new Promise<Response>((resolve, reject) => {

@@ -66,9 +66,10 @@ function isPrivateIPv6(host: string): boolean {
   const embedded = (hi: number, lo: number) =>
     isPrivateIPv4((hi >> 8) & 0xff, hi & 0xff, (lo >> 8) & 0xff)
 
-  if (leadingZeros(7) && g[7] <= 1) return true // :: unspecified, ::1 loopback
   if (leadingZeros(5) && g[5] === 0xffff) return embedded(g[6], g[7]) // ::ffff:a.b.c.d IPv4-mapped
-  if (leadingZeros(6)) return embedded(g[6], g[7]) // ::a.b.c.d IPv4-compatible (deprecated)
+  // ::a.b.c.d IPv4-compatible (deprecated); also catches :: and ::1, whose
+  // embedded address is 0.0.0.0 and 0.0.0.1.
+  if (leadingZeros(6)) return embedded(g[6], g[7])
   if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) {
     return embedded(g[6], g[7]) // 64:ff9b::/96 NAT64
   }
