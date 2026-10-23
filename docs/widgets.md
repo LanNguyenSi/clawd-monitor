@@ -41,7 +41,7 @@ host. Four widgets always show the same server-wide data.
 | Cron Jobs | Agent snapshot `cronJobs` | Default gateway `/cron/jobs` |
 | Docker Containers | Agent snapshot `containers` | `docker ps -a` plus one batched `docker inspect` (restart count) on the clawd-monitor host |
 | Heartbeat Pulse | Agent snapshot (online state, uptime) | Default gateway `/status` |
-| Log Tail | `/api/agents/<id>/logs`; the docker source lists and tails containers on the clawd-monitor host | `/api/stream/logs`: default gateway, or local `docker logs`, `journalctl` or syslog |
+| Log Tail | `/api/agents/<id>/logs`: the agent's gateway when its `gatewayUrl` is an allowlisted `https` host (see `ALLOWED_GATEWAY_HOSTS`), otherwise a "not available" note; the docker source lists and tails containers on the clawd-monitor host | `/api/stream/logs`: default gateway, or local `docker logs`, `journalctl` or syslog |
 
 Connected Agents (agent registry), GitHub PRs (GitHub API), Service Health
 (fixed URL list) and Alert History (`CLAWD_DIR/memory/smart-alert-state.json`

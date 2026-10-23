@@ -3,7 +3,7 @@ type: module
 title: Widget data modes, agent snapshot vs default gateway vs dashboard host
 description: For each dashboard widget, where its data comes from when an agent is selected (the agent's last WebSocket snapshot) and when none is (the default gateway or the dashboard host itself), which widgets ignore the selection, and how the selection is held.
 tags: [widgets, dashboard, agents, data-sources]
-timestamp: 2026-10-21T06:28:30Z
+timestamp: 2026-10-23T04:40:40Z
 sources:
   - src/lib/widgets.ts
   - src/lib/active-agent.tsx
@@ -156,10 +156,12 @@ Evidence for the switch in each component, agent URL first:
   (`src/app/api/proxy/health/route.ts:28-29#"method: 'HEAD'"`).
 - `github-prs`: `src/components/widgets/GitHubPRWidget.tsx:38#"'/api/proxy/github'"`;
   token and repository list come from `GITHUB_TOKEN` and `GITHUB_REPOS`
-  (no default list) unless the request passes `token` and `repos` query
-  parameters (`src/app/api/proxy/github/route.ts:81#"searchParams.get('repos')"`).
-  The widget passes neither. `ciStatus` comes from the check runs of each PR's
-  head commit (`src/app/api/proxy/github/route.ts:36#"check-runs"`, folded by
+  only (no default list); query parameters named `token` or `repos` are
+  ignored (`src/app/api/proxy/github/route.ts:85#"process.env.GITHUB_REPOS"`).
+  An entry that is not exactly `owner/repo` with GitHub-legal characters is
+  skipped (`src/lib/input-validators.ts:34#"return { owner, repo }"`).
+  `ciStatus` comes from the check runs of each PR's
+  head commit (`src/app/api/proxy/github/route.ts:37#"check-runs"`, folded by
   `src/lib/github-ci.ts:12#"summarizeCheckRuns"`).
 - `alert-history`: `src/components/widgets/AlertHistoryWidget.tsx:29#"'/api/proxy/alert-history'"`;
   route `src/app/api/proxy/alert-history/route.ts:16#"smart-alert-state.json"`.
@@ -177,29 +179,42 @@ route `src/app/api/containers/route.ts:13-14#"docker ps --format"`).
 Without an agent (`/api/stream/logs`):
 
 - `docker`: `docker logs --follow` for the chosen container on the
-  dashboard host
-  (`src/app/api/stream/logs/route.ts:36#"'logs', '--tail', '50', '--follow', name"`).
+  dashboard host, with `--` before the name
+  (`src/app/api/stream/logs/route.ts:43#"'logs', '--tail', '50', '--follow', '--', name"`).
+  A name that does not match `^[a-zA-Z0-9][a-zA-Z0-9_.-]*$` is answered with
+  400 before the stream starts and `docker` is not started
+  (`src/app/api/stream/logs/route.ts:22#"!isValidContainerName(container)"`,
+  rule in `src/lib/input-validators.ts:13#"CONTAINER_NAME_RE.test(name)"`).
 - `system`: `journalctl -f` on the dashboard host, then `tail -f
   /var/log/syslog` when journalctl writes to stderr
-  (`src/app/api/stream/logs/route.ts:61#"/var/log/syslog"`).
+  (`src/app/api/stream/logs/route.ts:68#"/var/log/syslog"`).
 - `openclaw`: the default gateway's `/logs/stream`
-  (`src/app/api/stream/logs/route.ts:106#"/logs/stream"`). When the gateway
+  (`src/app/api/stream/logs/route.ts:113#"/logs/stream"`). When the gateway
   answers without an OK streaming body, the route falls back to
   `journalctl -u openclaw` on the dashboard host
-  (`src/app/api/stream/logs/route.ts:80#"'-u', 'openclaw'"`); when the
+  (`src/app/api/stream/logs/route.ts:87#"'-u', 'openclaw'"`); when the
   request itself fails, it sends one informational line and no fallback
-  (`src/app/api/stream/logs/route.ts:123-124#"Connecting to OpenClaw Gateway"`).
+  (`src/app/api/stream/logs/route.ts:130-131#"Connecting to OpenClaw Gateway"`).
 
 With an agent (`/api/agents/<id>/logs`), the `docker` and `system`
 sources do not read logs from the agent's host:
 
 - `docker`: `docker logs --follow` on the dashboard host, not on the
-  agent's host
-  (`src/app/api/agents/[agentId]/logs/route.ts:45#"'logs', '--tail', '50', '--follow', name"`).
+  agent's host, with the same name check (400 without starting `docker`) and
+  `--` before the name as the no-agent route
+  (`src/app/api/agents/[agentId]/logs/route.ts:53#"'logs', '--tail', '50', '--follow', '--', name"`).
 - `system`: when the agent reported a `gatewayUrl`, two informational lines
   and no log stream
-  (`src/app/api/agents/[agentId]/logs/route.ts:54-55#"System log streaming not available"`);
+  (`src/app/api/agents/[agentId]/logs/route.ts:62-63#"System log streaming not available"`);
   otherwise `journalctl` on the dashboard host.
+- `openclaw`: the agent's own `gatewayUrl` plus `/logs/stream`, fetched only
+  when `assertGatewayUrlAllowed` accepts the URL (https, host in
+  `ALLOWED_GATEWAY_HOSTS`, no private range) and without following redirects
+  (`src/app/api/agents/[agentId]/logs/route.ts:88#"assertGatewayUrlAllowed(agent.gatewayUrl)"`,
+  `src/app/api/agents/[agentId]/logs/route.ts:103#"redirect: 'manual'"`). A
+  rejected URL, a non-OK answer and a failed request all end in the same two
+  "log streaming not available" lines. The handshake stores whatever URL the
+  agent reported, so this check is the only one.
 
 ## Invariants enforced here
 

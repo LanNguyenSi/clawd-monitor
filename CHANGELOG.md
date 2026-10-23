@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **The agent log route checks the agent's gateway URL before fetching it.** `/api/agents/<id>/logs` fetched the `gatewayUrl` an agent reported at its handshake, with the agent's token, and streamed the answer to the browser, so a holder of an agent token could point the server at internal addresses. It now applies the same rule as the proxy routes (`https`, host in `ALLOWED_GATEWAY_HOSTS`, no private or loopback address) and no longer follows redirects; any other URL gets the existing "log streaming not available" lines. The handshake still accepts any `gatewayUrl`, because the agent protocol sends a loopback one. An agent whose gateway is not an allowlisted `https` host now shows "not available" in the Log Tail widget instead of its gateway logs.
+- **Docker log routes validate the container name.** `/api/stream/logs` and `/api/agents/<id>/logs` pass `?container=` to `docker logs --follow`; a name starting with `-` was read as an option. A name must now match `^[a-zA-Z0-9][a-zA-Z0-9_.-]*$` (otherwise 400, and `docker` is not started) and is passed after `--`.
+- **The GitHub PRs route reads its token and repositories from the environment only.** A `token` or `repos` query parameter is ignored, and a `GITHUB_REPOS` entry that is not a valid `owner/repo` is skipped.
+
 ### Fixed
 
 - **Agents can reconnect after the server has served an HTTP request.** Next attached its own `upgrade` listener to the server on the first request, and that listener ended `/api/agents/ws` (it matches the dynamic route `/api/agents/[agentId]`), so a new agent connection closed with 1006 once any page or API call had been served; agents that reconnected after a restart or network drop stayed offline until the monitor restarted. Next is now given a separate, never-listening server and the real server has a single `upgrade` router (`src/lib/ws-upgrade.ts`). In development, other upgrades (HMR) are forwarded to Next instead of being destroyed; in production they are still destroyed.

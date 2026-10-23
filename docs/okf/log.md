@@ -2,6 +2,18 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-23T05:16:15Z, agent-registry-lifecycle, auth-and-config-loading and
+  widget-data-modes re-verified and re-stamped against the sources. Checked
+  against the code: the agent logs route runs `assertGatewayUrlAllowed` on the
+  agent-reported `gatewayUrl` before fetching and sets `redirect: 'manual'`
+  (a rejected URL ends in the same two "not available" lines), the handshake
+  still stores any URL (step 5 of the registry doc now says so); both docker
+  log routes answer 400 for an invalid container name and pass `--` before the
+  name; the GitHub route reads `GITHUB_TOKEN` and `GITHUB_REPOS` only and
+  skips entries that are not `owner/repo`. Citations into the three route
+  files were re-pointed to the current lines and the github-prs and Log tail
+  sections of widget-data-modes were updated.
+
 - 2026-10-23T05:11:30Z, agent-registry-lifecycle and auth-and-config-loading re-verified and
   re-stamped after the upgrade routing moved out of `server.ts`. Checked
   against the code: the real server has one `upgrade` listener
