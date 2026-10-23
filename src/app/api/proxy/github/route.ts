@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthenticated } from '@/lib/auth'
 import { summarizeCheckRuns, type CheckRun } from '@/lib/github-ci'
+import { parseGitHubRepo } from '@/lib/input-validators'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,9 +77,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { searchParams } = new URL(req.url)
-  const token = searchParams.get('token') ?? process.env.GITHUB_TOKEN ?? ''
-  const reposParam = searchParams.get('repos') ?? process.env.GITHUB_REPOS ?? ''
+  // Token and repository list come from the server environment only. A
+  // query-string override would let any signed-in caller make the server query
+  // GitHub with a token and repository of their choosing (and tokens in URLs
+  // end up in access logs).
+  const token = process.env.GITHUB_TOKEN ?? ''
+  const reposParam = process.env.GITHUB_REPOS ?? ''
 
   if (!token) {
     return NextResponse.json({ prs: [], error: 'No GitHub token configured' })
@@ -92,9 +96,9 @@ export async function GET(req: NextRequest) {
 
   const allPRs = (await Promise.all(
     repos.map(async (fullRepo) => {
-      const [owner, repo] = fullRepo.split('/')
-      if (!owner || !repo) return []
-      return fetchPRsForRepo(owner, repo, token)
+      const parsed = parseGitHubRepo(fullRepo)
+      if (!parsed) return []
+      return fetchPRsForRepo(parsed.owner, parsed.repo, token)
     })
   )).flat()
 

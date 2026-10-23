@@ -64,16 +64,30 @@ export function isPrivateHost(hostname: string): boolean {
   return false
 }
 
+export interface AssertGatewayUrlOptions {
+  /**
+   * Whether a URL equal to the operator-configured default gateway skips the
+   * https/allowlist/private-range checks. Defaults to true. Pass false for a
+   * URL that a remote party chose (for example the one an agent reports at its
+   * handshake), which must meet the full rule even when it equals the default.
+   */
+  trustDefault?: boolean
+}
+
 /**
  * Validate a resolved gateway URL against SSRF abuse before it is fetched.
  *
- * The operator-configured default is always trusted (it may legitimately be
- * http/loopback). Any caller-supplied override must be https, present in the
- * ALLOWED_GATEWAY_HOSTS allowlist, and not point at a private/loopback range.
+ * By default the operator-configured default is trusted (it may legitimately
+ * be http/loopback). Any caller-supplied override must be https, present in
+ * the ALLOWED_GATEWAY_HOSTS allowlist, and not point at a private/loopback
+ * range. With `{ trustDefault: false }` the default gets no exception either.
  *
  * @throws {GatewayUrlError} if the URL is not permitted.
  */
-export function assertGatewayUrlAllowed(rawUrl: string): URL {
+export function assertGatewayUrlAllowed(
+  rawUrl: string,
+  options: AssertGatewayUrlOptions = {},
+): URL {
   let parsed: URL
   try {
     parsed = new URL(rawUrl)
@@ -81,8 +95,9 @@ export function assertGatewayUrlAllowed(rawUrl: string): URL {
     throw new GatewayUrlError('Invalid gateway URL')
   }
 
-  // Trust the operator-configured default verbatim.
-  if (rawUrl === DEFAULT_GATEWAY_URL) return parsed
+  // Trust the operator-configured default verbatim, unless the caller says the
+  // URL came from a remote party.
+  if (options.trustDefault !== false && rawUrl === DEFAULT_GATEWAY_URL) return parsed
 
   if (parsed.protocol !== 'https:') {
     throw new GatewayUrlError('Gateway URL must use https')

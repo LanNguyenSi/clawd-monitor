@@ -137,6 +137,47 @@ describe('GET /api/proxy/github', () => {
     expect(urls).toHaveLength(1)
     expect(urls[0]).toContain('/commits/sha0x/')
   })
+
+  it('ignores a token and repos passed in the query and uses the environment only', async () => {
+    vi.stubEnv('GITHUB_REPOS', 'octo/envonly')
+    const fetchMock = vi.fn(async () => json([]))
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await githubGET(new NextRequest('http://localhost/api/proxy/github?token=ghp_attacker&repos=evil/stolen'))
+    expect((await res.json()).prs).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { headers: Record<string, string> }]
+    expect(url).toContain('/repos/octo/envonly/pulls')
+    expect(init.headers.Authorization).toBe('token ghp_test')
+  })
+
+  it('reports a missing token even when one is passed in the query, and does not fetch', async () => {
+    vi.stubEnv('GITHUB_TOKEN', '')
+    vi.stubEnv('GITHUB_REPOS', 'octo/notoken')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const body = await (await githubGET(new NextRequest('http://localhost/api/proxy/github?token=ghp_attacker'))).json()
+    expect(body).toEqual({ prs: [], error: 'No GitHub token configured' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('reports a missing repository list even when repos are passed in the query, and does not fetch', async () => {
+    vi.stubEnv('GITHUB_REPOS', '')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const body = await (await githubGET(new NextRequest('http://localhost/api/proxy/github?repos=evil/stolen'))).json()
+    expect(body.error).toMatch(/GITHUB_REPOS/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('skips configured entries that are not a valid owner/repo and never puts them in a URL', async () => {
+    vi.stubEnv('GITHUB_REPOS', 'octo/valid, ../etc/x, a/b/c, oc to/x, octo/one?x=1, noslash, octo/..')
+    const fetchMock = vi.fn(async () => json([]))
+    vi.stubGlobal('fetch', fetchMock)
+    await githubGET(new NextRequest('http://localhost/api/proxy/github'))
+    const urls = fetchMock.mock.calls.map((c) => (c as unknown[])[0] as string)
+    expect(urls).toHaveLength(1)
+    expect(urls[0]).toContain('/repos/octo/valid/pulls')
+  })
 })
 
 describe('GET /api/proxy/health', () => {

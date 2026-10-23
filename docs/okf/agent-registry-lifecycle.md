@@ -3,7 +3,7 @@ type: invariant
 title: Agent registry lifecycle, from WebSocket handshake to TTL eviction
 description: How a clawd-monitor-agent connection becomes an AgentRegistry entry (auth message first, static then persisted token check, newest connection wins), when an entry goes offline (only via its current socket), when it is evicted (lazily, only inside getAll), and what token revocation does and does not affect.
 tags: [agents, websocket, registry, tokens, ttl]
-timestamp: 2026-10-23T05:11:30Z
+timestamp: 2026-10-23T05:16:15Z
 sources:
   - server.ts
   - src/lib/ws-upgrade.ts
@@ -90,7 +90,11 @@ those constants are read (after the `.env` files were loaded).
 5. On success the handler calls `registry.register()` with the agent's
    self-reported `agentId`, `name`, `version`, `gatewayUrl` and
    `gatewayToken`, then sends `auth_ok`
-   (`src/lib/agent-ws-handler.ts:109-120#"auth_ok"`).
+   (`src/lib/agent-ws-handler.ts:109-120#"auth_ok"`). The handshake does not
+   validate `gatewayUrl` (the documented agent protocol sends a loopback
+   URL); the only consumer that fetches it, the logs route, checks it with
+   `assertGatewayUrlAllowed` first, without the default-gateway exception
+   (`src/app/api/agents/[agentId]/logs/route.ts:90#"assertGatewayUrlAllowed(agent.gatewayUrl, { trustDefault: false })"`).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored
@@ -164,7 +168,7 @@ unauthenticated `GET /api/health`
   (`src/app/api/agents/[agentId]/snapshot/route.ts:16-23#"online: agent.online"`).
 - The logs route reads `registry.agents` directly and answers 503 for an
   offline entry
-  (`src/app/api/agents/[agentId]/logs/route.ts:16-19#"Agent offline"`).
+  (`src/app/api/agents/[agentId]/logs/route.ts:18-21#"Agent offline"`).
 - An entry that never received a snapshot has `lastSnapshotAt` `0`, so
   the first `getAll()` after it goes offline evicts it.
 

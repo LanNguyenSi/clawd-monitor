@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthenticated } from '@/lib/auth'
 import { registry } from '@/lib/agent-registry'
+import { assertGatewayUrlAllowed } from '@/lib/gateway'
+import { isValidContainerName } from '@/lib/input-validators'
 import { spawn } from 'child_process'
 
 export const dynamic = 'force-dynamic'
@@ -20,6 +22,12 @@ export async function GET(req: NextRequest, { params }: Props) {
 
   const source = req.nextUrl.searchParams.get('source') ?? 'openclaw'
   const container = req.nextUrl.searchParams.get('container') ?? ''
+
+  // Reject before the stream starts: the name becomes an argument of
+  // `docker logs`, and an invalid one must not reach spawn.
+  if (source === 'docker' && container && !isValidContainerName(container)) {
+    return NextResponse.json({ error: 'Invalid container name' }, { status: 400 })
+  }
 
   const encoder = new TextEncoder()
 
@@ -42,7 +50,7 @@ export async function GET(req: NextRequest, { params }: Props) {
       if (source === 'docker') {
         if (!container) { send('[error] no container selected'); return }
         const name = container
-        child = spawn('docker', ['logs', '--tail', '50', '--follow', name], {
+        child = spawn('docker', ['logs', '--tail', '50', '--follow', '--', name], {
           stdio: ['ignore', 'pipe', 'pipe'],
         })
         child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
@@ -69,12 +77,32 @@ export async function GET(req: NextRequest, { params }: Props) {
 
       } else {
         // openclaw: try gateway /logs/stream, then fall back to journalctl on agent's host
+        // The gateway URL is whatever the agent reported at its handshake, so
+        // it is checked here, at its only consumer, with the same rule as the
+        // proxy routes (https, ALLOWED_GATEWAY_HOSTS, no private range), except
+        // that the operator's default gateway URL gets no exception here: an
+        // agent that reports it must not make the server fetch that gateway
+        // with the agent's token. The handshake itself accepts any URL because
+        // the documented agent protocol sends a loopback one.
+        let gatewayAllowed = false
         if (agent.gatewayUrl) {
+          try {
+            assertGatewayUrlAllowed(agent.gatewayUrl, { trustDefault: false })
+            gatewayAllowed = true
+          } catch {
+            // GatewayUrlError (or anything else): fail closed, show the
+            // "not available" lines below instead of fetching.
+          }
+        }
+
+        if (agent.gatewayUrl && gatewayAllowed) {
           const headers: Record<string, string> = {}
           if (agent.gatewayToken) headers['Authorization'] = `Bearer ${agent.gatewayToken}`
 
           fetch(`${agent.gatewayUrl.replace(/\/$/, '')}/logs/stream?source=${source}`, {
             headers,
+            // Do not follow a redirect from an allowed host to an internal one.
+            redirect: 'manual',
             signal: req.signal,
           }).then(async (res) => {
             if (!res.ok || !res.body) {

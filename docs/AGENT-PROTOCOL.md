@@ -37,7 +37,11 @@ Agent → server:
 ```
 
 - `token`, `agentId`, `name` are required and non-empty; `version` is required.
-- `gatewayUrl` and `gatewayToken` are optional.
+- `gatewayUrl` and `gatewayToken` are optional. The server accepts any
+  `gatewayUrl` here; it fetches it (for the Log Tail widget) only when it is
+  `https`, its host is in the server's `ALLOWED_GATEWAY_HOSTS` and it is not a
+  private or loopback address, and never follows redirects. A URL equal to the
+  server's default gateway URL gets no exception from this rule.
 - Token validation: the token is matched against the static `AGENT_TOKENS` env
   list (exact match) first, then against persisted Settings-UI tokens
   (bcrypt-compared; a match updates that token's `lastUsedAt`). An invalid token yields `auth_error` ("Invalid token") and

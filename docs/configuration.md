@@ -54,7 +54,14 @@ Notes:
   subsequent logins).
 - `ALLOWED_GATEWAY_HOSTS` overrides must be `https` and may not point at
   private or loopback IPs; leave it empty to forbid all per-instance
-  overrides and use only the default gateway.
+  overrides and use only the default gateway. The same rule applies to the
+  `gatewayUrl` a connected agent reports: the Log Tail widget fetches it only
+  when it is `https`, its host is in the list and it is not a private or
+  loopback address, otherwise it shows that log streaming is not available.
+  That includes a URL equal to the default gateway URL: the default's
+  exemption does not apply to agent-reported URLs.
+- `GITHUB_TOKEN` and `GITHUB_REPOS` are read from the server environment only;
+  the GitHub PRs route ignores a `token` or `repos` query parameter.
 - Agent tokens can also be issued and revoked from the Settings UI instead of
   the static `AGENT_TOKENS` list.
 
