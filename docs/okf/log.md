@@ -4,6 +4,17 @@
 
 - 2026-10-23T05:16:15Z, agent-registry-lifecycle, auth-and-config-loading and
   widget-data-modes re-verified and re-stamped against the sources. Checked
+  against the code: `assertGatewayUrlAllowed` takes an optional
+  `{ trustDefault }` (default true, the existing callers unchanged); the agent
+  logs route passes `{ trustDefault: false }`, so an agent-reported URL equal
+  to the default gateway URL gets the same https, allowlist and private-range
+  check as any other (the docs now say so); the `gateway.ts` citations in
+  widget-data-modes moved with the new lines, the `route.ts` citations moved by
+  the added comment. auth-and-config-loading only had its source changed, its
+  citations are unaffected.
+- 2026-10-23T04:40:40Z, agent-registry-lifecycle, auth-and-config-loading and
+- 2026-10-23T05:16:15Z, agent-registry-lifecycle, auth-and-config-loading and
+  widget-data-modes re-verified and re-stamped against the sources. Checked
   against the code: the agent logs route runs `assertGatewayUrlAllowed` on the
   agent-reported `gatewayUrl` before fetching and sets `redirect: 'manual'`
   (a rejected URL ends in the same two "not available" lines), the handshake

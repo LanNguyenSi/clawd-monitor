@@ -3,7 +3,7 @@ type: module
 title: Widget data modes, agent snapshot vs default gateway vs dashboard host
 description: For each dashboard widget, where its data comes from when an agent is selected (the agent's last WebSocket snapshot) and when none is (the default gateway or the dashboard host itself), which widgets ignore the selection, and how the selection is held.
 tags: [widgets, dashboard, agents, data-sources]
-timestamp: 2026-10-23T04:40:40Z
+timestamp: 2026-10-23T04:47:43Z
 sources:
   - src/lib/widgets.ts
   - src/lib/active-agent.tsx
@@ -99,8 +99,8 @@ heartbeat widget shows `SILENT`
 Without a selection, each widget calls its own route. Routes that use
 `gatewayFetch()` without an `x-gateway-url` header go to the default
 gateway URL and token
-(`src/lib/gateway.ts:116#"options.gatewayUrl ?? DEFAULT_GATEWAY_URL"`,
-`src/lib/gateway.ts:120#"options.token ?? DEFAULT_GATEWAY_TOKEN"`). No
+(`src/lib/gateway.ts:131#"options.gatewayUrl ?? DEFAULT_GATEWAY_URL"`,
+`src/lib/gateway.ts:135#"options.token ?? DEFAULT_GATEWAY_TOKEN"`). No
 widget sets that header, so the widgets' requests to these routes always
 reach the default gateway.
 There is no instance switcher: the navbar mounts `AgentSwitcher`,
@@ -209,9 +209,11 @@ sources do not read logs from the agent's host:
   otherwise `journalctl` on the dashboard host.
 - `openclaw`: the agent's own `gatewayUrl` plus `/logs/stream`, fetched only
   when `assertGatewayUrlAllowed` accepts the URL (https, host in
-  `ALLOWED_GATEWAY_HOSTS`, no private range) and without following redirects
-  (`src/app/api/agents/[agentId]/logs/route.ts:88#"assertGatewayUrlAllowed(agent.gatewayUrl)"`,
-  `src/app/api/agents/[agentId]/logs/route.ts:103#"redirect: 'manual'"`). A
+  `ALLOWED_GATEWAY_HOSTS`, no private range; called with `trustDefault: false`,
+  so a URL equal to the default gateway URL gets no exception, unlike the
+  callers that fetch the default) and without following redirects
+  (`src/app/api/agents/[agentId]/logs/route.ts:90#"assertGatewayUrlAllowed(agent.gatewayUrl, { trustDefault: false })"`,
+  `src/app/api/agents/[agentId]/logs/route.ts:105#"redirect: 'manual'"`). A
   rejected URL, a non-OK answer and a failed request all end in the same two
   "log streaming not available" lines. The handshake stores whatever URL the
   agent reported, so this check is the only one.

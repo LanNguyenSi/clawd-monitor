@@ -93,8 +93,8 @@ those constants are read (after the `.env` files were loaded).
    (`src/lib/agent-ws-handler.ts:109-120#"auth_ok"`). The handshake does not
    validate `gatewayUrl` (the documented agent protocol sends a loopback
    URL); the only consumer that fetches it, the logs route, checks it with
-   `assertGatewayUrlAllowed` first
-   (`src/app/api/agents/[agentId]/logs/route.ts:88#"assertGatewayUrlAllowed(agent.gatewayUrl)"`).
+   `assertGatewayUrlAllowed` first, without the default-gateway exception
+   (`src/app/api/agents/[agentId]/logs/route.ts:90#"assertGatewayUrlAllowed(agent.gatewayUrl, { trustDefault: false })"`).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored

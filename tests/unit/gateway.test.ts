@@ -57,6 +57,24 @@ describe('assertGatewayUrlAllowed – default env', () => {
     expect(result.href).toBe('http://localhost:9500/')
   })
 
+  // ── trustDefault option: who wins when the URL equals the default ─────────
+
+  it('trusts the default when trustDefault is true or omitted (explicit true, empty options, undefined)', () => {
+    expect(() => mod.assertGatewayUrlAllowed('http://localhost:9500', { trustDefault: true })).not.toThrow()
+    expect(() => mod.assertGatewayUrlAllowed('http://localhost:9500', {})).not.toThrow()
+    expect(() => mod.assertGatewayUrlAllowed('http://localhost:9500', { trustDefault: undefined })).not.toThrow()
+  })
+
+  it('gives the default no exception when trustDefault is false', () => {
+    expect(() => mod.assertGatewayUrlAllowed('http://localhost:9500', { trustDefault: false })).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('http://localhost:9500', { trustDefault: false })).toThrow('Gateway URL must use https')
+  })
+
+  it('leaves every other URL unaffected by trustDefault', () => {
+    expect(() => mod.assertGatewayUrlAllowed('http://example.com', { trustDefault: true })).toThrow('Gateway URL must use https')
+    expect(() => mod.assertGatewayUrlAllowed('http://example.com', { trustDefault: false })).toThrow('Gateway URL must use https')
+  })
+
   // ── Rejection: unparseable URL ────────────────────────────────────────────
 
   it('throws GatewayUrlError for a completely unparseable URL', () => {
@@ -169,6 +187,25 @@ describe('assertGatewayUrlAllowed – allowlisted public host', () => {
   it('rejects http://example.com (allowlisted but wrong scheme)', () => {
     expect(() => mod.assertGatewayUrlAllowed('http://example.com')).toThrow(mod.GatewayUrlError)
     expect(() => mod.assertGatewayUrlAllowed('http://example.com')).toThrow('Gateway URL must use https')
+  })
+})
+
+// ── assertGatewayUrlAllowed, trustDefault false, allowlisted https ───────────
+
+describe('assertGatewayUrlAllowed – trustDefault false with an allowlisted default', () => {
+  let mod: Awaited<ReturnType<typeof loadGateway>>
+
+  beforeAll(async () => {
+    mod = await loadGateway({
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: 'https://example.com',
+      ALLOWED_GATEWAY_HOSTS: 'example.com',
+    })
+  })
+
+  afterAll(() => { vi.unstubAllEnvs(); vi.resetModules() })
+
+  it('still accepts the default when it passes the full rule on its own', () => {
+    expect(() => mod.assertGatewayUrlAllowed('https://example.com', { trustDefault: false })).not.toThrow()
   })
 })
 

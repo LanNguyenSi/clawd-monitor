@@ -4,8 +4,9 @@
  * - the docker source validates the container name (400, spawn never called
  *   for an invalid one) and passes `--` before it;
  * - the agent route checks the gateway URL the agent reported at its
- *   handshake with assertGatewayUrlAllowed before fetching, and does not
- *   follow redirects.
+ *   handshake with assertGatewayUrlAllowed before fetching (the operator's
+ *   default gateway URL gets no exception there), and passes redirect:
+ *   'manual' to fetch.
  *
  * ALLOWED_GATEWAY_HOSTS and the default gateway URL are read when
  * src/lib/gateway.ts loads, so the routes are imported fresh after the env is
@@ -153,13 +154,49 @@ describe('GET /api/agents/:id/logs, gateway URL guard', () => {
     expect(init.headers).toEqual({ Authorization: 'Bearer secret-token' })
   })
 
-  it('treats a redirect answer from an allowed host as unavailable instead of following it', async () => {
+  it('requests the allowed host with redirect manual and shows a redirect answer as unavailable', async () => {
     addAgent({ gatewayUrl: 'https://gw.example.com' })
     const fetchMock = vi.fn(async () => new Response(null, { status: 302, headers: { Location: 'http://169.254.169.254/' } }))
     vi.stubGlobal('fetch', fetchMock)
     const { agentGET } = await loadRoutes()
     const res = await agentGET(agentReq('source=openclaw'), params)
     expect(await readLines(res, 2)).toEqual(NOT_AVAILABLE)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // fetch is a mock here, so "not followed" is only visible as the option
+    // handed to it: the real redirect handling belongs to fetch.
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(init.redirect).toBe('manual')
+  })
+
+  it('gives the operator default gateway URL no exception when an agent reports it', async () => {
+    addAgent({ gatewayUrl: 'http://localhost:9500', gatewayToken: 'secret-token' })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { agentGET } = await loadRoutes()
+    const res = await agentGET(agentReq('source=openclaw'), params)
+    expect(await readLines(res, 2)).toEqual(NOT_AVAILABLE)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('gives a customised default gateway URL no exception either', async () => {
+    vi.stubEnv('NEXT_PUBLIC_DEFAULT_GATEWAY_URL', 'http://gateway.internal:9600')
+    addAgent({ gatewayUrl: 'http://gateway.internal:9600', gatewayToken: 'secret-token' })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { agentGET } = await loadRoutes()
+    const res = await agentGET(agentReq('source=openclaw'), params)
+    expect(await readLines(res, 2)).toEqual(NOT_AVAILABLE)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('still fetches an allowlisted https host when the default gateway URL is that same host', async () => {
+    vi.stubEnv('NEXT_PUBLIC_DEFAULT_GATEWAY_URL', 'https://gw.example.com')
+    addAgent({ gatewayUrl: 'https://gw.example.com', gatewayToken: 'secret-token' })
+    const fetchMock = vi.fn(async () => new Response('line one\n'))
+    vi.stubGlobal('fetch', fetchMock)
+    const { agentGET } = await loadRoutes()
+    const res = await agentGET(agentReq('source=openclaw'), params)
+    expect(await readLines(res, 1)).toEqual(['line one'])
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -171,6 +208,19 @@ describe('GET /api/agents/:id/logs, gateway URL guard', () => {
     const res = await agentGET(agentReq('source=openclaw'), params)
     expect(await readLines(res, 2)).toEqual(NOT_AVAILABLE)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /api/stream/logs, default gateway URL', () => {
+  it('still trusts the operator default gateway URL (no https or allowlist needed)', async () => {
+    const fetchMock = vi.fn(async () => new Response('line one\n'))
+    vi.stubGlobal('fetch', fetchMock)
+    const { streamGET } = await loadRoutes()
+    const res = await streamGET(new NextRequest('http://localhost/api/stream/logs?source=openclaw'))
+    expect(await readLines(res, 1)).toEqual(['line one'])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('http://localhost:9500/logs/stream')
   })
 })
 

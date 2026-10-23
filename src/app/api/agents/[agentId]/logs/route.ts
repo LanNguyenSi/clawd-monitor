@@ -79,13 +79,15 @@ export async function GET(req: NextRequest, { params }: Props) {
         // openclaw: try gateway /logs/stream, then fall back to journalctl on agent's host
         // The gateway URL is whatever the agent reported at its handshake, so
         // it is checked here, at its only consumer, with the same rule as the
-        // proxy routes (https, ALLOWED_GATEWAY_HOSTS, no private range). The
-        // handshake itself accepts any URL because the documented agent
-        // protocol sends a loopback one.
+        // proxy routes (https, ALLOWED_GATEWAY_HOSTS, no private range), except
+        // that the operator's default gateway URL gets no exception here: an
+        // agent that reports it must not make the server fetch that gateway
+        // with the agent's token. The handshake itself accepts any URL because
+        // the documented agent protocol sends a loopback one.
         let gatewayAllowed = false
         if (agent.gatewayUrl) {
           try {
-            assertGatewayUrlAllowed(agent.gatewayUrl)
+            assertGatewayUrlAllowed(agent.gatewayUrl, { trustDefault: false })
             gatewayAllowed = true
           } catch {
             // GatewayUrlError (or anything else): fail closed, show the
