@@ -14,7 +14,7 @@
  *   routes use today. Anything else (an HTTP or socket client such as node:http,
  *   undici or ws, a module that might wrap one, a relative path, a computed
  *   specifier) fails, whatever form the import takes: static, side-effect,
- *   re-export, dynamic or require. `createRequire` and the global
+ *   re-export, dynamic or require. `createRequire`, `process.binding` and the global
  *   WebSocket, EventSource and XMLHttpRequest are flagged too, because they
  *   load or are a client without a module specifier. This is an allowlist, not
  *   a list of banned clients, so a client nobody thought of is refused too.
@@ -79,7 +79,7 @@ function callSites(code: string): string[] {
  * Every way a route can load code or a client that is not on the allowlist,
  * as human-readable offences: a module specifier that is not allowed (static
  * import, side-effect import, re-export, dynamic import, require), a computed
- * specifier, createRequire and the global clients.
+ * specifier, createRequire, process.binding and the global clients.
  */
 function routeImportViolations(text: string): string[] {
   const code = stripComments(text)
@@ -96,8 +96,8 @@ function routeImportViolations(text: string): string[] {
   for (const spec of specifiers) {
     if (!(spec.replace(/^node:/, '') in ALLOWED_ROUTE_IMPORTS)) offences.push(`import of '${spec}', which is not on ALLOWED_ROUTE_IMPORTS`)
   }
-  if (/\bcreateRequire\b|\.require\s*\(|\bprocess\s*\.\s*(?:binding|dlopen)\b/.test(code)) {
-    offences.push('createRequire, module.require or process.binding (loads a module without a visible specifier)')
+  if (/\bcreateRequire\b|\bprocess\s*\.\s*(?:binding|dlopen)\b/.test(code)) {
+    offences.push('createRequire or process.binding (loads a module or a native client without a visible specifier)')
   }
   if (/\b(?:WebSocket|EventSource|XMLHttpRequest)\b/.test(code)) offences.push('a global WebSocket, EventSource or XMLHttpRequest client')
   return offences
@@ -192,7 +192,9 @@ describe('gateway consumers, scan rules on sample sources', () => {
     expect(routeImportViolations('const m = require(`un${x}`)')).toHaveLength(1)
     expect(routeImportViolations("const r = createRequire(import.meta.url)('undici')").length).toBeGreaterThan(0)
     expect(routeImportViolations("import { createRequire } from 'node:module'")).toHaveLength(2)
-    expect(routeImportViolations('const r = module.require(x)').length).toBeGreaterThan(0)
+    expect(routeImportViolations('const r = module.require(x)')).toHaveLength(1)
+    expect(routeImportViolations("const t = process.binding('tcp_wrap')")).toHaveLength(1)
+    expect(routeImportViolations("process.dlopen(m, '/x.node')")).toHaveLength(1)
     expect(routeImportViolations("const ws = new WebSocket('wss://x')")).toHaveLength(1)
     expect(routeImportViolations("const es = new EventSource('https://x')")).toHaveLength(1)
     expect(routeImportViolations('const x = new XMLHttpRequest()')).toHaveLength(1)
