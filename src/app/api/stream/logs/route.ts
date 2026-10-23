@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthenticated } from '@/lib/auth'
 import { assertGatewayUrlAllowed, GatewayUrlError } from '@/lib/gateway'
+import { isValidContainerName } from '@/lib/input-validators'
 import { spawn } from 'child_process'
 
 export const dynamic = 'force-dynamic'
@@ -15,6 +16,12 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const source = (searchParams.get('source') ?? 'openclaw') as LogSource
   const container = searchParams.get('container') ?? ''
+
+  // Reject before the stream starts: the name becomes an argument of
+  // `docker logs`, and an invalid one must not reach spawn.
+  if (source === 'docker' && container && !isValidContainerName(container)) {
+    return NextResponse.json({ error: 'Invalid container name' }, { status: 400 })
+  }
 
   const encoder = new TextEncoder()
 
@@ -33,7 +40,7 @@ export async function GET(req: NextRequest) {
       if (source === 'docker') {
         if (!container) { send('[error] no container selected'); return }
         const name = container
-        child = spawn('docker', ['logs', '--tail', '50', '--follow', name], {
+        child = spawn('docker', ['logs', '--tail', '50', '--follow', '--', name], {
           stdio: ['ignore', 'pipe', 'pipe'],
         })
         child.stdout?.on('data', (d: Buffer) => {
