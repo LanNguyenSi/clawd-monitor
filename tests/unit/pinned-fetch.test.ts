@@ -99,6 +99,18 @@ describe('createPinnedLookup, address policy', () => {
     expect(err).toBeInstanceOf(GatewayUrlError)
   })
 
+  it('answers the connection with an error, not silence, when the policy itself throws', async () => {
+    const boom = new Error('policy bug')
+    const lookup = createPinnedLookup({
+      resolve: async () => [v4('93.184.216.34')],
+      isPublicAddress: () => { throw boom },
+    })
+    const err = await new Promise<Error | null>((resolve) => {
+      lookup('gw.example.com', {}, (e) => resolve(e))
+    })
+    expect(err).toBe(boom)
+  })
+
   it('passes a resolver failure through unchanged', async () => {
     const failure = Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' })
     const { err } = await runLookup(failure)

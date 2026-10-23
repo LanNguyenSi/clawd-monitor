@@ -51,6 +51,8 @@ function parseIPv6(host: string): number[] | null {
   const toGroups = (part: string): string[] => (part === '' ? [] : part.split(':'))
   const head = toGroups(halves[0])
   const rest = halves.length === 2 ? toGroups(halves[1]) : []
+  // "::" stands for at least one group of zeros.
+  if (halves.length === 2 && head.length + rest.length > 7) return null
   const groups = halves.length === 2 ? [...head, ...Array(8 - head.length - rest.length).fill('0'), ...rest] : head
   if (groups.length !== 8) return null
   if (!groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return null

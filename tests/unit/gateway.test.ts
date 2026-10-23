@@ -532,6 +532,12 @@ describe('isPrivateHost (address classes)', () => {
     ['fe80::1%en0', 'zone id (unparseable, fails closed)'],
     ['1:2:3', 'malformed (fails closed)'],
     ['1::2::3', 'two compressions (fails closed)'],
+    ['1:2:3:4:5:6:7:8::9::10', 'three parts around :: (fails closed)'],
+    ['1:2:3:4:5:6:7:8::', ':: with no group to stand for (fails closed)'],
+    ['1:2:3:4:5:6:7::8', ':: next to seven groups (fails closed)'],
+    ['1:2:3:4:5:6:7:8:9', 'nine groups (fails closed)'],
+    ['xyz::1', 'non-hex group (fails closed)'],
+    ['12345::1', 'five-digit group (fails closed)'],
     ['::ffff:300.1.1.1', 'bad octet (fails closed)'],
     ['localhost', 'name'],
     ['api.localhost', 'name under .localhost'],
@@ -583,6 +589,9 @@ describe('assertGatewayUrlAllowed, port policy', () => {
         'huge.example.com:65536',
         'text.example.com:abc',
         'empty.example.com:',
+        'sci.example.com:8e3',
+        'hex.example.com:0x1f90',
+        'space.example.com: 8443',
         'v6bare:1:2',
         ':8443',
       ].join(','),
@@ -630,6 +639,9 @@ describe('assertGatewayUrlAllowed, port policy', () => {
     ['port above 65535', 'huge.example.com'],
     ['a non-numeric port', 'text.example.com'],
     ['a trailing colon', 'empty.example.com'],
+    ['an exponent port', 'sci.example.com'],
+    ['a hex port', 'hex.example.com'],
+    ['a port with a space', 'space.example.com'],
   ])('drops an entry with %s, so its host is not allowed at all', (_label, host) => {
     expect(() => check(`https://${host}`)).toThrow('Gateway host not allowed')
     expect(() => check(`https://${host}:8443`)).toThrow('Gateway host not allowed')

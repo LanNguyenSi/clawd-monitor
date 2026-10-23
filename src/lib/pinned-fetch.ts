@@ -61,22 +61,24 @@ type LookupCallback = (
 export function createPinnedLookup(deps: PinnedFetchDeps = {}) {
   const resolve = deps.resolve ?? defaultResolve
   const isPublic = deps.isPublicAddress ?? defaultIsPublic
+  // Resolves, judges the whole answer, and returns the addresses the
+  // connection may use. Throws when the answer is empty, any address is not
+  // public, or none has the requested family.
+  const checked = async (hostname: string, options: LookupOptions): Promise<ResolvedAddress[]> => {
+    const answers = await resolve(hostname)
+    if (answers.length === 0 || answers.some((a) => !isPublic(a.address))) {
+      throw new GatewayUrlError(NOT_ALLOWED)
+    }
+    const wanted = Number(options.family) === 4 || Number(options.family) === 6 ? Number(options.family) : 0
+    const usable = wanted ? answers.filter((a) => a.family === wanted) : answers
+    if (usable.length === 0) throw new GatewayUrlError(NOT_ALLOWED)
+    return usable
+  }
   return (hostname: string, options: LookupOptions, callback: LookupCallback): void => {
-    resolve(hostname).then(
-      (answers) => {
-        if (answers.length === 0 || answers.some((a) => !isPublic(a.address))) {
-          callback(new GatewayUrlError(NOT_ALLOWED))
-          return
-        }
-        const wanted = Number(options.family) === 4 || Number(options.family) === 6 ? Number(options.family) : 0
-        const usable = wanted ? answers.filter((a) => a.family === wanted) : answers
-        if (usable.length === 0) {
-          callback(new GatewayUrlError(NOT_ALLOWED))
-        } else if (options.all) {
-          callback(null, usable)
-        } else {
-          callback(null, usable[0].address, usable[0].family)
-        }
+    checked(hostname, options).then(
+      (usable) => {
+        if (options.all) callback(null, usable)
+        else callback(null, usable[0].address, usable[0].family)
       },
       (err: Error) => callback(err),
     )

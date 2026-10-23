@@ -29,17 +29,12 @@ function parseAllowedHost(entry: string): AllowedHost | null {
     host = bracketed[1]
     portText = bracketed[2]
   } else {
+    // An unbracketed IPv6 literal ends up with a "port" that is not a number
+    // and is dropped below, as it could never equal a URL host name anyway.
     const colon = entry.indexOf(':')
-    if (colon === -1) {
-      host = entry
-    } else if (entry.indexOf(':', colon + 1) !== -1) {
-      return null // an unbracketed IPv6 literal can never equal a URL host name
-    } else {
-      host = entry.slice(0, colon)
-      portText = entry.slice(colon + 1)
-    }
+    host = colon === -1 ? entry : entry.slice(0, colon)
+    portText = colon === -1 ? undefined : entry.slice(colon + 1)
   }
-  if (!host || host === '[]') return null
   if (portText === undefined) return { host, port: DEFAULT_HTTPS_PORT }
   if (!/^\d{1,5}$/.test(portText)) return null
   const port = Number(portText)
