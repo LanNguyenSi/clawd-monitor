@@ -28,6 +28,7 @@ function isPrivateIPv4(a: number, b: number, c: number): boolean {
   if (a === 192 && b === 0 && c === 0) return true // 192.0.0.0/24 IETF protocol assignments
   if (a === 198 && (b === 18 || b === 19)) return true // 198.18.0.0/15 benchmarking
   if (a === 192 && b === 0 && c === 2) return true // 192.0.2.0/24 documentation (TEST-NET-1)
+  if (a === 192 && b === 88 && c === 99) return true // 192.88.99.0/24 6to4 relay anycast (deprecated)
   if (a === 198 && b === 51 && c === 100) return true // 198.51.100.0/24 documentation (TEST-NET-2)
   if (a === 203 && b === 0 && c === 113) return true // 203.0.113.0/24 documentation (TEST-NET-3)
   if (a >= 224) return true // 224.0.0.0/4 multicast, 240.0.0.0/4 reserved, broadcast
@@ -69,6 +70,7 @@ function isPrivateIPv6(host: string): boolean {
   const embedded = (hi: number, lo: number) =>
     isPrivateIPv4((hi >> 8) & 0xff, hi & 0xff, (lo >> 8) & 0xff)
 
+  // Addresses that carry an IPv4 address are judged by it.
   if (leadingZeros(5) && g[5] === 0xffff) return embedded(g[6], g[7]) // ::ffff:a.b.c.d IPv4-mapped
   // ::a.b.c.d IPv4-compatible (deprecated); also catches :: and ::1, whose
   // embedded address is 0.0.0.0 and 0.0.0.1.
@@ -76,17 +78,19 @@ function isPrivateIPv6(host: string): boolean {
   if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) {
     return embedded(g[6], g[7]) // 64:ff9b::/96 NAT64
   }
-  // ::ffff:0:0:0/96 IPv4-translated (SIIT): non-public whatever it embeds.
-  if (leadingZeros(4) && g[4] === 0xffff && g[5] === 0) return true
-  if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 1) return true // 64:ff9b:1::/48 local-use NAT64 (RFC 8215)
-  if (g[0] === 0x100 && g[1] === 0 && g[2] === 0 && g[3] === 0) return true // 100::/64 discard-only
+  // Only 2000::/3 is global unicast. Everything outside it is not public,
+  // among it ::ffff:0:0:0/96 IPv4-translated (SIIT) whatever it embeds,
+  // 64:ff9b:1::/48 local-use NAT64, 100::/64 discard-only, 5f00::/16 SRv6 SIDs,
+  // fc00::/7 unique-local, fe80::/10 link-local, fec0::/10 site-local and
+  // ff00::/8 multicast.
+  if ((g[0] & 0xe000) !== 0x2000) return true
+  // Inside 2000::/3, the ranges IANA lists as not globally reachable.
   if (g[0] === 0x2001 && g[1] === 0) return true // 2001::/32 Teredo
+  if (g[0] === 0x2001 && g[1] === 0x2 && g[2] === 0) return true // 2001:2::/48 benchmarking
+  if (g[0] === 0x2001 && (g[1] & 0xfff0) === 0x10) return true // 2001:10::/28 ORCHID (deprecated)
   if (g[0] === 0x2001 && g[1] === 0xdb8) return true // 2001:db8::/32 documentation
   if (g[0] === 0x2002) return embedded(g[1], g[2]) // 2002::/16 6to4
-  if ((g[0] & 0xfe00) === 0xfc00) return true // fc00::/7 unique-local
-  if ((g[0] & 0xffc0) === 0xfe80) return true // fe80::/10 link-local
-  if ((g[0] & 0xffc0) === 0xfec0) return true // fec0::/10 site-local (deprecated)
-  if ((g[0] & 0xff00) === 0xff00) return true // ff00::/8 multicast
+  if (g[0] === 0x3fff && (g[1] & 0xf000) === 0) return true // 3fff::/20 documentation
   return false
 }
 
