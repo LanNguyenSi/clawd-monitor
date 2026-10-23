@@ -412,6 +412,18 @@ describe('pinnedFetch, time limits', () => {
     expect(closedByServerSide).toBe(1)
   })
 
+  it('fails a gzip body read with the timeout error when the server goes silent', async () => {
+    const gz = zlib.gzipSync('x'.repeat(100_000))
+    behaviour = (socket) => {
+      socket.write('HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n')
+      socket.write(gz.subarray(0, 40))
+    }
+    const res = await pinnedFetch(`http://gw.test:${port}/`, {}, deps({ bodyMs: 150 }))
+    const failure = await res.text().catch((e: unknown) => e)
+    expect(failure).toBeInstanceOf(PinnedFetchTimeoutError)
+    expect((failure as Error).message).toContain('body')
+  })
+
   it('treats the body limit as an idle limit: a slow trickle that keeps sending is not cut off', async () => {
     behaviour = (socket) => {
       socket.write('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n')

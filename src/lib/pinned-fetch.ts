@@ -134,7 +134,7 @@ const VALID_STATUS_TEXT = /^[\t\x20-\x7e\x80-\xff]*$/
  * the global fetch rejects 1xx too); a reason phrase with illegal bytes is
  * dropped instead, as the global fetch tolerates it.
  */
-function toResponse(res: http.IncomingMessage, method: string): Response {
+function toResponse(res: http.IncomingMessage, method: string, guardBody: () => void): Response {
   const status = res.statusCode ?? 0
   if (!Number.isInteger(status) || status < 200 || status > 599) {
     throw new Error(`Gateway answered with an unsupported HTTP status (${status})`)
@@ -151,6 +151,7 @@ function toResponse(res: http.IncomingMessage, method: string): Response {
     return new Response(null, { status, statusText, headers })
   }
 
+  guardBody()
   let source: Readable = res
   const encoding = (res.headers['content-encoding'] ?? '').toLowerCase()
   const decoder =
@@ -222,16 +223,17 @@ export async function pinnedFetch(
       disarm()
       // The caller reads the body when it likes; the socket's idle timer runs
       // only while the stream is flowing, so a slow reader is not a timeout.
-      const socket = res.socket
-      const expire = () => res.destroy(new PinnedFetchTimeoutError('body', timeouts.bodyMs))
-      socket.setTimeout(timeouts.bodyMs)
-      socket.once('timeout', expire)
-      res.on('pause', () => socket.setTimeout(0))
-      res.on('resume', () => socket.setTimeout(timeouts.bodyMs))
-      // A destroyed response with no other error listener would be fatal.
-      res.on('error', () => { /* surfaces through the body stream */ })
+      // Only a response with a body is guarded, and by then the body stream
+      // listens for the error that destroying the response raises.
+      const guardBody = () => {
+        const socket = res.socket
+        socket.setTimeout(timeouts.bodyMs)
+        socket.once('timeout', () => res.destroy(new PinnedFetchTimeoutError('body', timeouts.bodyMs)))
+        res.on('pause', () => socket.setTimeout(0))
+        res.on('resume', () => socket.setTimeout(timeouts.bodyMs))
+      }
       try {
-        resolve(toResponse(res, method))
+        resolve(toResponse(res, method, guardBody))
       } catch (err) {
         res.destroy()
         reject(err)
