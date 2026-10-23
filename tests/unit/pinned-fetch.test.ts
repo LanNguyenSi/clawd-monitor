@@ -1,23 +1,25 @@
 /**
  * Pinned-address fetch (src/lib/pinned-fetch.ts).
  *
- * No real DNS and no outside network: the resolver is a stub and the only
- * connections are to a server on 127.0.0.1 started by the test. The address
- * policy is replaced by "everything is public" only where a test has to reach
- * that local server; the policy tests use the real one.
+ * No outside network: the resolver is a stub and the only connections are to
+ * servers on 127.0.0.1 started by the test. One test runs the production agent
+ * on the name `localhost`, which the system resolver answers locally. The
+ * address policy is replaced by "everything is public" only where a test has to
+ * reach a local server; the policy tests use the real one.
  */
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest'
 import http from 'node:http'
 import https from 'node:https'
 import zlib from 'node:zlib'
+import v8 from 'node:v8'
+import vm from 'node:vm'
 import type { AddressInfo } from 'node:net'
-import { EventEmitter } from 'node:events'
 import net from 'node:net'
 import {
   createPinnedLookup,
   pinnedFetch,
   DEFAULT_PINNED_TIMEOUTS,
-  PinnedFetchTimeoutError,
+  type PinnedFetchDeps,
   type ResolvedAddress,
 } from '@/lib/pinned-fetch'
 import { GatewayUrlError } from '@/lib/gateway-policy'
@@ -133,9 +135,34 @@ describe('createPinnedLookup, address policy', () => {
   })
 })
 
+
+const allowAll = () => true
+
+/** The code of the reason fetch attached to a failure (undici reports it as the cause). */
+function causeCode(err: unknown): string | undefined {
+  return (err as { cause?: { code?: string } } | undefined)?.cause?.code
+}
+
+/** `promise`, or 'HUNG' when it has not settled after `ms`. */
+async function within<T>(promise: Promise<T>, ms: number): Promise<T | 'HUNG'> {
+  let timer: NodeJS.Timeout | undefined
+  const hung = new Promise<'HUNG'>((resolve) => { timer = setTimeout(() => resolve('HUNG'), ms) })
+  try {
+    return await Promise.race([promise, hung])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+const until = async (predicate: () => boolean, ms = 3000) => {
+  const started = Date.now()
+  while (!predicate() && Date.now() - started < ms) await new Promise((r) => setTimeout(r, 20))
+}
+
 describe('pinnedFetch, local server', () => {
   let server: http.Server
   let port: number
+  let connections = 0
   const hits: Array<{ url: string; method: string; headers: http.IncomingHttpHeaders; body: string }> = []
 
   beforeAll(async () => {
@@ -156,6 +183,9 @@ describe('pinnedFetch, local server', () => {
         } else if (req.url === '/cookies') {
           res.writeHead(200, { 'Set-Cookie': ['a=1', 'b=2'] })
           res.end('ok')
+        } else if (req.url === '/close') {
+          res.writeHead(200, { Connection: 'close' })
+          res.end('closed')
         } else if (req.url === '/slow') {
           res.writeHead(200)
           res.write('first\n')
@@ -166,6 +196,7 @@ describe('pinnedFetch, local server', () => {
         }
       })
     })
+    server.on('connection', () => { connections += 1 })
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     port = (server.address() as AddressInfo).port
   })
@@ -175,9 +206,10 @@ describe('pinnedFetch, local server', () => {
     await new Promise<void>((resolve) => server.close(() => resolve()))
   })
 
-  afterEach(() => { hits.length = 0 })
-
-  const allowAll = () => true
+  afterEach(() => {
+    hits.length = 0
+    connections = 0
+  })
 
   it('connects to the address it checked and never resolves the name a second time (rebinding)', async () => {
     let calls = 0
@@ -196,25 +228,54 @@ describe('pinnedFetch, local server', () => {
     expect(hits[0].headers.host).toBe(`gw.test:${port}`)
   })
 
-  it('does not reuse a connection made earlier: each request resolves and checks again', async () => {
-    const resolve = vi.fn(async () => [v4('127.0.0.1')])
-    await (await pinnedFetch(`http://gw.test:${port}/a`, {}, { resolve, isPublicAddress: allowAll })).text()
-    await (await pinnedFetch(`http://gw.test:${port}/b`, {}, { resolve, isPublicAddress: allowAll })).text()
-    expect(resolve).toHaveBeenCalledTimes(2)
+  it('reuses a pooled connection to the same origin, which was checked when it was made', async () => {
+    const shared: PinnedFetchDeps = { resolve: vi.fn(async () => [v4('127.0.0.1')]), isPublicAddress: allowAll }
+    await (await pinnedFetch(`http://gw.test:${port}/a`, {}, shared)).text()
+    // Give the pool a moment to take the finished connection back.
+    await new Promise((r) => setTimeout(r, 50))
+    await (await pinnedFetch(`http://gw.test:${port}/b`, {}, shared)).text()
+    expect(shared.resolve).toHaveBeenCalledTimes(1)
+    expect(connections).toBe(1)
     expect(hits.map((h) => h.url)).toEqual(['/a', '/b'])
+  })
+
+  it('checks every new connection again, also for requests that share an agent', async () => {
+    // The server closes each connection, so the second request needs a new
+    // one, and by then the name resolves to an address the policy refuses.
+    let calls = 0
+    const shared: PinnedFetchDeps = {
+      resolve: async () => {
+        calls += 1
+        return calls === 1 ? [v4('127.0.0.1')] : [v4('127.0.0.2')]
+      },
+      isPublicAddress: (address) => address === '127.0.0.1',
+    }
+    expect(await (await pinnedFetch(`http://gw.test:${port}/close`, {}, shared)).text()).toBe('closed')
+    await expect(pinnedFetch(`http://gw.test:${port}/close`, {}, shared)).rejects.toBeInstanceOf(GatewayUrlError)
+    expect(calls).toBe(2)
+    expect(hits.map((h) => h.url)).toEqual(['/close'])
   })
 
   it('refuses a name that resolves to loopback under the real policy and never connects', async () => {
     const resolve = vi.fn(async () => [v4('127.0.0.1')])
     await expect(pinnedFetch(`http://rebind.test:${port}/`, {}, { resolve })).rejects.toBeInstanceOf(GatewayUrlError)
     expect(resolve).toHaveBeenCalledTimes(1)
+    expect(connections).toBe(0)
     expect(hits).toHaveLength(0)
   })
 
   it('refuses a mixed answer under the real policy and never connects', async () => {
     const resolve = vi.fn(async () => [v4('93.184.216.34'), v4('127.0.0.1')])
     await expect(pinnedFetch(`http://mixed.test:${port}/`, {}, { resolve })).rejects.toBeInstanceOf(GatewayUrlError)
+    expect(connections).toBe(0)
     expect(hits).toHaveLength(0)
+  })
+
+  it('runs production requests through the pinned lookup: localhost is refused before any connection', async () => {
+    // No dependencies: the shared production agent, the system resolver and the
+    // real policy. Without the pinned agent, fetch would reach the local server.
+    await expect(pinnedFetch(`http://localhost:${port}/`)).rejects.toBeInstanceOf(GatewayUrlError)
+    expect(connections).toBe(0)
   })
 
   it('checks an IP literal itself, since no lookup runs for it', async () => {
@@ -223,7 +284,7 @@ describe('pinnedFetch, local server', () => {
     await expect(pinnedFetch(`http://[::1]:${port}/`, {}, { resolve })).rejects.toBeInstanceOf(GatewayUrlError)
     await expect(pinnedFetch(`http://[::ffff:7f00:1]:${port}/`, {}, { resolve })).rejects.toBeInstanceOf(GatewayUrlError)
     expect(resolve).not.toHaveBeenCalled()
-    expect(hits).toHaveLength(0)
+    expect(connections).toBe(0)
   })
 
   it('connects to a public-by-policy IP literal without a lookup', async () => {
@@ -238,24 +299,20 @@ describe('pinnedFetch, local server', () => {
     await expect(pinnedFetch('ftp://gw.test/')).rejects.toBeInstanceOf(GatewayUrlError)
   })
 
-  it('sends method, headers and body, and lets the caller override accept-encoding', async () => {
+  it('sends method, headers and body', async () => {
     const resolve = async () => [v4('127.0.0.1')]
-    await pinnedFetch(`http://gw.test:${port}/p`, {
+    const res = await pinnedFetch(`http://gw.test:${port}/p`, {
       method: 'POST',
-      headers: { Authorization: 'Bearer t', 'Content-Type': 'application/json' },
+      headers: { Authorization: 'Bearer t', 'Content-Type': 'application/json', 'accept-encoding': 'identity' },
       body: '{"a":"é"}',
     }, { resolve, isPublicAddress: allowAll })
+    await res.text()
     expect(hits[0].method).toBe('POST')
     expect(hits[0].body).toBe('{"a":"é"}')
     expect(hits[0].headers['content-length']).toBe(String(Buffer.byteLength('{"a":"é"}')))
     expect(hits[0].headers.authorization).toBe('Bearer t')
     expect(hits[0].headers['content-type']).toBe('application/json')
     expect(hits[0].headers['accept-encoding']).toBe('identity')
-
-    hits.length = 0
-    await pinnedFetch(`http://gw.test:${port}/p`, { headers: { 'accept-encoding': 'gzip' } }, { resolve, isPublicAddress: allowAll })
-    expect(hits[0].headers['accept-encoding']).toBe('gzip')
-    expect(hits[0].headers['content-length']).toBeUndefined()
   })
 
   it('returns a redirect as it is and never follows it', async () => {
@@ -276,17 +333,17 @@ describe('pinnedFetch, local server', () => {
     expect(head.body).toBeNull()
   })
 
-  it('decodes a gzip answer and drops the encoding and length headers', async () => {
+  it('decodes a gzip answer', async () => {
     const resolve = async () => [v4('127.0.0.1')]
     const res = await pinnedFetch(`http://gw.test:${port}/gzip`, {}, { resolve, isPublicAddress: allowAll })
     expect(await res.text()).toBe('zipped line\n')
-    expect(res.headers.get('content-encoding')).toBeNull()
   })
 
   it('keeps repeated response headers', async () => {
     const resolve = async () => [v4('127.0.0.1')]
     const res = await pinnedFetch(`http://gw.test:${port}/cookies`, {}, { resolve, isPublicAddress: allowAll })
     expect(res.headers.getSetCookie()).toEqual(['a=1', 'b=2'])
+    await res.text()
   })
 
   it('streams the body and stops when the caller aborts', async () => {
@@ -300,184 +357,213 @@ describe('pinnedFetch, local server', () => {
     await expect(reader.read()).rejects.toThrow()
   })
 
-  it('fails with the resolver error when the name does not resolve', async () => {
+  it('fails with the resolver error as the cause when the name does not resolve', async () => {
     const failure = Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' })
-    await expect(pinnedFetch(`http://gone.test:${port}/`, {}, { resolve: async () => { throw failure } }))
-      .rejects.toBe(failure)
+    const err = await pinnedFetch(`http://gone.test:${port}/`, {}, { resolve: async () => { throw failure } })
+      .catch((e: unknown) => e)
+    // Only a policy rejection is passed on as itself; other failures stay fetch's.
+    expect(err).toBeInstanceOf(TypeError)
+    expect((err as TypeError).cause).toBe(failure)
   })
 })
+
+// ── https ─────────────────────────────────────────────────────────────────────
+//
+// A local TLS server presents a self-signed certificate for the name gw.test
+// (valid 2000-2100). It is test material that protects nothing; the tests pass
+// it as the only trusted authority.
+
+const TEST_CERT = `-----BEGIN CERTIFICATE-----
+MIIBbjCCARSgAwIBAgIUf8jzXL/0Kw+evPAEy154BKhH5OcwCgYIKoZIzj0EAwIw
+EjEQMA4GA1UEAwwHZ3cudGVzdDAgFw0wMDAxMDEwMDAwMDBaGA8yMTAwMDEwMTAw
+MDAwMFowEjEQMA4GA1UEAwwHZ3cudGVzdDBZMBMGByqGSM49AgEGCCqGSM49AwEH
+A0IABCb7bUakgAMd2rBlFszUkdTUPCOomMqjY9Jfn/vgjHa7qF8hAOcS9obA9Zy7
+BT0QLaWKr43yFHn9cyGHJHfumFajRjBEMB0GA1UdDgQWBBQ5eKn57Eg0livyBjMr
+sRCRDrqF0jAPBgNVHRMBAf8EBTADAQH/MBIGA1UdEQQLMAmCB2d3LnRlc3QwCgYI
+KoZIzj0EAwIDSAAwRQIhAItSdlofaEFEhifxb+xoz3xBgiTeEOj62ge11yA0pgTe
+AiBpr1g32nExUxXwQeb4ylXRV9JngeaBrkesBay5Dl1Mjg==
+-----END CERTIFICATE-----
+`
+const TEST_KEY = `-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgnCyaIYYSy7kQj/AO
+HkmlmhED/4Ev/jFKGyKjXj7P8RqhRANCAAQm+21GpIADHdqwZRbM1JHU1DwjqJjK
+o2PSX5/74Ix2u6hfIQDnEvaGwPWcuwU9EC2liq+N8hR5/XMhhyR37phW
+-----END PRIVATE KEY-----
+`
 
 describe('pinnedFetch, https', () => {
-  afterEach(() => { vi.restoreAllMocks() })
-
-  it('keeps the host name in the request (SNI and certificate check) and installs the lookup', async () => {
-    const seen: Array<{ url: URL; options: https.RequestOptions }> = []
-    vi.spyOn(https, 'request').mockImplementation(((url: URL, options: https.RequestOptions) => {
-      seen.push({ url, options })
-      const fake = new EventEmitter() as EventEmitter & { end: () => void }
-      fake.end = () => { fake.emit('error', new Error('stop here')) }
-      return fake
-    }) as unknown as typeof https.request)
-
-    await expect(pinnedFetch('https://gw.example.com:8443/logs', { method: 'GET' })).rejects.toThrow('stop here')
-    expect(seen).toHaveLength(1)
-    expect(seen[0].url.hostname).toBe('gw.example.com')
-    expect(seen[0].url.port).toBe('8443')
-    expect(typeof seen[0].options.lookup).toBe('function')
-    expect(seen[0].options.agent).toBe(false)
-    expect(seen[0].options.servername).toBeUndefined()
-  })
-
-  it.each([
-    ['https', 'secureConnect', 'connect', https],
-    ['http', 'connect', 'secureConnect', http],
-  ] as const)('starts the headers limit on %s at the event that ends the handshake (%s, not %s)', async (scheme, wanted, other, transport) => {
-    const socket = new EventEmitter()
-    vi.spyOn(transport, 'request').mockImplementation((() => {
-      const fake = new EventEmitter() as EventEmitter & { end: () => void }
-      fake.end = () => {
-        fake.emit('socket', socket)
-        fake.emit('error', new Error('stop here'))
-      }
-      return fake
-    }) as unknown as typeof transport.request)
-
-    await expect(pinnedFetch(`${scheme}://gw.example.com/logs`)).rejects.toThrow('stop here')
-    expect(socket.listenerCount(wanted)).toBe(1)
-    expect(socket.listenerCount(other)).toBe(0)
-  })
-})
-
-// ── time limits and unrepresentable answers ───────────────────────────────────
-//
-// A raw TCP server stands in for a misbehaving gateway: it can stay silent,
-// stop after the headers, or send a status line that fetch cannot represent.
-// Limits are set to a few hundred milliseconds; the defaults are only pinned
-// as numbers, never waited for.
-
-describe('pinnedFetch, time limits', () => {
-  type Behaviour = (socket: net.Socket) => void
-  let server: net.Server
+  let server: https.Server
   let port: number
-  let behaviour: Behaviour
-  const sockets = new Set<net.Socket>()
-  let closedByServerSide = 0
+  const serverNames: unknown[] = []
+  const resolve = async () => [v4('127.0.0.1')]
 
   beforeAll(async () => {
-    server = net.createServer((socket) => {
-      sockets.add(socket)
-      socket.on('error', () => { /* the client destroys the connection */ })
-      socket.on('close', () => { sockets.delete(socket); closedByServerSide += 1 })
-      socket.once('data', () => behaviour(socket))
-    })
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    server = https.createServer({ cert: TEST_CERT, key: TEST_KEY }, (req, res) => res.end(`tls ok ${req.headers.host}`))
+    server.on('secureConnection', (socket) => serverNames.push(socket.servername))
+    server.on('tlsClientError', (_err, socket) => serverNames.push(socket.servername))
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done))
     port = (server.address() as AddressInfo).port
   })
 
   afterAll(async () => {
-    sockets.forEach((s) => s.destroy())
-    await new Promise<void>((resolve) => server.close(() => resolve()))
+    server.closeAllConnections()
+    await new Promise<void>((done) => server.close(() => done()))
   })
 
-  afterEach(() => { closedByServerSide = 0 })
+  afterEach(() => { serverNames.length = 0 })
 
-  const resolve = async () => [v4('127.0.0.1')]
-  const allowAll = () => true
-  const deps = (timeouts: Partial<typeof DEFAULT_PINNED_TIMEOUTS>) => ({ resolve, isPublicAddress: allowAll, timeouts })
-  const until = async (predicate: () => boolean) => {
-    for (let i = 0; i < 100 && !predicate(); i++) await new Promise((r) => setTimeout(r, 20))
+  it('connects to the checked address, sends the host name as SNI and verifies the certificate against it', async () => {
+    const res = await pinnedFetch(`https://gw.test:${port}/x`, {}, { resolve, isPublicAddress: allowAll, ca: [TEST_CERT] })
+    expect(await res.text()).toBe(`tls ok gw.test:${port}`)
+    expect(serverNames).toEqual(['gw.test'])
+  })
+
+  it('refuses a certificate that does not name the requested host, even at the checked address', async () => {
+    const err = await pinnedFetch(`https://other.test:${port}/`, {}, { resolve, isPublicAddress: allowAll, ca: [TEST_CERT] })
+      .catch((e: unknown) => e)
+    expect(causeCode(err)).toBe('ERR_TLS_CERT_ALTNAME_INVALID')
+  })
+
+  it('refuses a certificate that no trusted authority signed', async () => {
+    const err = await pinnedFetch(`https://gw.test:${port}/`, {}, { resolve, isPublicAddress: allowAll })
+      .catch((e: unknown) => e)
+    expect(causeCode(err)).toBe('DEPTH_ZERO_SELF_SIGNED_CERT')
+  })
+})
+
+// ── scripted gateways ─────────────────────────────────────────────────────────
+//
+// A raw TCP server stands in for a misbehaving gateway: it runs a script on the
+// connection once the request arrives. Limits are a few hundred milliseconds;
+// undici checks them on a coarse timer, so a limit fires within about a second.
+
+function scriptedServer() {
+  const sockets = new Set<net.Socket>()
+  const closed = new WeakSet<net.Socket>()
+  const state = {
+    port: 0,
+    script: (() => { /* set by each test */ }) as (socket: net.Socket) => void,
+    /** The connection the latest request came in on. */
+    last: undefined as net.Socket | undefined,
+    /** Whether that connection is closed (a late close of an earlier one does not count). */
+    lastClosed: () => state.last !== undefined && closed.has(state.last),
   }
+  const server = net.createServer((socket) => {
+    sockets.add(socket)
+    socket.on('error', () => { /* the client destroys the connection */ })
+    socket.on('close', () => { sockets.delete(socket); closed.add(socket) })
+    socket.once('data', () => {
+      state.last = socket
+      state.script(socket)
+    })
+  })
+  beforeAll(async () => {
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done))
+    state.port = (server.address() as AddressInfo).port
+  })
+  afterAll(async () => {
+    sockets.forEach((s) => s.destroy())
+    await new Promise<void>((done) => server.close(() => done()))
+  })
+  afterEach(() => { state.last = undefined })
+  return state
+}
 
-  it('defaults to the limits of the global fetch it replaced, none above 300 s', () => {
+const resolveLocal = async () => [v4('127.0.0.1')]
+
+describe('pinnedFetch, time limits', () => {
+  const gw = scriptedServer()
+  const deps = (timeouts: Partial<typeof DEFAULT_PINNED_TIMEOUTS>): PinnedFetchDeps =>
+    ({ resolve: resolveLocal, isPublicAddress: allowAll, timeouts })
+  const url = () => `http://gw.test:${gw.port}/`
+
+  it('defaults to the limits of the global fetch, none above 300 s', () => {
     expect(DEFAULT_PINNED_TIMEOUTS).toEqual({ connectMs: 10_000, headersMs: 300_000, bodyMs: 300_000 })
   })
 
-  it('rejects and closes the socket when the server never sends the response headers', async () => {
-    behaviour = () => { /* accept the request, never answer */ }
+  it('rejects, and closes the socket, when the server never sends the response headers', async () => {
+    gw.script = () => { /* accept the request, never answer */ }
     const started = Date.now()
-    const failure = await pinnedFetch(`http://gw.test:${port}/`, {}, deps({ headersMs: 150 })).catch((e: unknown) => e)
-    expect(failure).toBeInstanceOf(PinnedFetchTimeoutError)
-    expect((failure as Error).message).toContain('headers')
-    expect(Date.now() - started).toBeLessThan(3000)
-    await until(() => closedByServerSide > 0)
-    expect(closedByServerSide).toBe(1)
-  })
+    const failure = await pinnedFetch(url(), {}, deps({ headersMs: 200 })).catch((e: unknown) => e)
+    expect(causeCode(failure)).toBe('UND_ERR_HEADERS_TIMEOUT')
+    expect(Date.now() - started).toBeLessThan(4000)
+    await until(gw.lastClosed)
+    expect(gw.lastClosed()).toBe(true)
+  }, 10_000)
 
-  it('rejects when the name resolves too slowly (connect limit includes the lookup)', async () => {
+  it('rejects when the name resolves too slowly (the connect limit includes the lookup)', async () => {
     const never = () => new Promise<ResolvedAddress[]>(() => { /* resolver hangs */ })
-    const failure = await pinnedFetch(
-      `http://gw.test:${port}/`, {}, { resolve: never, isPublicAddress: allowAll, timeouts: { connectMs: 150 } },
-    ).catch((e: unknown) => e)
-    expect(failure).toBeInstanceOf(PinnedFetchTimeoutError)
-    expect((failure as Error).message).toContain('connect')
-  })
+    const started = Date.now()
+    const failure = await pinnedFetch(url(), {}, { resolve: never, isPublicAddress: allowAll, timeouts: { connectMs: 200 } })
+      .catch((e: unknown) => e)
+    expect(causeCode(failure)).toBe('UND_ERR_CONNECT_TIMEOUT')
+    expect(Date.now() - started).toBeLessThan(4000)
+  }, 10_000)
 
   it('completes when the answer arrives within the headers limit', async () => {
-    behaviour = (socket) => { socket.end('HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok') }
-    const res = await pinnedFetch(`http://gw.test:${port}/`, {}, deps({ connectMs: 5000, headersMs: 2000 }))
+    gw.script = (socket) => { socket.end('HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok') }
+    const res = await pinnedFetch(url(), {}, deps({ connectMs: 5000, headersMs: 2000 }))
     expect(await res.text()).toBe('ok')
   })
 
   it('fails the body read, and closes the socket, when the server goes silent after the first chunk', async () => {
-    behaviour = (socket) => { socket.write('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nfirst\r\n') }
-    const res = await pinnedFetch(`http://gw.test:${port}/`, {}, deps({ bodyMs: 150 }))
+    gw.script = (socket) => { socket.write('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nfirst\r\n') }
+    const res = await pinnedFetch(url(), {}, deps({ bodyMs: 200 }))
     const reader = res.body!.getReader()
     const first = await reader.read()
     expect(new TextDecoder().decode(first.value)).toBe('first')
     const failure = await reader.read().catch((e: unknown) => e)
-    expect(failure).toBeInstanceOf(PinnedFetchTimeoutError)
-    expect((failure as Error).message).toContain('body')
-    await until(() => closedByServerSide > 0)
-    expect(closedByServerSide).toBe(1)
-  })
+    expect(causeCode(failure)).toBe('UND_ERR_BODY_TIMEOUT')
+    await until(gw.lastClosed)
+    expect(gw.lastClosed()).toBe(true)
+  }, 10_000)
 
-  it('fails a gzip body read with the timeout error when the server goes silent', async () => {
+  it('fails a gzip body read the same way when the server goes silent', async () => {
     const gz = zlib.gzipSync('x'.repeat(100_000))
-    behaviour = (socket) => {
+    gw.script = (socket) => {
       socket.write('HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n')
       socket.write(gz.subarray(0, 40))
     }
-    const res = await pinnedFetch(`http://gw.test:${port}/`, {}, deps({ bodyMs: 150 }))
+    const res = await pinnedFetch(url(), {}, deps({ bodyMs: 200 }))
     const failure = await res.text().catch((e: unknown) => e)
-    expect(failure).toBeInstanceOf(PinnedFetchTimeoutError)
-    expect((failure as Error).message).toContain('body')
-  })
+    expect(causeCode(failure)).toBe('UND_ERR_BODY_TIMEOUT')
+  }, 10_000)
 
   it('treats the body limit as an idle limit: a slow trickle that keeps sending is not cut off', async () => {
-    behaviour = (socket) => {
+    gw.script = (socket) => {
       socket.write('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n')
       let n = 0
       const tick = setInterval(() => {
         n += 1
-        if (n > 8) { clearInterval(tick); socket.end('0\r\n\r\n'); return }
+        if (n > 15) { clearInterval(tick); socket.end('0\r\n\r\n'); return }
         socket.write('1\r\nx\r\n')
-      }, 60)
+      }, 100)
       socket.on('close', () => clearInterval(tick))
     }
-    // 8 chunks over ~480 ms with a 200 ms idle limit.
-    const res = await pinnedFetch(`http://gw.test:${port}/`, {}, deps({ bodyMs: 200 }))
-    expect(await res.text()).toBe('xxxxxxxx')
-  })
+    // 15 chunks over about 1.5 s with a 200 ms idle limit.
+    const res = await pinnedFetch(url(), {}, deps({ bodyMs: 200 }))
+    expect(await res.text()).toBe('x'.repeat(15))
+  }, 10_000)
 
-  it('does not start the body limit while the caller is not reading (backpressure pauses it)', async () => {
+  it('does not count time while the caller is not reading (backpressure)', async () => {
     const chunk = 'a'.repeat(1024)
-    behaviour = (socket) => {
+    gw.script = (socket) => {
       socket.write('HTTP/1.1 200 OK\r\nContent-Length: 4194304\r\n\r\n')
       let sent = 0
       const pump = () => {
         while (sent < 4096) {
           sent += 1
-          if (!socket.write(chunk.repeat(1))) { socket.once('drain', pump); return }
+          if (!socket.write(chunk)) { socket.once('drain', pump); return }
         }
         socket.end()
       }
       pump()
     }
-    const res = await pinnedFetch(`http://gw.test:${port}/`, {}, deps({ bodyMs: 300 }))
+    const res = await pinnedFetch(url(), {}, deps({ bodyMs: 200 }))
     const reader = res.body!.getReader()
     const first = await reader.read()
-    // The reader stops pulling for longer than the idle limit; the stream must stay usable.
-    await new Promise((r) => setTimeout(r, 600))
+    // The reader stops pulling for well over the limit; the stream must stay usable.
+    await new Promise((r) => setTimeout(r, 2000))
     let bytes = first.value!.length
     for (;;) {
       const { done, value } = await reader.read()
@@ -485,84 +571,106 @@ describe('pinnedFetch, time limits', () => {
       bytes += value.length
     }
     expect(bytes).toBe(4096 * 1024)
-  })
+  }, 10_000)
 
   it('still honours the caller AbortSignal while waiting for headers', async () => {
-    behaviour = () => { /* never answer */ }
+    gw.script = () => { /* never answer */ }
     const controller = new AbortController()
-    const promise = pinnedFetch(`http://gw.test:${port}/`, { signal: controller.signal }, deps({ headersMs: 5000 }))
+    const promise = pinnedFetch(url(), { signal: controller.signal }, deps({ headersMs: 5000 }))
     setTimeout(() => controller.abort(), 100)
     const failure = await promise.catch((e: unknown) => e)
-    expect(failure).not.toBeInstanceOf(PinnedFetchTimeoutError)
     expect((failure as Error).name).toBe('AbortError')
   })
 })
 
-describe('pinnedFetch, answers that fetch cannot represent', () => {
-  let server: net.Server
-  let port: number
-  let raw = ''
+// ── settlement ────────────────────────────────────────────────────────────────
+//
+// Whatever a gateway sends, the request settles: the call resolves or rejects,
+// and a body read that starts settles too. Each case runs under a hard test
+// timeout, so a hang fails the case instead of blocking the suite.
 
-  beforeAll(async () => {
-    server = net.createServer((socket) => {
-      socket.on('error', () => { /* the client may destroy the connection */ })
-      socket.once('data', () => socket.end(raw))
-    })
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-    port = (server.address() as AddressInfo).port
-  })
+function exposeGc(): () => void {
+  v8.setFlagsFromString('--expose-gc')
+  return vm.runInNewContext('gc') as () => void
+}
 
-  afterAll(async () => {
-    await new Promise<void>((resolve) => server.close(() => resolve()))
-  })
+describe('pinnedFetch, every answer settles', () => {
+  const gw = scriptedServer()
+  const BOUND_MS = 5000
+  const LIMITS = { connectMs: 1000, headersMs: 300, bodyMs: 300 }
+  const run = (timeouts: Partial<typeof DEFAULT_PINNED_TIMEOUTS> = LIMITS) =>
+    pinnedFetch(`http://gw.test:${gw.port}/`, {}, { resolve: resolveLocal, isPublicAddress: allowAll, timeouts })
 
-  const run = () =>
-    pinnedFetch(`http://gw.test:${port}/`, {}, {
-      resolve: async () => [v4('127.0.0.1')],
-      isPublicAddress: () => true,
-      timeouts: { headersMs: 2000, bodyMs: 2000 },
-    })
+  /** One line per outcome: `rejected <cause>`, or `<status> read` / `<status> failed <cause>` for the body. */
+  async function outcome(): Promise<string> {
+    const call = await within(run().then((res) => ({ res }), (error: unknown) => ({ error })), BOUND_MS)
+    if (call === 'HUNG') return 'request HUNG'
+    if ('error' in call) return `rejected ${causeCode(call.error)}`
+    const body = await within(call.res.text().then(() => 'read', (error: unknown) => `failed ${causeCode(error)}`), BOUND_MS)
+    return body === 'HUNG' ? `${call.res.status} body HUNG` : `${call.res.status} ${body}`
+  }
 
-  // Each of these used to throw inside the response listener: an uncaught
-  // exception for the process and a promise that never settled.
-  it.each([
-    ['600', 'HTTP/1.1 600 Nope\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok'],
-    ['999', 'HTTP/1.1 999 Nope\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok'],
-    ['101', 'HTTP/1.1 101 Switching Protocols\r\nConnection: close\r\n\r\n'],
-  ])('rejects a %s status with a clear error instead of hanging', async (status, answer) => {
-    raw = answer
-    const failure = await Promise.race([
-      run().catch((e: unknown) => e),
-      new Promise((r) => setTimeout(() => r('HUNG'), 3000)),
-    ])
-    expect(failure).toBeInstanceOf(Error)
-    expect((failure as Error).message).toContain(`unsupported HTTP status (${status})`)
-  })
+  const head = (status: string, headers = '') => `HTTP/1.1 ${status}\r\n${headers}`
 
-  it.each([
-    ['a control byte', 'HTTP/1.1 200 O\x01K\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok'],
-    ['DEL', 'HTTP/1.1 200 O\x7fK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok'],
-  ])('answers with an empty status text when the reason phrase has %s', async (_label, answer) => {
-    raw = answer
-    const res = await Promise.race([run(), new Promise<'HUNG'>((r) => setTimeout(() => r('HUNG'), 3000))])
-    expect(res).not.toBe('HUNG')
-    const response = res as Response
-    expect(response.status).toBe(200)
-    expect(response.statusText).toBe('')
-    expect(await response.text()).toBe('ok')
-  })
+  it.each<[string, (socket: net.Socket) => void, string]>([
+    ['the connection closes before any header', (s) => s.destroy(), 'rejected UND_ERR_SOCKET'],
+    [
+      '101 with Upgrade and Connection: Upgrade',
+      (s) => s.write(head('101 Switching Protocols', 'Upgrade: websocket\r\nConnection: Upgrade\r\n\r\n')),
+      'rejected UND_ERR_SOCKET',
+    ],
+    ['101 without an Upgrade header', (s) => s.write(head('101 Switching Protocols', '\r\n')), 'rejected UND_ERR_HEADERS_TIMEOUT'],
+    ['an unsolicited 100 Continue', (s) => s.write(head('100 Continue', '\r\n')), 'rejected UND_ERR_SOCKET'],
+    ['status 600', (s) => s.end(head('600 Nope', 'Content-Length: 2\r\nConnection: close\r\n\r\nok')), '600 read'],
+    ['status 999', (s) => s.end(head('999 Nope', 'Content-Length: 2\r\nConnection: close\r\n\r\nok')), '999 read'],
+    ['a control byte in the reason phrase', (s) => s.end(head('200 O\x01K', 'Content-Length: 2\r\nConnection: close\r\n\r\nok')), '200 read'],
+    ['DEL in the reason phrase', (s) => s.end(head('200 O\x7fK', 'Content-Length: 2\r\nConnection: close\r\n\r\nok')), '200 read'],
+    ['no answer at all', () => { /* stall before the headers */ }, 'rejected UND_ERR_HEADERS_TIMEOUT'],
+    ['silence in the middle of the body', (s) => s.write(head('200 OK', 'Content-Length: 100\r\n\r\nfirst')), '200 failed UND_ERR_BODY_TIMEOUT'],
+    [
+      'a reset in the middle of the body',
+      (s) => { s.write(head('200 OK', 'Content-Length: 100\r\n\r\nfirst')); setTimeout(() => s.resetAndDestroy(), 50) },
+      '200 failed ECONNRESET',
+    ],
+    ['the connection ends in the middle of the body', (s) => s.end(head('200 OK', 'Content-Length: 100\r\n\r\nfirst')), '200 failed UND_ERR_SOCKET'],
+  ])('settles when the gateway sends %s', async (_label, script, expected) => {
+    gw.script = script
+    expect(await outcome()).toBe(expected)
+  }, 15_000)
 
-  it('keeps a valid reason phrase', async () => {
-    raw = 'HTTP/1.1 503 Gateway Down\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
+  it('passes a valid reason phrase through', async () => {
+    gw.script = (s) => s.end(head('503 Gateway Down', 'Content-Length: 0\r\nConnection: close\r\n\r\n'))
     const res = await run()
     expect(res.status).toBe(503)
     expect(res.statusText).toBe('Gateway Down')
   })
 
-  it('answers the lowest and highest representable statuses', async () => {
-    raw = 'HTTP/1.1 599 Edge\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
-    expect((await run()).status).toBe(599)
-    raw = 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
-    expect((await run()).status).toBe(200)
-  })
+  // A large non-OK body that nobody reads fills fetch's buffer, which pauses the
+  // body limit; the connection is held until the response is collected or its
+  // body is cancelled. The body limit is set high so only those can release it.
+  const bigErrorBody = (s: net.Socket) => {
+    s.write(head('500 Internal Server Error', 'Content-Length: 10000000\r\n\r\n'))
+    s.write(Buffer.alloc(1_000_000, 97))
+  }
+
+  it('releases the connection of a non-OK answer whose body nobody reads once the response is collected', async () => {
+    gw.script = bigErrorBody
+    // Nothing keeps the response once this call returns.
+    expect(await (async () => (await run({ bodyMs: 60_000 })).status)()).toBe(500)
+    const gc = exposeGc()
+    const started = Date.now()
+    while (!gw.lastClosed() && Date.now() - started < BOUND_MS) {
+      gc()
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    expect(gw.lastClosed()).toBe(true)
+  }, 15_000)
+
+  it('releases the connection at once when the caller cancels an unread body', async () => {
+    gw.script = bigErrorBody
+    const res = await run({ bodyMs: 60_000 })
+    await res.body?.cancel()
+    await until(gw.lastClosed)
+    expect(gw.lastClosed()).toBe(true)
+  }, 15_000)
 })
