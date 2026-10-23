@@ -327,6 +327,25 @@ describe('pinnedFetch, https', () => {
     expect(seen[0].options.agent).toBe(false)
     expect(seen[0].options.servername).toBeUndefined()
   })
+
+  it.each([
+    ['https', 'secureConnect', 'connect', https],
+    ['http', 'connect', 'secureConnect', http],
+  ] as const)('starts the headers limit on %s at the event that ends the handshake (%s, not %s)', async (scheme, wanted, other, transport) => {
+    const socket = new EventEmitter()
+    vi.spyOn(transport, 'request').mockImplementation((() => {
+      const fake = new EventEmitter() as EventEmitter & { end: () => void }
+      fake.end = () => {
+        fake.emit('socket', socket)
+        fake.emit('error', new Error('stop here'))
+      }
+      return fake
+    }) as unknown as typeof transport.request)
+
+    await expect(pinnedFetch(`${scheme}://gw.example.com/logs`)).rejects.toThrow('stop here')
+    expect(socket.listenerCount(wanted)).toBe(1)
+    expect(socket.listenerCount(other)).toBe(0)
+  })
 })
 
 // ── time limits and unrepresentable answers ───────────────────────────────────

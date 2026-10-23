@@ -222,12 +222,12 @@ export async function pinnedFetch(
     }, (res) => {
       disarm()
       // The caller reads the body when it likes; the socket's idle timer runs
-      // only while the stream is flowing, so a slow reader is not a timeout.
-      // Only a response with a body is guarded, and by then the body stream
-      // listens for the error that destroying the response raises.
+      // only while the stream is flowing (the body stream starts it with the
+      // first resume), so a slow reader is not a timeout. Only a response with
+      // a body is guarded, and by then the body stream listens for the error
+      // that destroying the response raises.
       const guardBody = () => {
         const socket = res.socket
-        socket.setTimeout(timeouts.bodyMs)
         socket.once('timeout', () => res.destroy(new PinnedFetchTimeoutError('body', timeouts.bodyMs)))
         res.on('pause', () => socket.setTimeout(0))
         res.on('resume', () => socket.setTimeout(timeouts.bodyMs))
