@@ -1,0 +1,1 @@
+Throwaway self-signed certificate and key for the reserved name `gw.test` (valid 2000-2100), used only by `tests/unit/pinned-fetch.test.ts` as the only trusted authority of a local TLS server. They protect nothing and are not used anywhere else.

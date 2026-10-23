@@ -10,9 +10,14 @@
  *   URL a remote party chose) fetches through remoteGatewayFetch only, which
  *   has no default-URL exemption, and never through gatewayFetch.
  * - No route calls the URL assertions itself instead of a fetch helper.
- * - No route imports an HTTP or socket client of its own (node:http,
- *   node:https, node:net, node:tls, node:http2 or undici), which would reach a
- *   gateway around the guard as a raw fetch would.
+ * - A route imports only modules on ALLOWED_ROUTE_IMPORTS, the ones the
+ *   routes use today. Anything else (an HTTP or socket client such as node:http,
+ *   undici or ws, a module that might wrap one, a relative path, a computed
+ *   specifier) fails, whatever form the import takes: static, side-effect,
+ *   re-export, dynamic or require. `createRequire` and the global
+ *   WebSocket, EventSource and XMLHttpRequest are flagged too, because they
+ *   load or are a client without a module specifier. This is an allowlist, not
+ *   a list of banned clients, so a client nobody thought of is refused too.
  *
  * The rules are text scans, so they are generic over files: a new route, or an
  * edit to an existing one, is judged without this file being touched. They do
@@ -41,11 +46,61 @@ function usesRawFetch(text: string): boolean {
   return /\b(?:pinnedFetch|fetch)\b/.test(stripComments(text))
 }
 
-/** Imports, requires or dynamically imports an HTTP or socket client module. */
-function importsRawTransport(text: string): boolean {
-  return /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|^\s*import\s+)['"`](?:node:)?(?:http|https|http2|net|tls|undici)['"`]/m.test(
-    stripComments(text),
-  )
+/**
+ * Modules a route under src/app/api may import: the ones the routes import
+ * today. None of them is an HTTP or socket client, and the `@/lib` modules
+ * reach a gateway only through gateway.ts. A route that needs another module
+ * adds it here with a reason, which makes the addition a reviewed line. Names
+ * are compared without a `node:` prefix.
+ */
+const ALLOWED_ROUTE_IMPORTS: Record<string, string> = {
+  'next/server': 'request and response types',
+  '@/lib/auth': 'session check',
+  '@/lib/gateway': 'the gateway helpers (the only way to a gateway)',
+  '@/lib/agent-registry': 'the registry of connected agents',
+  '@/lib/data-store': 'local JSON stores',
+  '@/lib/input-validators': 'request value checks',
+  '@/lib/service-health': 'health probe of the operator-configured URLs',
+  '@/lib/github-ci': 'check runs of the fixed GitHub host',
+  '@/types': 'types',
+  bcryptjs: 'token hashing',
+  child_process: 'spawn of the local docker CLI',
+  crypto: 'hashing and random ids',
+  fs: 'local files',
+  path: 'path joining',
+}
+
+/** `(import|require)(` call sites, with the argument text that follows the parenthesis. */
+function callSites(code: string): string[] {
+  return [...code.matchAll(/\b(?:import|require)\s*\(([\s\S]{0,400})/g)].map((m) => m[1])
+}
+
+/**
+ * Every way a route can load code or a client that is not on the allowlist,
+ * as human-readable offences: a module specifier that is not allowed (static
+ * import, side-effect import, re-export, dynamic import, require), a computed
+ * specifier, createRequire and the global clients.
+ */
+function routeImportViolations(text: string): string[] {
+  const code = stripComments(text)
+  const specifiers = [
+    ...[...code.matchAll(/\bfrom\s*(['"`])([^'"`]*)\1/g)].map((m) => m[2]),
+    ...[...code.matchAll(/\bimport\s*(['"`])([^'"`]*)\1/g)].map((m) => m[2]),
+  ]
+  const offences: string[] = []
+  for (const arg of callSites(code)) {
+    const literal = arg.match(/^\s*(['"`])([^'"`$\\]*)\1\s*[,)]/)
+    if (literal) specifiers.push(literal[2])
+    else offences.push('a computed import() or require() specifier')
+  }
+  for (const spec of specifiers) {
+    if (!(spec.replace(/^node:/, '') in ALLOWED_ROUTE_IMPORTS)) offences.push(`import of '${spec}', which is not on ALLOWED_ROUTE_IMPORTS`)
+  }
+  if (/\bcreateRequire\b|\.require\s*\(|\bprocess\s*\.\s*(?:binding|dlopen)\b/.test(code)) {
+    offences.push('createRequire, module.require or process.binding (loads a module without a visible specifier)')
+  }
+  if (/\b(?:WebSocket|EventSource|XMLHttpRequest)\b/.test(code)) offences.push('a global WebSocket, EventSource or XMLHttpRequest client')
+  return offences
 }
 
 /** Reads an agent's reported gateway fields: `x.gatewayUrl`, `x?.gatewayToken`, `x['gatewayUrl']`, `{ gatewayUrl } = x`. */
@@ -104,24 +159,62 @@ describe('gateway consumers, scan rules on sample sources', () => {
     expect(usesRawFetch("const u = 'http://x'; await fetch(u)")).toBe(true)
   })
 
-  it('flags every way of loading an HTTP or socket client', () => {
-    expect(importsRawTransport("import http from 'node:http'")).toBe(true)
-    expect(importsRawTransport('import { request } from "https"')).toBe(true)
-    expect(importsRawTransport("import * as net from 'node:net'")).toBe(true)
-    expect(importsRawTransport("import { connect } from 'node:tls'")).toBe(true)
-    expect(importsRawTransport("import { connect } from 'http2'")).toBe(true)
-    expect(importsRawTransport("import { request } from 'undici'")).toBe(true)
-    expect(importsRawTransport("import 'node:net'")).toBe(true)
-    expect(importsRawTransport("const { Agent } = require('undici')")).toBe(true)
-    expect(importsRawTransport("const m = await import('node:https')")).toBe(true)
+  it('flags every way of loading a module that is not on the allowlist', () => {
+    expect(routeImportViolations("import http from 'node:http'")).toHaveLength(1)
+    expect(routeImportViolations('import { request } from "https"')).toHaveLength(1)
+    expect(routeImportViolations("import * as net from 'node:net'")).toHaveLength(1)
+    expect(routeImportViolations("import { connect } from 'node:tls'")).toHaveLength(1)
+    expect(routeImportViolations("import { connect } from 'http2'")).toHaveLength(1)
+    expect(routeImportViolations("import { request } from 'undici'")).toHaveLength(1)
+    expect(routeImportViolations("import 'node:net'")).toHaveLength(1)
+    expect(routeImportViolations("const { Agent } = require('undici')")).toHaveLength(1)
+    expect(routeImportViolations("const m = await import('node:https')")).toHaveLength(1)
+    expect(routeImportViolations("import WebSocket from 'ws'")).toContainEqual(expect.stringContaining("import of 'ws'"))
+    expect(routeImportViolations("import { createSocket } from 'node:dgram'")).toContainEqual(expect.stringContaining("import of 'node:dgram'"))
+    expect(routeImportViolations("export * from 'undici'")).toHaveLength(1)
+    expect(routeImportViolations("import { x } from './local-client'")).toHaveLength(1)
+    expect(routeImportViolations("import { x } from '../../../lib/gateway'")).toHaveLength(1)
+    expect(routeImportViolations('import type { Dispatcher } from "undici"')).toHaveLength(1)
   })
 
-  it('does not flag other modules, names that merely contain a client name, or comments', () => {
-    expect(importsRawTransport("import { NextRequest } from 'next/server'")).toBe(false)
-    expect(importsRawTransport("import { spawn } from 'child_process'")).toBe(false)
-    expect(importsRawTransport("import { x } from '@/lib/http-helpers'")).toBe(false)
-    expect(importsRawTransport("import { y } from 'node:netlink'")).toBe(false)
-    expect(importsRawTransport("// import http from 'node:http'\nconst a = 1")).toBe(false)
+  it('flags an import anywhere on a line, not only at its start', () => {
+    expect(routeImportViolations("import { NextRequest } from 'next/server'; import 'undici'")).toHaveLength(1)
+    expect(routeImportViolations("import 'undici'; import { NextRequest } from 'next/server'")).toHaveLength(1)
+    expect(routeImportViolations("export const x = 1; const m = await import('undici')")).toHaveLength(1)
+  })
+
+  it('flags an import spread over several lines', () => {
+    expect(routeImportViolations("import {\n  request,\n  Agent,\n} from\n  'undici'")).toHaveLength(1)
+  })
+
+  it('flags a computed specifier, createRequire and the global clients', () => {
+    expect(routeImportViolations('const m = await import(name)')).toHaveLength(1)
+    expect(routeImportViolations('const m = require(`un${x}`)')).toHaveLength(1)
+    expect(routeImportViolations("const r = createRequire(import.meta.url)('undici')").length).toBeGreaterThan(0)
+    expect(routeImportViolations("import { createRequire } from 'node:module'")).toHaveLength(2)
+    expect(routeImportViolations('const r = module.require(x)').length).toBeGreaterThan(0)
+    expect(routeImportViolations("const ws = new WebSocket('wss://x')")).toHaveLength(1)
+    expect(routeImportViolations("const es = new EventSource('https://x')")).toHaveLength(1)
+    expect(routeImportViolations('const x = new XMLHttpRequest()')).toHaveLength(1)
+    expect(routeImportViolations("import WebSocket from 'ws'; export const p = (u: string) => new WebSocket(u)")).toHaveLength(2)
+  })
+
+  it('does not flag allowlisted modules, with or without the node: prefix, or comments', () => {
+    expect(routeImportViolations("import { NextRequest, NextResponse } from 'next/server'")).toEqual([])
+    expect(routeImportViolations("import { spawn } from 'child_process'")).toEqual([])
+    expect(routeImportViolations("import { spawn } from 'node:child_process'")).toEqual([])
+    expect(routeImportViolations("import fs from 'node:fs'")).toEqual([])
+    expect(routeImportViolations("import { gatewayFetch } from '@/lib/gateway'")).toEqual([])
+    expect(routeImportViolations("import {\n  gatewayFetch,\n  remoteGatewayFetch,\n} from '@/lib/gateway'")).toEqual([])
+    expect(routeImportViolations("// import http from 'node:http'\nconst a = 1")).toEqual([])
+    expect(routeImportViolations("/* import 'undici' */ const a = 1")).toEqual([])
+    expect(routeImportViolations("const m = Array.from('abc')")).toEqual([])
+  })
+
+  it('does not flag a name that merely contains an allowed or banned name', () => {
+    expect(routeImportViolations("import { x } from '@/lib/gateway-extra'")).toHaveLength(1)
+    expect(routeImportViolations("import { y } from 'node:fs/promises'")).toHaveLength(1)
+    expect(routeImportViolations('const WebSocketLike = 1')).toEqual([])
   })
 
   it('flags every way of reading the agent-reported gateway fields', () => {
@@ -168,9 +261,16 @@ describe('gateway consumers', () => {
     }
   })
 
-  it('has no route that loads an HTTP or socket client of its own', () => {
-    const offenders = routes.filter((r) => importsRawTransport(r.text)).map((r) => r.rel)
+  it('has no route that imports a module outside the allowlist or loads a client of its own', () => {
+    const offenders = routes.flatMap((r) => routeImportViolations(r.text).map((v) => `${r.rel}: ${v}`))
     expect(offenders).toEqual([])
+  })
+
+  it('keeps every allowlist entry in use, so the list stays the routes\' real imports', () => {
+    const used = new Set(
+      routes.flatMap((r) => [...stripComments(r.text).matchAll(/\bfrom\s*(['"`])([^'"`]*)\1/g)].map((m) => m[2].replace(/^node:/, ''))),
+    )
+    expect(Object.keys(ALLOWED_ROUTE_IMPORTS).filter((name) => !used.has(name))).toEqual([])
   })
 
   it('has no route that calls the URL assertion itself instead of a fetch helper', () => {

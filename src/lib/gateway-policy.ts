@@ -72,9 +72,10 @@ function isPrivateIPv6(host: string): boolean {
 
   // Addresses that carry an IPv4 address are judged by it.
   if (leadingZeros(5) && g[5] === 0xffff) return embedded(g[6], g[7]) // ::ffff:a.b.c.d IPv4-mapped
-  // ::a.b.c.d IPv4-compatible (deprecated); also catches :: and ::1, whose
-  // embedded address is 0.0.0.0 and 0.0.0.1.
-  if (leadingZeros(6)) return embedded(g[6], g[7])
+  // ::/96 holds :: and ::1 and the IPv4-compatible addresses (deprecated,
+  // ::a.b.c.d). No host is reached that way, so none of it is public, whatever
+  // IPv4 address the low 32 bits spell.
+  if (leadingZeros(6)) return true
   if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) {
     return embedded(g[6], g[7]) // 64:ff9b::/96 NAT64
   }
@@ -84,10 +85,20 @@ function isPrivateIPv6(host: string): boolean {
   // fc00::/7 unique-local, fe80::/10 link-local, fec0::/10 site-local and
   // ff00::/8 multicast.
   if ((g[0] & 0xe000) !== 0x2000) return true
-  // Inside 2000::/3, the ranges IANA lists as not globally reachable.
-  if (g[0] === 0x2001 && g[1] === 0) return true // 2001::/32 Teredo
-  if (g[0] === 0x2001 && g[1] === 0x2 && g[2] === 0) return true // 2001:2::/48 benchmarking
-  if (g[0] === 0x2001 && (g[1] & 0xfff0) === 0x10) return true // 2001:10::/28 ORCHID (deprecated)
+  // Inside 2000::/3, 2001::/23 is the IETF protocol assignments block, which
+  // IANA lists as not globally reachable (Teredo 2001::/32, benchmarking
+  // 2001:2::/48, ORCHID 2001:10::/28 and the rest of the block) except for the
+  // sub-blocks it marks globally reachable.
+  if (g[0] === 0x2001 && g[1] < 0x200) {
+    const reachable =
+      (g[1] === 0x1 && g.slice(2, 7).every((x) => x === 0) && g[7] >= 1 && g[7] <= 3) || // 2001:1::1, 2001:1::2, 2001:1::3 anycast
+      g[1] === 0x3 || // 2001:3::/32 AMT
+      (g[1] === 0x4 && g[2] === 0x112) || // 2001:4:112::/48 AS112-v6
+      (g[1] & 0xfff0) === 0x20 || // 2001:20::/28 ORCHIDv2
+      (g[1] & 0xfff0) === 0x30 // 2001:30::/28 drone remote ID
+    if (!reachable) return true
+  }
+  // Inside 2000::/3, the other ranges IANA lists as not globally reachable.
   if (g[0] === 0x2001 && g[1] === 0xdb8) return true // 2001:db8::/32 documentation
   if (g[0] === 0x2002) return embedded(g[1], g[2]) // 2002::/16 6to4
   if (g[0] === 0x3fff && (g[1] & 0xf000) === 0) return true // 3fff::/20 documentation

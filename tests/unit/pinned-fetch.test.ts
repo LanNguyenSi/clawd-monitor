@@ -8,6 +8,8 @@
  * reach a local server; the policy tests use the real one.
  */
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import http from 'node:http'
 import https from 'node:https'
 import zlib from 'node:zlib'
@@ -370,26 +372,12 @@ describe('pinnedFetch, local server', () => {
 // ── https ─────────────────────────────────────────────────────────────────────
 //
 // A local TLS server presents a self-signed certificate for the name gw.test
-// (valid 2000-2100). It is test material that protects nothing; the tests pass
-// it as the only trusted authority.
+// (valid 2000-2100), read from tests/fixtures/tls. It is test material that
+// protects nothing; the tests pass it as the only trusted authority.
 
-const TEST_CERT = `-----BEGIN CERTIFICATE-----
-MIIBbjCCARSgAwIBAgIUf8jzXL/0Kw+evPAEy154BKhH5OcwCgYIKoZIzj0EAwIw
-EjEQMA4GA1UEAwwHZ3cudGVzdDAgFw0wMDAxMDEwMDAwMDBaGA8yMTAwMDEwMTAw
-MDAwMFowEjEQMA4GA1UEAwwHZ3cudGVzdDBZMBMGByqGSM49AgEGCCqGSM49AwEH
-A0IABCb7bUakgAMd2rBlFszUkdTUPCOomMqjY9Jfn/vgjHa7qF8hAOcS9obA9Zy7
-BT0QLaWKr43yFHn9cyGHJHfumFajRjBEMB0GA1UdDgQWBBQ5eKn57Eg0livyBjMr
-sRCRDrqF0jAPBgNVHRMBAf8EBTADAQH/MBIGA1UdEQQLMAmCB2d3LnRlc3QwCgYI
-KoZIzj0EAwIDSAAwRQIhAItSdlofaEFEhifxb+xoz3xBgiTeEOj62ge11yA0pgTe
-AiBpr1g32nExUxXwQeb4ylXRV9JngeaBrkesBay5Dl1Mjg==
------END CERTIFICATE-----
-`
-const TEST_KEY = `-----BEGIN PRIVATE KEY-----
-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgnCyaIYYSy7kQj/AO
-HkmlmhED/4Ev/jFKGyKjXj7P8RqhRANCAAQm+21GpIADHdqwZRbM1JHU1DwjqJjK
-o2PSX5/74Ix2u6hfIQDnEvaGwPWcuwU9EC2liq+N8hR5/XMhhyR37phW
------END PRIVATE KEY-----
-`
+const FIXTURES = join(__dirname, '..', 'fixtures', 'tls')
+const TEST_CERT = readFileSync(join(FIXTURES, 'gw.test.cert.pem'), 'utf8')
+const TEST_KEY = readFileSync(join(FIXTURES, 'gw.test.key.pem'), 'utf8')
 
 describe('pinnedFetch, https', () => {
   let server: https.Server
