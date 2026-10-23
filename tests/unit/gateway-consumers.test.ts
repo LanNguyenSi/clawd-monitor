@@ -13,11 +13,14 @@
  * - A route imports only modules on ALLOWED_ROUTE_IMPORTS, the ones the
  *   routes use today. Anything else (an HTTP or socket client such as node:http,
  *   undici or ws, a module that might wrap one, a relative path, a computed
- *   specifier) fails, whatever form the import takes: static, side-effect,
- *   re-export, dynamic or require. `createRequire`, `process.binding` and the global
+ *   specifier) fails in the usual import forms: static, side-effect,
+ *   re-export, dynamic or require with a literal specifier. `createRequire`, `process.binding` and the global
  *   WebSocket, EventSource and XMLHttpRequest are flagged too, because they
  *   load or are a client without a module specifier. This is an allowlist, not
  *   a list of banned clients, so a client nobody thought of is refused too.
+ *   It is a text scan: deliberate obfuscation (an aliased require, eval, a
+ *   computed global name) is out of its scope; the runtime guard in
+ *   src/lib/gateway.ts and src/lib/pinned-fetch.ts stays the boundary.
  *
  * The rules are text scans, so they are generic over files: a new route, or an
  * edit to an existing one, is judged without this file being touched. They do
@@ -64,7 +67,7 @@ const ALLOWED_ROUTE_IMPORTS: Record<string, string> = {
   '@/lib/github-ci': 'check runs of the fixed GitHub host',
   '@/types': 'types',
   bcryptjs: 'token hashing',
-  child_process: 'spawn of the local docker CLI',
+  child_process: 'local docker, journalctl and tail processes',
   crypto: 'hashing and random ids',
   fs: 'local files',
   path: 'path joining',
@@ -213,7 +216,7 @@ describe('gateway consumers, scan rules on sample sources', () => {
     expect(routeImportViolations("const m = Array.from('abc')")).toEqual([])
   })
 
-  it('does not flag a name that merely contains an allowed or banned name', () => {
+  it('compares module names exactly and ignores identifiers that only contain a client name', () => {
     expect(routeImportViolations("import { x } from '@/lib/gateway-extra'")).toHaveLength(1)
     expect(routeImportViolations("import { y } from 'node:fs/promises'")).toHaveLength(1)
     expect(routeImportViolations('const WebSocketLike = 1')).toEqual([])

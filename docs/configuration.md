@@ -70,11 +70,13 @@ Notes:
     (`100.64.0.0/10`), unspecified, multicast, reserved, benchmarking
     (`198.18.0.0/15`), documentation (`192.0.2.0/24`, `198.51.100.0/24`,
     `203.0.113.0/24`) and 6to4 relay (`192.88.99.0/24`) IPv4 addresses; every
-    IPv6 address outside the global unicast range `2000::/3`; and inside it
-    Teredo (`2001::/32`), benchmarking (`2001:2::/48`), ORCHID
-    (`2001:10::/28`) and documentation (`2001:db8::/32`, `3fff::/20`). An IPv6
-    address that carries an IPv4 address (IPv4-mapped, IPv4-compatible, NAT64
-    `64:ff9b::/96` and 6to4 `2002::/16`) is judged by that IPv4 address. The
+    IPv6 address outside the global unicast range `2000::/3` (so the
+    IPv4-compatible range `::/96` is never public); and inside it all of
+    `2001::/23` except the globally reachable blocks `2001:1::1` to
+    `2001:1::3`, `2001:3::/32`, `2001:4:112::/48`, `2001:20::/28` and
+    `2001:30::/28`, plus documentation (`2001:db8::/32`, `3fff::/20`). An IPv6
+    address that carries an IPv4 address (IPv4-mapped, NAT64 `64:ff9b::/96`
+    and 6to4 `2002::/16`) is judged by that IPv4 address. The
     connection goes to exactly the addresses that were checked, so a DNS answer
     that changes between the check and the connect has no effect. TLS still
     verifies the certificate against the host name. A redirect answer is never
