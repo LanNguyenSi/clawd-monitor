@@ -65,20 +65,28 @@ Notes:
     names and compressed lower-case IPv6 (`[2606:4700::1111]`, not
     `[2606:4700:0:0:0:0:0:1111]`); an entry in another spelling never matches.
   - **Resolved address.** The host name is resolved when the request connects.
-    If any address it resolves to is loopback, private, link-local,
-    carrier-grade NAT (`100.64.0.0/10`), unspecified, multicast, reserved,
-    documentation (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`,
-    `2001:db8::/32`), Teredo (`2001::/32`) or discard-only (`100::/64`), or an
-    IPv4-translated or local-use NAT64 IPv6 address (IPv4, IPv6 and IPv4-mapped
-    IPv6 alike), the request is rejected. The connection goes to exactly the
-    addresses that were checked, so a DNS answer that changes between the check
-    and the connect has no effect. TLS still verifies the certificate against the host name. A redirect answer is
-    never followed. An allowlisted name that points at a private address
-    (an internal gateway reached by name, for example) no longer works.
+    If any address it resolves to is not public, the request is rejected.
+    Not public are loopback, private, link-local, carrier-grade NAT
+    (`100.64.0.0/10`), unspecified, multicast, reserved, benchmarking
+    (`198.18.0.0/15`), documentation (`192.0.2.0/24`, `198.51.100.0/24`,
+    `203.0.113.0/24`) and 6to4 relay (`192.88.99.0/24`) IPv4 addresses; every
+    IPv6 address outside the global unicast range `2000::/3`; and inside it
+    Teredo (`2001::/32`), benchmarking (`2001:2::/48`), ORCHID
+    (`2001:10::/28`) and documentation (`2001:db8::/32`, `3fff::/20`). An IPv6
+    address that carries an IPv4 address (IPv4-mapped, IPv4-compatible, NAT64
+    `64:ff9b::/96` and 6to4 `2002::/16`) is judged by that IPv4 address. The
+    connection goes to exactly the addresses that were checked, so a DNS answer
+    that changes between the check and the connect has no effect. TLS still
+    verifies the certificate against the host name. A redirect answer is never
+    followed. An allowlisted name that points at a private address (an
+    internal gateway reached by name, for example) no longer works.
   - **Time limits.** For an override, connecting (lookup, TCP and TLS) must
-    finish within 10 seconds, the response headers must arrive within 300
-    seconds of the connection, and the body must not stall for more than 300
-    seconds; otherwise the request is cut off and fails.
+    finish within 10 seconds and the response headers must arrive within 300
+    seconds of sending the request; otherwise the request fails. While the
+    body is being read, the gateway must not stay silent for more than 300
+    seconds, or the read fails. When nobody reads the body and its buffer is
+    full, the limit pauses, so a route that does not read a non-OK answer
+    cancels its body, which releases the connection at once.
   - **Agent-reported URLs.** The same rule applies to the `gatewayUrl` a
     connected agent reports: the Log Tail widget fetches it only when it is
     `https`, its host and port are in the list and it resolves to public
