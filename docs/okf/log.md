@@ -2,6 +2,16 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-23T05:11:30Z, agent-registry-lifecycle and auth-and-config-loading re-verified and
+  re-stamped after the upgrade routing moved out of `server.ts`. Checked
+  against the code: the real server has one `upgrade` listener
+  (`src/lib/ws-upgrade.ts`, now a source of the registry doc) and Next gets
+  a separate never-listening server via `httpServer`, so agent upgrades no
+  longer fail after the first HTTP request; other upgrades are destroyed in
+  production and replayed on Next's server in development. The `next(...)`
+  call citation in the config doc was re-pointed. Other citations into
+  `server.ts` (the import of the router shifted the startup-check lines by
+  one) were re-pointed.
 - 2026-10-23T04:59:17Z, auth-and-config-loading re-verified and re-stamped after the `next` and `@next/env` dependency lines of `package.json` moved from 15.5.27 to 15.5.28. The doc's only `package.json` citation is the `start` script (`package.json:7-9`), which did not move, and its `@next/env` statements describe behaviour, not a version; claims unchanged.
 - 2026-10-21T06:28:30Z, agent-registry-lifecycle, auth-and-config-loading and
   widget-data-modes re-verified and re-stamped against the sources. Checked

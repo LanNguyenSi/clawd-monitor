@@ -6,6 +6,7 @@ import { parse } from 'url'
 import next from 'next'
 import { WebSocketServer } from 'ws'
 import { handleAgentConnection } from './src/lib/agent-ws-handler.js'
+import { attachUpgradeRouter } from './src/lib/ws-upgrade.js'
 
 const dev = process.env.NODE_ENV !== 'production'
 const port = parseInt(process.env.PORT ?? '3000')
@@ -26,7 +27,12 @@ if (!dev) {
   if (!process.env.AGENT_TOKENS) console.warn('[startup] AGENT_TOKENS not set — agents cannot connect without UI-created tokens')
 }
 
-const app = next({ dev, hostname, port })
+// Next attaches its own `upgrade` listener to the first server it serves a
+// request for; that listener ends /api/agents/ws (it matches the dynamic route
+// /api/agents/[agentId]). Give it a server that never listens so the real
+// server has exactly one upgrade listener, ours (see ws-upgrade.ts).
+const nextServer = createServer()
+const app = next({ dev, hostname, port, httpServer: nextServer })
 const handle = app.getRequestHandler()
 
 app.prepare().then(() => {
@@ -38,16 +44,19 @@ app.prepare().then(() => {
   const wss = new WebSocketServer({ noServer: true })
   wss.on('connection', handleAgentConnection)
 
-  server.on('upgrade', (req, socket, head) => {
-    const { pathname } = parse(req.url ?? '/')
-    if (pathname === '/api/agents/ws') {
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        wss.emit('connection', ws, req)
-      })
-    } else {
-      socket.destroy()
-    }
-  })
+  // In dev, other upgrades (HMR) are replayed on the server Next listens on;
+  // its own listener, attached on the first request, handles them. (The
+  // public app.getUpgradeHandler() is a no-op for HMR.) Production has no
+  // upgrade use for Next, so there other upgrades are destroyed.
+  attachUpgradeRouter(
+    server,
+    wss,
+    dev
+      ? (req, socket, head) => {
+          if (!nextServer.emit('upgrade', req, socket, head)) socket.destroy()
+        }
+      : null,
+  )
 
   server.listen(port, hostname, () => {
     console.log(`> clawd-monitor ready on http://${hostname}:${port}`)

@@ -13,7 +13,7 @@ ws(s)://<clawd-monitor-host>/api/agents/ws
 ```
 
 The custom server upgrades only this exact path; any other upgrade request is
-destroyed. No user JWT is required — agents authenticate with an agent token.
+destroyed in production (in development it goes to Next for HMR). No user JWT is required — agents authenticate with an agent token.
 
 ## Handshake
 
