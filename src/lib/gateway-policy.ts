@@ -72,15 +72,13 @@ function isPrivateIPv6(host: string): boolean {
 
   // Addresses that carry an IPv4 address are judged by it.
   if (leadingZeros(5) && g[5] === 0xffff) return embedded(g[6], g[7]) // ::ffff:a.b.c.d IPv4-mapped
-  // ::/96 holds :: and ::1 and the IPv4-compatible addresses (deprecated,
-  // ::a.b.c.d). No host is reached that way, so none of it is public, whatever
-  // IPv4 address the low 32 bits spell.
-  if (leadingZeros(6)) return true
   if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) {
     return embedded(g[6], g[7]) // 64:ff9b::/96 NAT64
   }
   // Only 2000::/3 is global unicast. Everything outside it is not public,
-  // among it ::ffff:0:0:0/96 IPv4-translated (SIIT) whatever it embeds,
+  // among it ::/96 (::, ::1 and the deprecated IPv4-compatible ::a.b.c.d, none
+  // of which is judged by the IPv4 address it spells), ::ffff:0:0:0/96
+  // IPv4-translated (SIIT) whatever it embeds,
   // 64:ff9b:1::/48 local-use NAT64, 100::/64 discard-only, 5f00::/16 SRv6 SIDs,
   // fc00::/7 unique-local, fe80::/10 link-local, fec0::/10 site-local and
   // ff00::/8 multicast.
