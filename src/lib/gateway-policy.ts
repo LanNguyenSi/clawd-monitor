@@ -92,8 +92,7 @@ function isPrivateIPv6(host: string): boolean {
       (g[1] === 0x1 && g.slice(2, 7).every((x) => x === 0) && g[7] >= 1 && g[7] <= 3) || // 2001:1::1, 2001:1::2, 2001:1::3 anycast
       g[1] === 0x3 || // 2001:3::/32 AMT
       (g[1] === 0x4 && g[2] === 0x112) || // 2001:4:112::/48 AS112-v6
-      (g[1] & 0xfff0) === 0x20 || // 2001:20::/28 ORCHIDv2
-      (g[1] & 0xfff0) === 0x30 // 2001:30::/28 drone remote ID
+      (g[1] & 0xffe0) === 0x20 // 2001:20::/28 ORCHIDv2 and 2001:30::/28 drone remote ID, together 2001:20::/27
     if (!reachable) return true
   }
   // Inside 2000::/3, the other ranges IANA lists as not globally reachable.

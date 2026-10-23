@@ -578,6 +578,8 @@ describe('isPrivateHost (address classes)', () => {
     ['2001:5::1', 'IETF protocol assignments, between AS112-v6 and ORCHIDv2'],
     ['2001:f:ffff:ffff:ffff:ffff:ffff:ffff', 'IETF protocol assignments, just below ORCHIDv2'],
     ['2001:40::', 'IETF protocol assignments, just above drone remote ID'],
+    ['2001:5:112::1', 'IETF protocol assignments, the AS112-v6 third group under another second group'],
+    ['2001:0:112::1', 'Teredo, the AS112-v6 third group under another second group'],
     ['2001:100::', 'IETF protocol assignments, upper half of 2001::/23'],
     ['2001:1ff:ffff:ffff:ffff:ffff:ffff:ffff', 'IETF protocol assignments end (2001::/23)'],
     ['2001:1f:ffff:ffff:ffff:ffff:ffff:ffff', 'ORCHID end'],
