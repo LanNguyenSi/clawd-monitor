@@ -3,7 +3,7 @@ type: invariant
 title: Agent registry lifecycle, from WebSocket handshake to TTL eviction
 description: How a clawd-monitor-agent connection becomes an AgentRegistry entry (auth message first, static then persisted token check, newest connection wins), when an entry goes offline (only via its current socket), when it is evicted (lazily, only inside getAll), and what token revocation does and does not affect.
 tags: [agents, websocket, registry, tokens, ttl]
-timestamp: 2026-10-23T05:16:15Z
+timestamp: 2026-10-23T09:56:26Z
 sources:
   - server.ts
   - src/lib/ws-upgrade.ts
@@ -92,9 +92,11 @@ those constants are read (after the `.env` files were loaded).
    `gatewayToken`, then sends `auth_ok`
    (`src/lib/agent-ws-handler.ts:109-120#"auth_ok"`). The handshake does not
    validate `gatewayUrl` (the documented agent protocol sends a loopback
-   URL); the only consumer that fetches it, the logs route, checks it with
-   `assertGatewayUrlAllowed` first, without the default-gateway exception
-   (`src/app/api/agents/[agentId]/logs/route.ts:90#"assertGatewayUrlAllowed(agent.gatewayUrl, { trustDefault: false })"`).
+   URL); the only consumer that fetches it, the logs route, does so through
+   `remoteGatewayFetch`, which applies the full URL rule (https, host and port
+   in `ALLOWED_GATEWAY_HOSTS`, no private range) without the default-gateway
+   exception and connects only to addresses it checked
+   (`src/app/api/agents/[agentId]/logs/route.ts:89#"remoteGatewayFetch(agent.gatewayUrl"`).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored

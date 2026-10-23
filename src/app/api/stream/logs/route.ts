@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthenticated } from '@/lib/auth'
-import { assertGatewayUrlAllowed, GatewayUrlError } from '@/lib/gateway'
-import { isValidContainerName } from '@/lib/input-validators'
+import { gatewayFetch, GatewayUrlError } from '@/lib/gateway'
+import { isLogSource, isValidContainerName, type LogSource } from '@/lib/input-validators'
 import { spawn } from 'child_process'
 
 export const dynamic = 'force-dynamic'
-
-type LogSource = 'openclaw' | 'docker' | 'system'
 
 export async function GET(req: NextRequest) {
   if (!isAuthenticated(req)) {
@@ -14,7 +12,11 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url)
-  const source = (searchParams.get('source') ?? 'openclaw') as LogSource
+  const requestedSource = searchParams.get('source') ?? 'openclaw'
+  if (!isLogSource(requestedSource)) {
+    return NextResponse.json({ error: 'Invalid source' }, { status: 400 })
+  }
+  const source: LogSource = requestedSource
   const container = searchParams.get('container') ?? ''
 
   // Reject before the stream starts: the name becomes an argument of
@@ -97,40 +99,35 @@ export async function GET(req: NextRequest) {
 
         // SSRF guard: gatewayUrl can come from the attacker-controlled
         // x-gateway-url header and its body is streamed back to the caller, so
-        // validate it (same allowlist + private-range guard as gatewayFetch)
-        // before fetching. On rejection, use the local journal instead.
-        let gatewayAllowed = true
-        try {
-          assertGatewayUrlAllowed(gatewayUrl)
-        } catch (err) {
-          const message = err instanceof GatewayUrlError ? err.message : 'Invalid gateway URL'
-          send(`[error] ${message}`)
-          startJournalFallback()
-          gatewayAllowed = false
-        }
-
-        if (gatewayAllowed) {
-          fetch(`${gatewayUrl}/logs/stream`, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-            redirect: 'manual',
-            signal: req.signal,
-          }).then(async (res) => {
-            if (!res.ok || !res.body) {
-              startJournalFallback()
-              return
-            }
-            // Stream from gateway
-            const reader = res.body.getReader()
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-              const text = new TextDecoder().decode(value)
-              text.split('\n').filter(Boolean).forEach(send)
-            }
-          }).catch(() => {
+        // gatewayFetch validates it (allowlist with a matching port,
+        // private-range guard), resolves its host once and connects to the
+        // checked address. The operator default gateway URL is trusted. On
+        // rejection, use the local journal instead.
+        gatewayFetch('/logs/stream', {
+          gatewayUrl,
+          token,
+          signal: req.signal,
+        }).then(async (res) => {
+          if (!res.ok || !res.body) {
+            startJournalFallback()
+            return
+          }
+          // Stream from gateway
+          const reader = res.body.getReader()
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            const text = new TextDecoder().decode(value)
+            text.split('\n').filter(Boolean).forEach(send)
+          }
+        }).catch((err) => {
+          if (err instanceof GatewayUrlError) {
+            send(`[error] ${err.message}`)
+            startJournalFallback()
+          } else {
             send('[info] Connecting to OpenClaw Gateway...')
-          })
-        }
+          }
+        })
       }
 
       // Heartbeat every 15s to keep connection alive

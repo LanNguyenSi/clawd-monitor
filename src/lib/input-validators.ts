@@ -13,6 +13,15 @@ export function isValidContainerName(name: string): boolean {
   return CONTAINER_NAME_RE.test(name)
 }
 
+/** The log sources the log routes know. */
+export const LOG_SOURCES = ['openclaw', 'docker', 'system'] as const
+export type LogSource = (typeof LOG_SOURCES)[number]
+
+/** True when `value` is one of the log sources the log routes accept. */
+export function isLogSource(value: string): value is LogSource {
+  return (LOG_SOURCES as readonly string[]).includes(value)
+}
+
 // A GitHub owner or repository name: letters, digits, underscore, dot, dash.
 const GITHUB_SEGMENT_RE = /^[A-Za-z0-9_.-]+$/
 

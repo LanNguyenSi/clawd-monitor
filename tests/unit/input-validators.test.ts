@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isValidContainerName, parseGitHubRepo } from '@/lib/input-validators'
+import { isLogSource, isValidContainerName, LOG_SOURCES, parseGitHubRepo } from '@/lib/input-validators'
 
 describe('isValidContainerName', () => {
   it.each(['web', 'my-app_1.2', 'A1', '0abc', 'a', 'clawd-monitor-agent.v2'])('accepts %s', (name) => {
@@ -45,5 +45,22 @@ describe('parseGitHubRepo', () => {
     ['empty string', ''],
   ])('rejects %s', (_label, value) => {
     expect(parseGitHubRepo(value)).toBeNull()
+  })
+})
+
+describe('isLogSource', () => {
+  it.each(['openclaw', 'docker', 'system'])('accepts %s', (value) => {
+    expect(isLogSource(value)).toBe(true)
+  })
+
+  it.each(['', 'OpenClaw', 'docker ', 'docker&x=1', 'openclaw#', 'toString', '__proto__', 'constructor', '0'])(
+    'rejects %j',
+    (value) => {
+      expect(isLogSource(value)).toBe(false)
+    },
+  )
+
+  it('lists exactly the sources the widget offers', () => {
+    expect([...LOG_SOURCES]).toEqual(['openclaw', 'docker', 'system'])
   })
 })

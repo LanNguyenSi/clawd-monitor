@@ -6,7 +6,7 @@
  * via vi.resetModules() + dynamic import.
  */
 
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -48,21 +48,24 @@ describe('assertGatewayUrlAllowed – default env', () => {
   // ── Acceptance: operator-configured default is always trusted ────────────
 
   it('accepts the operator-configured default URL verbatim', () => {
-    expect(() => mod.assertGatewayUrlAllowed('http://localhost:9500')).not.toThrow()
+    expect(() => mod.assertGatewayUrlAllowed('http://localhost:9500', { trustDefault: true })).not.toThrow()
   })
 
   it('returns a URL object on success', () => {
-    const result = mod.assertGatewayUrlAllowed('http://localhost:9500')
+    const result = mod.assertGatewayUrlAllowed('http://localhost:9500', { trustDefault: true })
     expect(result).toBeInstanceOf(URL)
     expect(result.href).toBe('http://localhost:9500/')
   })
 
   // ── trustDefault option: who wins when the URL equals the default ─────────
 
-  it('trusts the default when trustDefault is true or omitted (explicit true, empty options, undefined)', () => {
+  it('trusts the default when trustDefault is true', () => {
     expect(() => mod.assertGatewayUrlAllowed('http://localhost:9500', { trustDefault: true })).not.toThrow()
-    expect(() => mod.assertGatewayUrlAllowed('http://localhost:9500', {})).not.toThrow()
-    expect(() => mod.assertGatewayUrlAllowed('http://localhost:9500', { trustDefault: undefined })).not.toThrow()
+  })
+
+  it('gives the default no exception when the options object carries no trustDefault (a caller that bypasses the type)', () => {
+    expect(() => mod.assertGatewayUrlAllowed('http://localhost:9500', {} as never)).toThrow('Gateway URL must use https')
+    expect(() => mod.assertGatewayUrlAllowed('http://localhost:9500', { trustDefault: undefined } as never)).toThrow('Gateway URL must use https')
   })
 
   it('gives the default no exception when trustDefault is false', () => {
@@ -78,67 +81,67 @@ describe('assertGatewayUrlAllowed – default env', () => {
   // ── Rejection: unparseable URL ────────────────────────────────────────────
 
   it('throws GatewayUrlError for a completely unparseable URL', () => {
-    expect(() => mod.assertGatewayUrlAllowed('not a url')).toThrow(mod.GatewayUrlError)
-    expect(() => mod.assertGatewayUrlAllowed('not a url')).toThrow('Invalid gateway URL')
+    expect(() => mod.assertGatewayUrlAllowed('not a url', { trustDefault: true })).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('not a url', { trustDefault: true })).toThrow('Invalid gateway URL')
   })
 
   it('throws for an empty string', () => {
-    expect(() => mod.assertGatewayUrlAllowed('')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   // ── Rejection: non-https scheme ───────────────────────────────────────────
 
   it('throws for http:// (non-default URL)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('http://example.com')).toThrow(mod.GatewayUrlError)
-    expect(() => mod.assertGatewayUrlAllowed('http://example.com')).toThrow('Gateway URL must use https')
+    expect(() => mod.assertGatewayUrlAllowed('http://example.com', { trustDefault: true })).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('http://example.com', { trustDefault: true })).toThrow('Gateway URL must use https')
   })
 
   it('throws for ftp:// scheme', () => {
-    expect(() => mod.assertGatewayUrlAllowed('ftp://example.com')).toThrow(mod.GatewayUrlError)
-    expect(() => mod.assertGatewayUrlAllowed('ftp://example.com')).toThrow('Gateway URL must use https')
+    expect(() => mod.assertGatewayUrlAllowed('ftp://example.com', { trustDefault: true })).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('ftp://example.com', { trustDefault: true })).toThrow('Gateway URL must use https')
   })
 
   it('throws for ws:// scheme', () => {
-    expect(() => mod.assertGatewayUrlAllowed('ws://example.com')).toThrow(mod.GatewayUrlError)
-    expect(() => mod.assertGatewayUrlAllowed('ws://example.com')).toThrow('Gateway URL must use https')
+    expect(() => mod.assertGatewayUrlAllowed('ws://example.com', { trustDefault: true })).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('ws://example.com', { trustDefault: true })).toThrow('Gateway URL must use https')
   })
 
   // ── Rejection: host not in allowlist (allowlist is empty) ────────────────
 
   it('throws for a public https URL when ALLOWED_GATEWAY_HOSTS is empty', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://example.com')).toThrow(mod.GatewayUrlError)
-    expect(() => mod.assertGatewayUrlAllowed('https://example.com')).toThrow('Gateway host not allowed')
+    expect(() => mod.assertGatewayUrlAllowed('https://example.com', { trustDefault: true })).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://example.com', { trustDefault: true })).toThrow('Gateway host not allowed')
   })
 
   // With empty allowlist ALL https non-default URLs are rejected at the allowlist
   // check, giving defence-in-depth against every private range.
 
   it('throws for https://10.0.0.1 (RFC-1918)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://10.0.0.1')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://10.0.0.1', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('throws for https://172.16.0.1 (RFC-1918)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://172.16.0.1')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://172.16.0.1', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('throws for https://192.168.1.1 (RFC-1918)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://192.168.1.1')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://192.168.1.1', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('throws for https://127.0.0.1 (loopback)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://127.0.0.1')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://127.0.0.1', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('throws for https://[::1] (IPv6 loopback)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://[::1]')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://[::1]', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('throws for https://[fe80::1] (IPv6 link-local)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://[fe80::1]')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://[fe80::1]', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('throws for https://[fd00::1] (IPv6 unique-local)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://[fd00::1]')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://[fd00::1]', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('throws for https://[::ffff:10.0.0.1] (rejected via allowlist; host hex-normalized)', () => {
@@ -148,11 +151,11 @@ describe('assertGatewayUrlAllowed – default env', () => {
     // branch itself (needed for the case where the hex-normalized host IS
     // allowlisted) is covered directly in "isPrivateHost (direct)" and via the
     // URL path in the "allowlisted public host" describe block below.
-    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:10.0.0.1]')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:10.0.0.1]', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('throws for https://169.254.0.1 (IPv4 link-local)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://169.254.0.1')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://169.254.0.1', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 })
 
@@ -171,22 +174,22 @@ describe('assertGatewayUrlAllowed – allowlisted public host', () => {
   afterAll(() => { vi.unstubAllEnvs(); vi.resetModules() })
 
   it('accepts https://example.com when it is in the allowlist', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://example.com')).not.toThrow()
+    expect(() => mod.assertGatewayUrlAllowed('https://example.com', { trustDefault: true })).not.toThrow()
   })
 
   it('accepts https://other.example.org when it is in the allowlist', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://other.example.org')).not.toThrow()
+    expect(() => mod.assertGatewayUrlAllowed('https://other.example.org', { trustDefault: true })).not.toThrow()
   })
 
   it('rejects https://NOT.example.com (not in allowlist)', () => {
     // Subdomain of an allowed host is not itself allowed
-    expect(() => mod.assertGatewayUrlAllowed('https://NOT.example.com')).toThrow(mod.GatewayUrlError)
-    expect(() => mod.assertGatewayUrlAllowed('https://NOT.example.com')).toThrow('Gateway host not allowed')
+    expect(() => mod.assertGatewayUrlAllowed('https://NOT.example.com', { trustDefault: true })).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://NOT.example.com', { trustDefault: true })).toThrow('Gateway host not allowed')
   })
 
   it('rejects http://example.com (allowlisted but wrong scheme)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('http://example.com')).toThrow(mod.GatewayUrlError)
-    expect(() => mod.assertGatewayUrlAllowed('http://example.com')).toThrow('Gateway URL must use https')
+    expect(() => mod.assertGatewayUrlAllowed('http://example.com', { trustDefault: true })).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('http://example.com', { trustDefault: true })).toThrow('Gateway URL must use https')
   })
 })
 
@@ -232,36 +235,36 @@ describe('assertGatewayUrlAllowed – defence-in-depth (private hosts in allowli
   afterAll(() => { vi.unstubAllEnvs(); vi.resetModules() })
 
   it('rejects https://10.0.0.1 even when explicitly allowlisted (RFC-1918)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://10.0.0.1')).toThrow(mod.GatewayUrlError)
-    expect(() => mod.assertGatewayUrlAllowed('https://10.0.0.1')).toThrow('Gateway host not allowed')
+    expect(() => mod.assertGatewayUrlAllowed('https://10.0.0.1', { trustDefault: true })).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://10.0.0.1', { trustDefault: true })).toThrow('Gateway host not allowed')
   })
 
   it('rejects https://172.16.0.1 even when allowlisted (RFC-1918)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://172.16.0.1')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://172.16.0.1', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('rejects https://192.168.1.1 even when allowlisted (RFC-1918)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://192.168.1.1')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://192.168.1.1', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('rejects https://127.0.0.1 even when allowlisted (loopback)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://127.0.0.1')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://127.0.0.1', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('rejects https://169.254.0.1 even when allowlisted (link-local)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://169.254.0.1')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://169.254.0.1', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('rejects https://[::1] even when allowlisted (IPv6 loopback)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://[::1]')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://[::1]', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('rejects https://[fe80::1] even when allowlisted (IPv6 link-local)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://[fe80::1]')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://[fe80::1]', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 
   it('rejects https://[fd00::1] even when allowlisted (IPv6 unique-local)', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://[fd00::1]')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://[fd00::1]', { trustDefault: true })).toThrow(mod.GatewayUrlError)
   })
 })
 
@@ -286,13 +289,13 @@ describe('assertGatewayUrlAllowed – defence-in-depth (hex-normalized IPv4-mapp
   afterAll(() => { vi.unstubAllEnvs(); vi.resetModules() })
 
   it('rejects https://[::ffff:10.0.0.1] even when its hex-normalized host is allowlisted', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:10.0.0.1]')).toThrow(mod.GatewayUrlError)
-    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:10.0.0.1]')).toThrow('Gateway host not allowed')
+    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:10.0.0.1]', { trustDefault: true })).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:10.0.0.1]', { trustDefault: true })).toThrow('Gateway host not allowed')
   })
 
   it('rejects https://[::ffff:127.0.0.1] even when its hex-normalized host is allowlisted', () => {
-    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:127.0.0.1]')).toThrow(mod.GatewayUrlError)
-    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:127.0.0.1]')).toThrow('Gateway host not allowed')
+    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:127.0.0.1]', { trustDefault: true })).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertGatewayUrlAllowed('https://[::ffff:127.0.0.1]', { trustDefault: true })).toThrow('Gateway host not allowed')
   })
 })
 
@@ -478,5 +481,332 @@ describe('gatewayJson – ok and not-ok responses', () => {
     } as Response))
 
     await expect(mod.gatewayJson('/missing')).rejects.toThrow(/returned 404/)
+  })
+})
+
+// ── isPrivateHost: address classes a resolved name can answer with ───────────
+//
+// The same classifier judges the literal host of a gateway URL and every
+// address its host name resolves to.
+
+describe('isPrivateHost (address classes)', () => {
+  let mod: Awaited<ReturnType<typeof loadGateway>>
+  beforeAll(async () => { mod = await loadGateway() })
+  afterAll(() => { vi.unstubAllEnvs(); vi.resetModules() })
+
+  it.each([
+    ['0.0.0.0', 'unspecified'],
+    ['0.1.2.3', '0.0.0.0/8'],
+    ['127.0.0.1', 'loopback'],
+    ['127.255.255.254', 'loopback range end'],
+    ['10.255.255.255', '10/8'],
+    ['100.64.0.1', 'CGNAT start'],
+    ['100.127.255.254', 'CGNAT end'],
+    ['169.254.169.254', 'cloud metadata link-local'],
+    ['172.16.0.1', '172.16/12 start'],
+    ['172.31.255.255', '172.16/12 end'],
+    ['192.168.0.1', '192.168/16'],
+    ['192.0.0.8', 'IETF protocol assignments'],
+    ['198.18.0.1', 'benchmarking start'],
+    ['198.19.255.255', 'benchmarking end'],
+    ['224.0.0.1', 'multicast'],
+    ['240.0.0.1', 'reserved'],
+    ['255.255.255.255', 'broadcast'],
+    ['::', 'IPv6 unspecified'],
+    ['::1', 'IPv6 loopback'],
+    ['fc00::1', 'unique-local start'],
+    ['fdff::1', 'unique-local end'],
+    ['fe80::1', 'link-local'],
+    ['fe90::1', 'link-local, upper part of fe80::/10'],
+    ['febf::1', 'link-local end'],
+    ['fec0::1', 'site-local'],
+    ['ff02::1', 'multicast'],
+    ['::ffff:127.0.0.1', 'IPv4-mapped loopback, dotted'],
+    ['::ffff:7f00:1', 'IPv4-mapped loopback, hex'],
+    ['::ffff:a9fe:a9fe', 'IPv4-mapped metadata address'],
+    ['0:0:0:0:0:ffff:7f00:1', 'IPv4-mapped, long form'],
+    ['::7f00:1', 'IPv4-compatible loopback'],
+    ['::127.0.0.1', 'IPv4-compatible loopback, dotted'],
+    ['64:ff9b::7f00:1', 'NAT64 embedding loopback'],
+    ['2002:7f00:1::', '6to4 embedding loopback'],
+    ['fe80::1%en0', 'zone id (unparseable, fails closed)'],
+    ['1:2:3', 'malformed (fails closed)'],
+    ['1::2::3', 'two compressions (fails closed)'],
+    ['::ffff:300.1.1.1', 'bad octet (fails closed)'],
+    ['localhost', 'name'],
+    ['api.localhost', 'name under .localhost'],
+  ])('flags %s (%s)', (address) => {
+    expect(mod.isPrivateHost(address)).toBe(true)
+  })
+
+  it.each([
+    '8.8.8.8',
+    '1.1.1.1',
+    '100.63.255.255',
+    '100.128.0.1',
+    '172.15.255.255',
+    '172.32.0.1',
+    '192.0.1.1',
+    '198.17.255.255',
+    '198.20.0.1',
+    '223.255.255.254',
+    '2606:4700::1111',
+    '2001:4860:4860::8888',
+    '2002:808:808::',
+    '64:ff9b::808:808',
+    '::ffff:8.8.8.8',
+    '::8.8.8.8',
+    'fe7f::1',
+    'example.com',
+  ])('does not flag %s', (address) => {
+    expect(mod.isPrivateHost(address)).toBe(false)
+  })
+})
+
+// ── ALLOWED_GATEWAY_HOSTS ports ──────────────────────────────────────────────
+
+describe('assertGatewayUrlAllowed, port policy', () => {
+  let mod: Awaited<ReturnType<typeof loadGateway>>
+
+  beforeAll(async () => {
+    mod = await loadGateway({
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: 'http://localhost:9500',
+      ALLOWED_GATEWAY_HOSTS: [
+        'plain.example.com',
+        'ported.example.com:8443',
+        'Mixed.Example.com:9443',
+        'multi.example.com',
+        'multi.example.com:8443',
+        '[2606:4700::1111]',
+        '[2606:4700::2222]:8443',
+        'zero.example.com:0',
+        'huge.example.com:65536',
+        'text.example.com:abc',
+        'empty.example.com:',
+        'v6bare:1:2',
+        ':8443',
+      ].join(','),
+    })
+  })
+
+  afterAll(() => { vi.unstubAllEnvs(); vi.resetModules() })
+
+  const check = (url: string) => mod.assertGatewayUrlAllowed(url, { trustDefault: false })
+
+  it('lets an entry without a port allow the default https port only', () => {
+    expect(() => check('https://plain.example.com')).not.toThrow()
+    expect(() => check('https://plain.example.com:443')).not.toThrow()
+    expect(() => check('https://plain.example.com:8443')).toThrow('Gateway port not allowed')
+    expect(() => check('https://plain.example.com:80')).toThrow('Gateway port not allowed')
+  })
+
+  it('lets an entry with a port allow that port only, not the default one', () => {
+    expect(() => check('https://ported.example.com:8443')).not.toThrow()
+    expect(() => check('https://ported.example.com')).toThrow('Gateway port not allowed')
+    expect(() => check('https://ported.example.com:443')).toThrow('Gateway port not allowed')
+    expect(() => check('https://ported.example.com:9443')).toThrow('Gateway port not allowed')
+  })
+
+  it('compares the host case-insensitively on both sides', () => {
+    expect(() => check('https://MIXED.example.com:9443')).not.toThrow()
+    expect(() => check('https://mixed.example.com:8443')).toThrow('Gateway port not allowed')
+  })
+
+  it('accepts every port listed for the same host and no other', () => {
+    expect(() => check('https://multi.example.com')).not.toThrow()
+    expect(() => check('https://multi.example.com:8443')).not.toThrow()
+    expect(() => check('https://multi.example.com:9000')).toThrow('Gateway port not allowed')
+  })
+
+  it('applies the port rule to bracketed IPv6 entries', () => {
+    expect(() => check('https://[2606:4700::1111]')).not.toThrow()
+    expect(() => check('https://[2606:4700::1111]:8443')).toThrow('Gateway port not allowed')
+    expect(() => check('https://[2606:4700::2222]:8443')).not.toThrow()
+    expect(() => check('https://[2606:4700::2222]')).toThrow('Gateway port not allowed')
+  })
+
+  it.each([
+    ['port 0', 'zero.example.com'],
+    ['port above 65535', 'huge.example.com'],
+    ['a non-numeric port', 'text.example.com'],
+    ['a trailing colon', 'empty.example.com'],
+  ])('drops an entry with %s, so its host is not allowed at all', (_label, host) => {
+    expect(() => check(`https://${host}`)).toThrow('Gateway host not allowed')
+    expect(() => check(`https://${host}:8443`)).toThrow('Gateway host not allowed')
+  })
+
+  it('does not let malformed entries (unbracketed IPv6, missing host) widen the list', () => {
+    expect(() => check('https://v6bare:1:2')).toThrow()
+    expect(() => check('https://example.org:8443')).toThrow('Gateway host not allowed')
+  })
+
+  it('still reports a host outside the list as a host error, not a port error', () => {
+    expect(() => check('https://other.example.com:8443')).toThrow('Gateway host not allowed')
+  })
+
+  it('does not let the port rule override the private-range guard', async () => {
+    const m = await loadGateway({
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: 'http://localhost:9500',
+      ALLOWED_GATEWAY_HOSTS: '127.0.0.1:8443,100.64.0.1',
+    })
+    expect(() => m.assertGatewayUrlAllowed('https://127.0.0.1:8443', { trustDefault: false })).toThrow('Gateway host not allowed')
+    expect(() => m.assertGatewayUrlAllowed('https://100.64.0.1', { trustDefault: false })).toThrow('Gateway host not allowed')
+  })
+})
+
+// ── remote-chosen URLs: no default exemption ─────────────────────────────────
+
+describe('assertRemoteGatewayUrl', () => {
+  let mod: Awaited<ReturnType<typeof loadGateway>>
+
+  beforeAll(async () => {
+    mod = await loadGateway({
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: 'http://localhost:9500',
+      ALLOWED_GATEWAY_HOSTS: 'gw.example.com',
+    })
+  })
+
+  afterAll(() => { vi.unstubAllEnvs(); vi.resetModules() })
+
+  it('gives the operator default no exception', () => {
+    expect(() => mod.assertRemoteGatewayUrl('http://localhost:9500')).toThrow(mod.GatewayUrlError)
+    expect(() => mod.assertRemoteGatewayUrl('http://localhost:9500')).toThrow('Gateway URL must use https')
+  })
+
+  it('accepts an allowlisted https URL and returns it parsed', () => {
+    expect(mod.assertRemoteGatewayUrl('https://gw.example.com/').hostname).toBe('gw.example.com')
+  })
+
+  it('applies host, scheme and port rules', () => {
+    expect(() => mod.assertRemoteGatewayUrl('https://evil.example.net')).toThrow('Gateway host not allowed')
+    expect(() => mod.assertRemoteGatewayUrl('http://gw.example.com')).toThrow('Gateway URL must use https')
+    expect(() => mod.assertRemoteGatewayUrl('https://gw.example.com:9999')).toThrow('Gateway port not allowed')
+    expect(() => mod.assertRemoteGatewayUrl('not a url')).toThrow('Invalid gateway URL')
+  })
+})
+
+// ── transport selection: pinned fetch for everything but the trusted default ─
+
+describe('gatewayFetch and remoteGatewayFetch, transport', () => {
+  const pinned = vi.fn()
+  const globalFetch = vi.fn()
+  let mod: Awaited<ReturnType<typeof loadGateway>>
+
+  beforeAll(async () => {
+    vi.doMock('@/lib/pinned-fetch', () => ({ pinnedFetch: pinned }))
+    mod = await loadGateway({
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: 'http://localhost:9500',
+      ALLOWED_GATEWAY_HOSTS: 'gw.example.com',
+      DEFAULT_GATEWAY_TOKEN: '',
+    })
+  })
+
+  afterAll(() => {
+    vi.doUnmock('@/lib/pinned-fetch')
+    vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules()
+  })
+
+  beforeEach(() => {
+    pinned.mockReset().mockResolvedValue(new Response('pinned'))
+    globalFetch.mockReset().mockResolvedValue(new Response('global'))
+    vi.stubGlobal('fetch', globalFetch)
+  })
+
+  it('sends the operator default through the global fetch, never the pinned one', async () => {
+    await mod.gatewayFetch('/status')
+    expect(globalFetch).toHaveBeenCalledTimes(1)
+    expect(globalFetch.mock.calls[0][0]).toBe('http://localhost:9500/status')
+    expect(pinned).not.toHaveBeenCalled()
+  })
+
+  it('sends an allowlisted URL through the pinned fetch, never the global one', async () => {
+    const res = await mod.gatewayFetch('/status', {
+      gatewayUrl: 'https://gw.example.com',
+      token: 'tok',
+      method: 'POST',
+      body: { a: 1 },
+    })
+    expect(await res.text()).toBe('pinned')
+    expect(globalFetch).not.toHaveBeenCalled()
+    expect(pinned).toHaveBeenCalledTimes(1)
+    const [url, init] = pinned.mock.calls[0] as [string, Record<string, unknown>]
+    expect(url).toBe('https://gw.example.com/status')
+    expect(init.method).toBe('POST')
+    expect(init.body).toBe('{"a":1}')
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json', Authorization: 'Bearer tok' })
+  })
+
+  it('checks the URL before any transport: a rejected URL reaches neither', async () => {
+    await expect(mod.gatewayFetch('/x', { gatewayUrl: 'https://gw.example.com:9999' })).rejects.toThrow('Gateway port not allowed')
+    expect(globalFetch).not.toHaveBeenCalled()
+    expect(pinned).not.toHaveBeenCalled()
+  })
+
+  it('treats a remote-chosen gatewayUrl that equals the default as unexempt', async () => {
+    await expect(mod.gatewayFetch('/x', { gatewayUrl: 'http://localhost:9500', remoteChosen: true }))
+      .rejects.toBeInstanceOf(mod.GatewayUrlError)
+    expect(globalFetch).not.toHaveBeenCalled()
+    expect(pinned).not.toHaveBeenCalled()
+  })
+
+  it('applies the remote rule when remoteChosen is set without a gatewayUrl (the default is not exempt)', async () => {
+    await expect(mod.gatewayFetch('/x', { remoteChosen: true })).rejects.toBeInstanceOf(mod.GatewayUrlError)
+    expect(globalFetch).not.toHaveBeenCalled()
+  })
+
+  it('still exempts the default when remoteChosen is false or absent', async () => {
+    await mod.gatewayFetch('/x', { gatewayUrl: 'http://localhost:9500', remoteChosen: false })
+    await mod.gatewayFetch('/x', { gatewayUrl: 'http://localhost:9500' })
+    expect(globalFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('remoteGatewayFetch rejects the default URL as a promise and fetches nothing', async () => {
+    const promise = mod.remoteGatewayFetch('http://localhost:9500', '/logs/stream')
+    await expect(promise).rejects.toBeInstanceOf(mod.GatewayUrlError)
+    expect(globalFetch).not.toHaveBeenCalled()
+    expect(pinned).not.toHaveBeenCalled()
+  })
+
+  it('remoteGatewayFetch pins an allowlisted URL and drops one trailing slash of the base', async () => {
+    await mod.remoteGatewayFetch('https://gw.example.com/', '/logs/stream?source=openclaw', {
+      headers: { Authorization: 'Bearer t' },
+    })
+    expect(globalFetch).not.toHaveBeenCalled()
+    const [url, init] = pinned.mock.calls[0] as [string, Record<string, unknown>]
+    expect(url).toBe('https://gw.example.com/logs/stream?source=openclaw')
+    expect(init.headers).toEqual({ Authorization: 'Bearer t' })
+  })
+})
+
+describe('operator default that is itself https and allowlisted', () => {
+  const pinned = vi.fn()
+  const globalFetch = vi.fn()
+  let mod: Awaited<ReturnType<typeof loadGateway>>
+
+  beforeAll(async () => {
+    vi.doMock('@/lib/pinned-fetch', () => ({ pinnedFetch: pinned }))
+    mod = await loadGateway({
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: 'https://gw.example.com',
+      ALLOWED_GATEWAY_HOSTS: 'gw.example.com',
+    })
+  })
+
+  afterAll(() => {
+    vi.doUnmock('@/lib/pinned-fetch')
+    vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules()
+  })
+
+  it('uses the global fetch for the trusted default and the pinned one when it was remote-chosen', async () => {
+    pinned.mockResolvedValue(new Response('pinned'))
+    globalFetch.mockResolvedValue(new Response('global'))
+    vi.stubGlobal('fetch', globalFetch)
+
+    await mod.gatewayFetch('/a', { gatewayUrl: 'https://gw.example.com' })
+    expect(globalFetch).toHaveBeenCalledTimes(1)
+    expect(pinned).not.toHaveBeenCalled()
+
+    await mod.gatewayFetch('/a', { gatewayUrl: 'https://gw.example.com', remoteChosen: true })
+    expect(pinned).toHaveBeenCalledTimes(1)
+    expect(globalFetch).toHaveBeenCalledTimes(1)
   })
 })

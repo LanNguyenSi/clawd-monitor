@@ -2,6 +2,18 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-23T09:56:26Z, agent-registry-lifecycle, auth-and-config-loading and
+  widget-data-modes re-verified and re-stamped against the sources. Checked
+  against the code: the agent logs route fetches the agent-reported
+  `gatewayUrl` only through `remoteGatewayFetch` (full URL rule with a port
+  check, no default-gateway exception, host resolved once and the connection
+  pinned to the checked addresses, redirects not followed), answers its
+  `docker` source with two informational lines without starting `docker`, and
+  answers 400 for a `source` outside `openclaw`, `docker` and `system`; the
+  stream logs route sends the gateway fetch through `gatewayFetch` and the
+  same 400 rule. The citations into `gateway.ts` and both log routes were
+  re-pointed to the current lines; the agent route citations (bracketed path,
+  which the checker does not resolve) were checked by hand against the file.
 - 2026-10-23T05:16:15Z, agent-registry-lifecycle, auth-and-config-loading and
   widget-data-modes re-verified and re-stamped against the sources. Checked
   against the code: `assertGatewayUrlAllowed` takes an optional

@@ -13,7 +13,7 @@ AGENT_TOKENS=token1,token2  # static tokens (also manageable via Settings UI)
 AGENT_TTL_MS=300000         # offline-agent TTL in ms (default 5min)
 NEXT_PUBLIC_DEFAULT_GATEWAY_URL=http://localhost:9500
 DEFAULT_GATEWAY_TOKEN=      # default OpenClaw API token
-ALLOWED_GATEWAY_HOSTS=      # SSRF allowlist for per-instance gateway overrides (comma-separated hostnames)
+ALLOWED_GATEWAY_HOSTS=      # SSRF allowlist for per-instance gateway overrides (comma-separated hostnames, each optionally host:port)
 CLAWD_DIR=/root/.openclaw/workspace  # server-local OpenClaw workspace: Memory Viewer fallback (MEMORY.md / CURRENT.md / memory/*.md) and Alert History source (memory/smart-alert-state.json); code default when unset is /root/clawd
 CLAWD_MONITOR_DATA_DIR=/data   # persistent storage for tokens + password hash
 DOMAIN=monitor.yourdomain.com  # read by docker-compose.traefik.yml only, not by the server
@@ -54,12 +54,36 @@ Notes:
   subsequent logins).
 - `ALLOWED_GATEWAY_HOSTS` overrides must be `https` and may not point at
   private or loopback IPs; leave it empty to forbid all per-instance
-  overrides and use only the default gateway. The same rule applies to the
-  `gatewayUrl` a connected agent reports: the Log Tail widget fetches it only
-  when it is `https`, its host is in the list and it is not a private or
-  loopback address, otherwise it shows that log streaming is not available.
-  That includes a URL equal to the default gateway URL: the default's
-  exemption does not apply to agent-reported URLs.
+  overrides and use only the default gateway. Rules for an override:
+  - **Port.** An entry is a host name, optionally followed by `:port`
+    (`gw.example.com:8443`; IPv6 as `[2606:4700::1111]:8443`). An entry without
+    a port allows port 443 only. An entry with a port allows only that port, so
+    a gateway on 443 and one on 8443 need two entries. A request to any other
+    port of an allowlisted host is rejected, and an entry with a port that is
+    not 1-65535 is ignored.
+  - **Resolved address.** The host name is resolved when the request connects.
+    If any address it resolves to is loopback, private, link-local,
+    carrier-grade NAT (`100.64.0.0/10`), unspecified, multicast or reserved
+    (IPv4, IPv6 and IPv4-mapped IPv6 alike), the request is rejected. The
+    connection goes to exactly the addresses that were checked, so a DNS
+    answer that changes between the check and the connect has no effect. TLS
+    still verifies the certificate against the host name. A redirect answer is
+    never followed. An allowlisted name that points at a private address
+    (an internal gateway reached by name, for example) no longer works.
+  - **Agent-reported URLs.** The same rule applies to the `gatewayUrl` a
+    connected agent reports: the Log Tail widget fetches it only when it is
+    `https`, its host and port are in the list and it resolves to public
+    addresses, otherwise it shows that log streaming is not available. That
+    includes a URL equal to the default gateway URL: the default's exemption
+    does not apply to agent-reported URLs.
+  The operator default (`NEXT_PUBLIC_DEFAULT_GATEWAY_URL`) is trusted as
+  configured, including `http` and a loopback address.
+- With an agent selected, the Log Tail widget's Docker source is not
+  available: `/api/agents/<id>/logs?source=docker` answers two "not
+  available" lines and never starts `docker` on the clawd-monitor host. Clear
+  the agent selection to tail containers on the clawd-monitor host. The log
+  routes accept only the sources `openclaw`, `docker` and `system` (otherwise
+  400).
 - `GITHUB_TOKEN` and `GITHUB_REPOS` are read from the server environment only;
   the GitHub PRs route ignores a `token` or `repos` query parameter.
 - Agent tokens can also be issued and revoked from the Settings UI instead of

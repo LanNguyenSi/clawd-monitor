@@ -2,92 +2,82 @@
  * Gateway API client, proxies requests to the default OpenClaw gateway (or an allowlisted override).
  * Used server-side in API routes.
  */
+import { GatewayUrlError, isPrivateHost } from './gateway-policy'
+import { pinnedFetch } from './pinned-fetch'
 
 const DEFAULT_GATEWAY_URL = process.env.NEXT_PUBLIC_DEFAULT_GATEWAY_URL ?? 'http://localhost:9500'
 const DEFAULT_GATEWAY_TOKEN = process.env.DEFAULT_GATEWAY_TOKEN ?? ''
 
+/**
+ * One ALLOWED_GATEWAY_HOSTS entry: a lower-case host name or IP literal
+ * (IPv6 in brackets), optionally followed by `:port`. An entry without a port
+ * allows only the default https port (443); an entry with a port allows only
+ * that port. An entry whose port is not 1-65535 is dropped (fail closed).
+ */
+interface AllowedHost {
+  host: string
+  port: number
+}
+
+const DEFAULT_HTTPS_PORT = 443
+
+function parseAllowedHost(entry: string): AllowedHost | null {
+  let host: string
+  let portText: string | undefined
+  const bracketed = entry.match(/^(\[[^\]]*\])(?::(.*))?$/)
+  if (bracketed) {
+    host = bracketed[1]
+    portText = bracketed[2]
+  } else {
+    const colon = entry.indexOf(':')
+    if (colon === -1) {
+      host = entry
+    } else if (entry.indexOf(':', colon + 1) !== -1) {
+      return null // an unbracketed IPv6 literal can never equal a URL host name
+    } else {
+      host = entry.slice(0, colon)
+      portText = entry.slice(colon + 1)
+    }
+  }
+  if (!host || host === '[]') return null
+  if (portText === undefined) return { host, port: DEFAULT_HTTPS_PORT }
+  if (!/^\d{1,5}$/.test(portText)) return null
+  const port = Number(portText)
+  return port >= 1 && port <= 65535 ? { host, port } : null
+}
+
 // Hosts that callers may target via the `x-gateway-url` header, beyond the
-// operator-configured default. Comma-separated, case-insensitive hostnames.
-const ALLOWED_GATEWAY_HOSTS = (process.env.ALLOWED_GATEWAY_HOSTS ?? '')
+// operator-configured default. Comma-separated, case-insensitive host names,
+// each optionally with a port (see AllowedHost).
+const ALLOWED_GATEWAY_HOSTS: AllowedHost[] = (process.env.ALLOWED_GATEWAY_HOSTS ?? '')
   .split(',')
   .map((h) => h.trim().toLowerCase())
   .filter(Boolean)
+  .map(parseAllowedHost)
+  .filter((h): h is AllowedHost => h !== null)
 
-/**
- * Thrown when a requested gateway URL fails server-side SSRF validation.
- * Routes should map this to HTTP 400 (caller-supplied, not a gateway fault).
- */
-export class GatewayUrlError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'GatewayUrlError'
-  }
-}
-
-/** True for loopback / link-local / private-range hosts (SSRF targets). */
-export function isPrivateHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '')
-  if (host === 'localhost' || host.endsWith('.localhost')) return true
-  if (host.includes(':')) {
-    // IPv6
-    if (host === '::1' || host === '::') return true // loopback / unspecified
-    if (host.startsWith('fe80:')) return true // link-local
-    if (host.startsWith('fc') || host.startsWith('fd')) return true // fc00::/7 unique-local
-    const mapped = host.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)
-    if (mapped) return isPrivateHost(mapped[1]) // IPv4-mapped IPv6, e.g. ::ffff:127.0.0.1
-    // WHATWG URL normalizes IPv4-mapped IPv6 to hex groups, e.g.
-    // ::ffff:10.0.0.1 -> ::ffff:a00:1 (so new URL(...).hostname never surfaces
-    // the dotted-decimal form above). Decode the two hex groups back into the
-    // embedded IPv4 address and reuse the dotted-decimal private-range logic.
-    const mappedHex = host.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/)
-    if (mappedHex) {
-      const high = Number.parseInt(mappedHex[1], 16)
-      const low = Number.parseInt(mappedHex[2], 16)
-      const a = (high >> 8) & 0xff
-      const b = high & 0xff
-      const c = (low >> 8) & 0xff
-      const d = low & 0xff
-      return isPrivateHost(`${a}.${b}.${c}.${d}`)
-    }
-    return false
-  }
-  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
-  if (m) {
-    const a = Number(m[1])
-    const b = Number(m[2])
-    if (a === 0 || a === 127) return true // 0.0.0.0/8, 127.0.0.0/8 loopback
-    if (a === 10) return true // 10.0.0.0/8
-    if (a === 172 && b >= 16 && b <= 31) return true // 172.16.0.0/12
-    if (a === 192 && b === 168) return true // 192.168.0.0/16
-    if (a === 169 && b === 254) return true // 169.254.0.0/16 link-local
-  }
-  return false
-}
+// The policy pieces live in gateway-policy.ts so the pinned-address fetch
+// shares them; re-exported here because this is where callers import them.
+export { GatewayUrlError, isPrivateHost }
 
 export interface AssertGatewayUrlOptions {
   /**
    * Whether a URL equal to the operator-configured default gateway skips the
-   * https/allowlist/private-range checks. Defaults to true. Pass false for a
-   * URL that a remote party chose (for example the one an agent reports at its
-   * handshake), which must meet the full rule even when it equals the default.
+   * https/allowlist/port/private-range checks. Required, so a caller has to
+   * decide: pass false for a URL that a remote party chose (for example the
+   * one an agent reports at its handshake), which must meet the full rule even
+   * when it equals the default. Prefer assertRemoteGatewayUrl for that case.
    */
-  trustDefault?: boolean
+  trustDefault: boolean
 }
 
-/**
- * Validate a resolved gateway URL against SSRF abuse before it is fetched.
- *
- * By default the operator-configured default is trusted (it may legitimately
- * be http/loopback). Any caller-supplied override must be https, present in
- * the ALLOWED_GATEWAY_HOSTS allowlist, and not point at a private/loopback
- * range. With `{ trustDefault: false }` the default gets no exception either.
- *
- * @throws {GatewayUrlError} if the URL is not permitted.
- */
-export function assertGatewayUrlAllowed(
-  rawUrl: string,
-  options: AssertGatewayUrlOptions = {},
-): URL {
+interface GatewayUrlCheck {
+  url: URL
+  /** True when the URL is the operator default and was waved through. */
+  trusted: boolean
+}
+
+function checkGatewayUrl(rawUrl: string, options: AssertGatewayUrlOptions): GatewayUrlCheck {
   let parsed: URL
   try {
     parsed = new URL(rawUrl)
@@ -97,18 +87,97 @@ export function assertGatewayUrlAllowed(
 
   // Trust the operator-configured default verbatim, unless the caller says the
   // URL came from a remote party.
-  if (options.trustDefault !== false && rawUrl === DEFAULT_GATEWAY_URL) return parsed
+  if (options.trustDefault && rawUrl === DEFAULT_GATEWAY_URL) return { url: parsed, trusted: true }
 
   if (parsed.protocol !== 'https:') {
     throw new GatewayUrlError('Gateway URL must use https')
   }
-  if (!ALLOWED_GATEWAY_HOSTS.includes(parsed.hostname.toLowerCase())) {
+  const hostname = parsed.hostname.toLowerCase()
+  const entries = ALLOWED_GATEWAY_HOSTS.filter((e) => e.host === hostname)
+  if (entries.length === 0) {
     throw new GatewayUrlError('Gateway host not allowed')
   }
-  if (isPrivateHost(parsed.hostname)) {
+  if (isPrivateHost(hostname)) {
     throw new GatewayUrlError('Gateway host not allowed')
   }
-  return parsed
+  const port = parsed.port === '' ? DEFAULT_HTTPS_PORT : Number(parsed.port)
+  if (!entries.some((e) => e.port === port)) {
+    throw new GatewayUrlError('Gateway port not allowed')
+  }
+  return { url: parsed, trusted: false }
+}
+
+/**
+ * Validate a resolved gateway URL against SSRF abuse before it is fetched.
+ *
+ * With `trustDefault: true` the operator-configured default is trusted (it may
+ * legitimately be http/loopback). Any other URL must be https, present in the
+ * ALLOWED_GATEWAY_HOSTS allowlist with a matching port, and not point at a
+ * private/loopback range. This checks the URL text only: a host name that
+ * resolves to a private address is stopped when the request connects (see
+ * gatewayFetch and remoteGatewayFetch).
+ *
+ * @throws {GatewayUrlError} if the URL is not permitted.
+ */
+export function assertGatewayUrlAllowed(rawUrl: string, options: AssertGatewayUrlOptions): URL {
+  return checkGatewayUrl(rawUrl, options).url
+}
+
+/**
+ * Validate a gateway URL that a remote party chose (the one an agent reports
+ * at its handshake). The operator default gets no exception.
+ *
+ * @throws {GatewayUrlError} if the URL is not permitted.
+ */
+export function assertRemoteGatewayUrl(rawUrl: string): URL {
+  return checkGatewayUrl(rawUrl, { trustDefault: false }).url
+}
+
+interface GatewayRequestInit {
+  method?: string
+  headers?: Record<string, string>
+  body?: string
+  signal?: AbortSignal
+}
+
+/**
+ * Check `base`, then fetch `base + path`. The trusted operator default goes
+ * through the global fetch; every other URL goes through pinnedFetch, which
+ * resolves the host once, rejects non-public answers and connects to the
+ * checked address. Redirects are never followed.
+ */
+async function gatewayRequest(
+  base: string,
+  path: string,
+  init: GatewayRequestInit,
+  options: AssertGatewayUrlOptions,
+): Promise<Response> {
+  const { trusted } = checkGatewayUrl(base, options)
+  const url = `${base.replace(/\/$/, '')}${path}`
+  if (trusted) {
+    return fetch(url, {
+      ...init,
+      // SSRF hardening: do not auto-follow redirects, an allowlisted host could
+      // otherwise 30x-redirect to an internal target after the URL passed checks.
+      redirect: 'manual',
+    })
+  }
+  return pinnedFetch(url, init)
+}
+
+/**
+ * Fetch `base + path` from a gateway URL that a remote party chose (an agent's
+ * reported gatewayUrl). Same checks as gatewayFetch, but the operator default
+ * gets no exception.
+ *
+ * @throws {GatewayUrlError} (as a rejection) if the URL is not permitted.
+ */
+export function remoteGatewayFetch(
+  base: string,
+  path: string,
+  init: GatewayRequestInit = {},
+): Promise<Response> {
+  return gatewayRequest(base, path, init, { trustDefault: false })
 }
 
 export interface GatewayOptions {
@@ -118,20 +187,27 @@ export interface GatewayOptions {
   body?: unknown
   headers?: Record<string, string>
   signal?: AbortSignal
+  /**
+   * Set when `gatewayUrl` was chosen by a remote party. The operator default
+   * then gets no exception, exactly as with remoteGatewayFetch. Leave unset
+   * for the operator default and for the URL a signed-in user's own browser
+   * sends in `x-gateway-url`.
+   */
+  remoteChosen?: boolean
 }
 
 /**
  * Fetch from the OpenClaw Gateway.
  * Falls back to env-configured default if no instance provided.
+ *
+ * A URL other than the operator default is checked against the allowlist and
+ * port rule, and its host name is resolved once and pinned (see pinnedFetch).
  */
 export async function gatewayFetch(
   path: string,
   options: GatewayOptions = {}
 ): Promise<Response> {
   const base = options.gatewayUrl ?? DEFAULT_GATEWAY_URL
-  // SSRF guard: reject attacker-controlled gateway hosts before fetching.
-  assertGatewayUrlAllowed(base)
-  const url = `${base}${path}`
   const token = options.token ?? DEFAULT_GATEWAY_TOKEN
 
   const headers: Record<string, string> = {
@@ -143,15 +219,18 @@ export async function gatewayFetch(
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  return fetch(url, {
-    method: options.method ?? 'GET',
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-    signal: options.signal,
-    // SSRF hardening: do not auto-follow redirects, an allowlisted host could
-    // otherwise 30x-redirect to an internal target after the URL passed checks.
-    redirect: 'manual',
-  })
+  // SSRF guard: reject attacker-controlled gateway hosts before fetching.
+  return gatewayRequest(
+    base,
+    path,
+    {
+      method: options.method ?? 'GET',
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: options.signal,
+    },
+    { trustDefault: !options.remoteChosen },
+  )
 }
 
 /**
