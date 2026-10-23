@@ -3,7 +3,7 @@ type: module
 title: Auth and config loading across the two module graphs
 description: Admin password precedence, the password.json and tokens.json data files, JWT cookie flags and lifetime, the production startup check, and how the custom server loads .env files before its modules read the environment, while the compiled route graph reads its own variables later.
 tags: [auth, config, env, jwt, startup]
-timestamp: 2026-10-23T04:59:17Z
+timestamp: 2026-10-23T05:11:30Z
 sources:
   - server.ts
   - tsconfig.server.json
@@ -65,11 +65,11 @@ process environment when the same key appears in a file (the key is
 expanded, not overridden). After that import:
 
 - `server.ts` reads `NODE_ENV`, `PORT` and `HOSTNAME`
-  (`server.ts:10-12#"process.env.HOSTNAME"`) and runs the startup check on
+  (`server.ts:11-13#"process.env.HOSTNAME"`) and runs the startup check on
   `JWT_SECRET`, `ADMIN_PASSWORD`, `ADMIN_PASSWORD_HASH` and, in development
-  only, `AGENT_TOKENS` (`server.ts:15-26#"AGENT_TOKENS not set"`) before it
+  only, `AGENT_TOKENS` (`server.ts:16-27#"AGENT_TOKENS not set"`) before it
   calls
-  `next({ dev, hostname, port })` (`server.ts:29#"next({ dev, hostname, port })"`).
+  `next({ dev, hostname, port, httpServer: nextServer })` (`server.ts:35#"next({ dev, hostname, port"`).
 - Its static import of the WebSocket handler (`server.ts:8#"handleAgentConnection"`)
   evaluates three more module-level reads: `AGENT_TOKENS`
   (`src/lib/agent-ws-handler.ts:9-12#".filter(Boolean)"`), `AGENT_TTL_MS`
@@ -141,7 +141,7 @@ It verifies the current password with the same chain, except that it has no
 production branch: with nothing configured it compares against `admin`
 (`src/app/api/auth/change-password/route.ts:36-44#"currentPassword === 'admin'"`).
 In production the startup check exits when neither `ADMIN_PASSWORD` nor
-`ADMIN_PASSWORD_HASH` is set (`server.ts:18-21#"process.exit(1)"`), so this
+`ADMIN_PASSWORD_HASH` is set (`server.ts:19-22#"process.exit(1)"`), so this
 fallback is reached only in development.
 It stores a bcrypt hash with cost 12
 (`src/app/api/auth/change-password/route.ts:52-53#"writePasswordConfig({ hash: newHash })"`).

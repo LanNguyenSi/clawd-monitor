@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Agents can reconnect after the server has served an HTTP request.** Next attached its own `upgrade` listener to the server on the first request, and that listener ended `/api/agents/ws` (it matches the dynamic route `/api/agents/[agentId]`), so a new agent connection closed with 1006 once any page or API call had been served; agents that reconnected after a restart or network drop stayed offline until the monitor restarted. Next is now given a separate, never-listening server and the real server has a single `upgrade` router (`src/lib/ws-upgrade.ts`). In development, other upgrades (HMR) are forwarded to Next instead of being destroyed; in production they are still destroyed.
 - **Agent handshake closes with 1008 on every rejected token, and logs why the token store could not be read.** A token that failed validation (including a failed re-read of the token store after a hash match) closed the socket without a close code; it now closes with 1008 (policy violation). The warning for a failing token store read now carries the error message (never a token value), so a corrupt file and a permission error can be told apart.
 - **The Docker proxy inspects containers only.** Its batched `docker inspect` passes `--type container`, so an image, volume or network that shares a name with a container id cannot answer in its place.
 
