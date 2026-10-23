@@ -3,7 +3,7 @@ type: module
 title: Widget data modes, agent snapshot vs default gateway vs dashboard host
 description: For each dashboard widget, where its data comes from when an agent is selected (the agent's last WebSocket snapshot) and when none is (the default gateway or the dashboard host itself), which widgets ignore the selection, and how the selection is held.
 tags: [widgets, dashboard, agents, data-sources]
-timestamp: 2026-10-23T11:07:01Z
+timestamp: 2026-10-23T12:02:22Z
 sources:
   - src/lib/widgets.ts
   - src/lib/active-agent.tsx
@@ -104,7 +104,9 @@ gateway URL and token
 (`src/lib/gateway.ts:231#"options.gatewayUrl ?? DEFAULT_GATEWAY_URL"`,
 `src/lib/gateway.ts:232#"options.token ?? DEFAULT_GATEWAY_TOKEN"`). No
 widget sets that header, so the widgets' requests to these routes always
-reach the default gateway.
+reach the default gateway. A route that does not read the body of a non-OK
+answer cancels it, so its connection is released at once
+(`src/app/api/proxy/sessions/route.ts:19#"await res.body?.cancel()"`).
 There is no instance switcher: the navbar mounts `AgentSwitcher`,
 `AddWidgetMenu`, `UserMenu` and `AddAgentModal`
 (`src/components/Nav/Navbar.tsx:4-7#"import { AddAgentModal } from '@/components/AddAgentModal'"`).
@@ -138,7 +140,7 @@ Evidence for the switch in each component, agent URL first:
   route tries the gateway
   (`src/app/api/proxy/memory/route.ts:36#"/workspace/memory?file="`) and
   falls back to the filesystem
-  (`src/app/api/proxy/memory/route.ts:46-48#"FILE_PATHS[file] ?? FILE_PATHS.memory"`).
+  (`src/app/api/proxy/memory/route.ts:48-50#"FILE_PATHS[file] ?? FILE_PATHS.memory"`).
 - `docker`: `src/components/widgets/DockerWidget.tsx:29-30#"'/api/proxy/docker'"`;
   route `src/app/api/proxy/docker/route.ts:56#"docker ps -a"`.
 - `metrics`: `src/components/widgets/MetricsWidget.tsx:66-67#"/api/agents/"`
@@ -200,10 +202,12 @@ Without an agent (`/api/stream/logs`):
   When the gateway answers without an OK streaming body, or the URL is
   rejected (an error line first), the route falls back to
   `journalctl -u openclaw` on the dashboard host
-  (`src/app/api/stream/logs/route.ts:89#"'-u', 'openclaw'"`); when the
+  (`src/app/api/stream/logs/route.ts:89#"'-u', 'openclaw'"`); the body of a
+  non-OK answer is cancelled first, so its connection is released
+  (`src/app/api/stream/logs/route.ts:114#"await res.body?.cancel()"`). When the
   request itself fails for another reason, it sends one informational line and
   no fallback
-  (`src/app/api/stream/logs/route.ts:129#"Connecting to OpenClaw Gateway"`).
+  (`src/app/api/stream/logs/route.ts:131#"Connecting to OpenClaw Gateway"`).
 - Any other `source` value is answered with 400
   (`src/lib/input-validators.ts:22#"(LOG_SOURCES as readonly string[]).includes(value)"`).
 
@@ -226,19 +230,23 @@ sources do not read logs from the agent's host, and a `source` outside
   defined at `src/lib/gateway.ts:170#"export function remoteGatewayFetch("`).
   It applies the URL rule (https, host and port in `ALLOWED_GATEWAY_HOSTS`, no
   private range) with no exception for the default gateway URL, unlike the
-  callers that fetch the default, then connects through `pinnedFetch`: the
-  host name is resolved once in the connection's own lookup, any non-public
-  answer rejects the request, the socket connects to the checked addresses,
-  and a redirect answer is returned, never followed
-  (`src/lib/pinned-fetch.ts:221#"lookup: createPinnedLookup(deps)"`). The
-  request is bounded in time: 10 s to connect, 300 s to the response headers
-  and 300 s of silence in the body, after which the socket is destroyed and the
-  request fails like any other failed request (a log stream that sends no
-  line for 300 s ends in the same "not available" lines)
-  (`src/lib/pinned-fetch.ts:57-59#"bodyMs: 300_000"`). A
-  rejected URL, a non-OK answer and a failed request all end in the same two
-  "log streaming not available" lines. The handshake stores whatever URL the
-  agent reported, so this check is the only one.
+  callers that fetch the default, then connects through `pinnedFetch`,
+  undici's fetch over an undici Agent whose connector uses the pinned lookup
+  (`src/lib/pinned-fetch.ts:162#"dispatcher: agentFor(deps)"`): the host name
+  is resolved once in the connection's own lookup, any non-public answer
+  rejects the request, the socket connects to the checked addresses, and a
+  redirect answer is returned, never followed
+  (`src/lib/pinned-fetch.ts:121#"lookup: createPinnedLookup(deps)"`). The
+  request has the Agent's time limits: 10 s to connect, 300 s to the response
+  headers and 300 s of silence while the body is read, after which the request
+  or the read fails like any other failure (a log stream that sends no line
+  for 300 s ends in the same "not available" lines)
+  (`src/lib/pinned-fetch.ts:52-54#"bodyMs: 300_000"`). A
+  rejected URL, a non-OK answer (its body cancelled unread,
+  `src/app/api/agents/[agentId]/logs/route.ts:96#"await res.body?.cancel()"`)
+  and a failed request all end in the same two "log streaming not available"
+  lines. The handshake stores whatever URL the agent reported, so this check
+  is the only one.
 
 ## Invariants enforced here
 

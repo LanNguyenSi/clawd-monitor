@@ -3,7 +3,7 @@ type: invariant
 title: Agent registry lifecycle, from WebSocket handshake to TTL eviction
 description: How a clawd-monitor-agent connection becomes an AgentRegistry entry (auth message first, static then persisted token check, newest connection wins), when an entry goes offline (only via its current socket), when it is evicted (lazily, only inside getAll), and what token revocation does and does not affect.
 tags: [agents, websocket, registry, tokens, ttl]
-timestamp: 2026-10-23T10:09:49Z
+timestamp: 2026-10-23T12:02:22Z
 sources:
   - server.ts
   - src/lib/ws-upgrade.ts
