@@ -3,7 +3,7 @@ type: module
 title: Widget data modes, agent snapshot vs default gateway vs dashboard host
 description: For each dashboard widget, where its data comes from when an agent is selected (the agent's last WebSocket snapshot) and when none is (the default gateway or the dashboard host itself), which widgets ignore the selection, and how the selection is held.
 tags: [widgets, dashboard, agents, data-sources]
-timestamp: 2026-10-23T10:09:49Z
+timestamp: 2026-10-23T11:07:01Z
 sources:
   - src/lib/widgets.ts
   - src/lib/active-agent.tsx
@@ -101,8 +101,8 @@ heartbeat widget shows `SILENT`
 Without a selection, each widget calls its own route. Routes that use
 `gatewayFetch()` without an `x-gateway-url` header go to the default
 gateway URL and token
-(`src/lib/gateway.ts:205#"options.gatewayUrl ?? DEFAULT_GATEWAY_URL"`,
-`src/lib/gateway.ts:206#"options.token ?? DEFAULT_GATEWAY_TOKEN"`). No
+(`src/lib/gateway.ts:231#"options.gatewayUrl ?? DEFAULT_GATEWAY_URL"`,
+`src/lib/gateway.ts:232#"options.token ?? DEFAULT_GATEWAY_TOKEN"`). No
 widget sets that header, so the widgets' requests to these routes always
 reach the default gateway.
 There is no instance switcher: the navbar mounts `AgentSwitcher`,
@@ -190,17 +190,20 @@ Without an agent (`/api/stream/logs`):
 - `system`: `journalctl -f` on the dashboard host, then `tail -f
   /var/log/syslog` when journalctl writes to stderr
   (`src/app/api/stream/logs/route.ts:70#"/var/log/syslog"`).
-- `openclaw`: the gateway's `/logs/stream` through `gatewayFetch`, which
-  trusts the default gateway URL and sends any `x-gateway-url` override
-  through the URL rule and the pinned-address transport
-  (`src/app/api/stream/logs/route.ts:106#"gatewayFetch('/logs/stream'"`).
+- `openclaw`: the gateway's `/logs/stream` through `gatewayFetch`, called
+  with `urlSource: 'operator'` (the option is required whenever a `gatewayUrl`
+  is passed, so the choice cannot be left out), which trusts the default
+  gateway URL and sends any `x-gateway-url` override through the URL rule and
+  the pinned-address transport
+  (`src/app/api/stream/logs/route.ts:106#"gatewayFetch('/logs/stream'"`,
+  `src/app/api/stream/logs/route.ts:108#"urlSource: 'operator'"`).
   When the gateway answers without an OK streaming body, or the URL is
   rejected (an error line first), the route falls back to
   `journalctl -u openclaw` on the dashboard host
   (`src/app/api/stream/logs/route.ts:89#"'-u', 'openclaw'"`); when the
   request itself fails for another reason, it sends one informational line and
   no fallback
-  (`src/app/api/stream/logs/route.ts:128#"Connecting to OpenClaw Gateway"`).
+  (`src/app/api/stream/logs/route.ts:129#"Connecting to OpenClaw Gateway"`).
 - Any other `source` value is answered with 400
   (`src/lib/input-validators.ts:22#"(LOG_SOURCES as readonly string[]).includes(value)"`).
 
@@ -227,7 +230,12 @@ sources do not read logs from the agent's host, and a `source` outside
   host name is resolved once in the connection's own lookup, any non-public
   answer rejects the request, the socket connects to the checked addresses,
   and a redirect answer is returned, never followed
-  (`src/lib/pinned-fetch.ts:152#"lookup: createPinnedLookup(deps)"`). A
+  (`src/lib/pinned-fetch.ts:221#"lookup: createPinnedLookup(deps)"`). The
+  request is bounded in time: 10 s to connect, 300 s to the response headers
+  and 300 s of silence in the body, after which the socket is destroyed and the
+  request fails like any other failed request (a log stream that sends no
+  line for 300 s ends in the same "not available" lines)
+  (`src/lib/pinned-fetch.ts:57-59#"bodyMs: 300_000"`). A
   rejected URL, a non-OK answer and a failed request all end in the same two
   "log streaming not available" lines. The handshake stores whatever URL the
   agent reported, so this check is the only one.

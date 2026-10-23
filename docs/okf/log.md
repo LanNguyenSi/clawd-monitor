@@ -2,6 +2,16 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-23T11:07:01Z, auth-and-config-loading and widget-data-modes re-verified and
+  re-stamped against the sources. Checked against the code: `gatewayFetch`
+  requires a `urlSource` ('operator' or 'remote') whenever a `gatewayUrl` is
+  passed, the proxy routes and the stream logs route pass 'operator' and the
+  agent logs route still uses only `remoteGatewayFetch`; the pinned request is
+  bounded in time (10 s connect, 300 s headers, 300 s body idle) and rejects a
+  status outside 200-599 instead of hanging. The citations into `gateway.ts`,
+  `pinned-fetch.ts` and the stream logs route were re-pointed to the current
+  lines; auth-and-config-loading only had its sources changed, its citations
+  are unaffected.
 - 2026-10-23T10:09:49Z, agent-registry-lifecycle, auth-and-config-loading and
   widget-data-modes re-verified and re-stamped against the sources. Checked
   against the code: the agent logs route fetches the agent-reported
