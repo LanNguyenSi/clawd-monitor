@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Agent-reported gateway URLs always go through `remoteGatewayFetch`.** The default-URL exemption of `assertGatewayUrlAllowed` is no longer an opt-out: the `trustDefault` option is required, `assertRemoteGatewayUrl` and `remoteGatewayFetch` apply the full rule without it, and `gatewayFetch` requires a `urlSource` (`'operator'` or `'remote'`) whenever a `gatewayUrl` is passed, so a new caller cannot get the exemption by leaving the decision out: omitting it is a compile error, and a caller that bypasses the types gets no exemption at run time. The proxy routes and the stream log route pass `'operator'`, as before.
 - **The agent log route no longer starts `docker logs`.** With an agent selected, `source=docker` read the containers of the clawd-monitor host for any signed-in user. `/api/agents/<id>/logs?source=docker` now answers two "not available" lines and never starts `docker` (it is not forwarded to the agent's gateway either); the Docker source of the Log Tail widget works without an agent selected, as before.
 - **The log routes accept only known sources.** `/api/agents/<id>/logs` put the `source` query value into the agent's gateway URL unencoded; both log routes now answer 400 for a `source` other than `openclaw`, `docker` or `system`.
+- **zod 4.6.7** (GHSA-mrhx-c7xc-m3w5): the lockfile resolves 4.6.7, so validating an oversized constrained collection no longer exhausts memory.
 
 ### Fixed
 
