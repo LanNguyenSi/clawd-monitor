@@ -2,6 +2,10 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-25T08:26:51Z, release cut 0.3.0 changed only the `version` field on line 3 of
+  `package.json` (no line shift). auth-and-config-loading re-verified (the cited
+  scripts block still names `node dist/server.js` as the start command) and
+  re-stamped. Checked with `okf-kit check docs/okf`.
 - 2026-10-23T12:02:22Z, agent-registry-lifecycle, auth-and-config-loading and
   widget-data-modes re-verified and re-stamped against the sources. Checked
   against the code: `pinnedFetch` now sends the request through undici's
