@@ -444,16 +444,30 @@ function moduleFileViolations(read: (rel: string) => string | null, rel: string,
   return out
 }
 
+/**
+ * How many times the number of distinct files the walk may read in total. With
+ * the visited check each file is read once, so the bound is never reached; if
+ * a file is read again (a cycle with the check gone), the walk throws instead
+ * of looping forever, which vitest could not interrupt.
+ */
+const WALK_READS_PER_FILE = 4
+
 /** Every file under src reachable from `rootFiles` through runtime `@/` and relative imports. */
 function collectReachableModules(read: (rel: string) => string | null, rootFiles: string[]): Record<string, string> {
   const found: Record<string, string> = {}
   const queue = [...rootFiles]
+  let reads = 0
   while (queue.length > 0) {
     const rel = queue.shift()!
     if (hasEntry(found, rel)) continue
     const text = read(rel)
     if (text === null) continue
     found[rel] = text
+    reads += 1
+    const distinct = Object.keys(found).length
+    if (reads > WALK_READS_PER_FILE * distinct) {
+      throw new Error(`module walk read ${reads} files but only ${distinct} distinct ones: a file was walked again (visited check)`)
+    }
     for (const spec of moduleImportSpecifiers(text)) {
       const next = resolveModule(read, rel, spec)
       if (typeof next === 'string') queue.push(next)
@@ -831,7 +845,7 @@ describe('gateway consumers, scan rules on sample sources', () => {
     ])
   })
 
-  it('stops the walk on a cycle (the visited check), reporting the transport module once', { timeout: 3000 }, () => {
+  it('stops the walk on a cycle (the visited check), reporting the transport module once', () => {
     const files = {
       'lib/a.ts': "import { x } from './b'\nexport const y = x",
       'lib/b.ts': "import { request } from 'undici'\nexport { a } from './a'\nexport const r = request",
