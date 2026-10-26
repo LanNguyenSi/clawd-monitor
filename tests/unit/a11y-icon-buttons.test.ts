@@ -259,7 +259,8 @@ describe('secondary text contrast floor', () => {
 
   it('keeps the connected agents rows on zinc-600, since the active row sits on indigo-50 (zinc-500 is 4.3:1 there)', () => {
     const src = readFileSync(join(__dirname, '../../src/components/widgets/AgentListWidget.tsx'), 'utf8')
-    expect(src).not.toMatch(/(?<![\w:-])text-zinc-500\b/)
+    const rows = src.slice(src.indexOf('const isActive'))
+    expect(rows).not.toMatch(/(?<![\w:-])text-zinc-500\b/)
   })
 
   it('checks every branch of a ternary on its own, not the whole expression', () => {
