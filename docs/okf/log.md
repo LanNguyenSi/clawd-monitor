@@ -2,6 +2,18 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-26T08:35:46Z, widget-data-modes, agent-registry-lifecycle and auth-and-config-loading
+  re-verified and re-stamped after a follow-up to the accessibility change:
+  `src/components/Nav/AgentSwitcher.tsx` now moves keyboard focus to the
+  nearest remaining menu item after an offline agent is removed (or to the
+  trigger when the removed agent was the selected one). Checked against the
+  code: the remove button still sends `DELETE` and drops the entry on 404 or
+  success only, the selection is still persisted through `select()`, and the
+  `localStorage` citations (`:48-50`, `:54-56`) did not move. The `DELETE`
+  citation in agent-registry-lifecycle moved from `:64-65` to `:78-79` and
+  was re-pointed. widget-data-modes cites no changed line;
+  auth-and-config-loading does not depend on the file. Checked with
+  `okf-kit check docs/okf`.
 - 2026-10-26T08:27:20Z, widget-data-modes, agent-registry-lifecycle and auth-and-config-loading
   re-verified and re-stamped after an accessibility change to
   `src/app/dashboard/page.tsx`, `src/components/Nav/AgentSwitcher.tsx` and the

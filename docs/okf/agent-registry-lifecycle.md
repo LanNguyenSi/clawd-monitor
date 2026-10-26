@@ -3,7 +3,7 @@ type: invariant
 title: Agent registry lifecycle, from WebSocket handshake to TTL eviction
 description: How a clawd-monitor-agent connection becomes an AgentRegistry entry (auth message first, static then persisted token check, newest connection wins), when an entry goes offline (only via its current socket), when it is evicted (lazily, only inside getAll), and what token revocation does and does not affect.
 tags: [agents, websocket, registry, tokens, ttl]
-timestamp: 2026-10-26T08:27:20Z
+timestamp: 2026-10-26T08:35:46Z
 sources:
   - server.ts
   - src/lib/ws-upgrade.ts
@@ -176,7 +176,7 @@ unauthenticated `GET /api/health`
 
 `DELETE /api/agents/<id>` removes an entry now, without waiting for the
 TTL: the `AgentSwitcher` remove button, shown for offline agents only,
-sends it (`src/components/Nav/AgentSwitcher.tsx:64-65#"method: 'DELETE'"`).
+sends it (`src/components/Nav/AgentSwitcher.tsx:78-79#"method: 'DELETE'"`).
 The route calls `registry.remove()`
 (`src/app/api/agents/[agentId]/route.ts:17#"registry.remove(agentId)"`), which
 deletes an offline entry, refuses an online one with 409 and answers 404 for
