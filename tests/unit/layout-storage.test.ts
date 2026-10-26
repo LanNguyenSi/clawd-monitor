@@ -9,6 +9,7 @@ import {
   removeWidget,
   addWidget,
   addWidgetToStorage,
+  defaultLayouts,
   type LayoutStorage,
   type ResponsiveLayouts,
 } from '@/lib/layout-storage'
@@ -162,6 +163,7 @@ describe('removeWidget', () => {
 
 describe('addWidget / addWidgetToStorage', () => {
   const widget = { id: 'log-tail', defaultW: 2, defaultH: 3 }
+  const FALLBACK: ResponsiveLayouts = { lg: [item('metrics', 0, 0, 1, 2), item('cron', 1, 0, 2, 2)] }
 
   it('appends below existing items on every stored breakpoint', () => {
     const out = addWidget({ lg: [item('metrics', 0, 0, 1, 2)], sm: [item('metrics', 0, 0, 1, 4)] }, widget)
@@ -180,22 +182,46 @@ describe('addWidget / addWidgetToStorage', () => {
 
   it('writes the per-breakpoint format, not the legacy array', () => {
     const s = memoryStorage()
-    addWidgetToStorage(s, widget, VALID)
+    addWidgetToStorage(s, widget, VALID, FALLBACK)
     const stored = JSON.parse(s.data.get(LAYOUT_STORAGE_KEY)!)
     expect(Array.isArray(stored)).toBe(false)
-    expect(stored.lg).toEqual([{ i: 'log-tail', x: 0, y: 0, w: 2, h: 3 }])
+    expect(stored.lg).toEqual([...FALLBACK.lg, { i: 'log-tail', x: 0, y: 2, w: 2, h: 3 }])
   })
 
   it('migrates a legacy array while adding', () => {
     const s = memoryStorage(JSON.stringify([item('metrics', 0, 0, 1, 2)]))
-    addWidgetToStorage(s, widget, VALID)
+    addWidgetToStorage(s, widget, VALID, FALLBACK)
     const stored = JSON.parse(s.data.get(LAYOUT_STORAGE_KEY)!)
     expect(stored.lg.map((l: { i: string }) => l.i)).toEqual(['metrics', 'log-tail'])
   })
 
-  it('starts fresh when the stored value is corrupt', () => {
+  it('keeps the shown layout when the stored value is corrupt', () => {
     const s = memoryStorage('][broken')
-    addWidgetToStorage(s, widget, VALID)
-    expect(JSON.parse(s.data.get(LAYOUT_STORAGE_KEY)!).lg).toHaveLength(1)
+    addWidgetToStorage(s, widget, VALID, FALLBACK)
+    expect(JSON.parse(s.data.get(LAYOUT_STORAGE_KEY)!).lg).toHaveLength(3)
+  })
+
+  it('prefers the stored layout over the fallback', () => {
+    const s = memoryStorage(JSON.stringify({ lg: [item('docker')] }))
+    addWidgetToStorage(s, widget, VALID, FALLBACK)
+    expect(JSON.parse(s.data.get(LAYOUT_STORAGE_KEY)!).lg.map((l: { i: string }) => l.i)).toEqual(['docker', 'log-tail'])
+  })
+})
+
+describe('defaultLayouts', () => {
+  it('places the four default widgets on lg within the column count', () => {
+    for (const cols of [2, 4, 8] as const) {
+      const { lg } = defaultLayouts(cols)
+      expect(lg.map((l) => l.i)).toEqual(['metrics', 'agent-status', 'cron', 'docker'])
+      for (const l of lg) {
+        expect(l.w).toBeLessThanOrEqual(cols)
+        expect(l.x + l.w).toBeLessThanOrEqual(cols)
+      }
+    }
+  })
+
+  it('caps the widget width at the column count', () => {
+    expect(defaultLayouts(2).lg.find((l) => l.i === 'cron')!.w).toBe(2)
+    expect(defaultLayouts(8).lg.find((l) => l.i === 'cron')!.w).toBe(2)
   })
 })

@@ -1,4 +1,6 @@
 import type { Layout } from 'react-grid-layout'
+import { WIDGET_REGISTRY } from '@/lib/widgets'
+import type { ColCount } from '@/types'
 
 /** localStorage key holding the persisted dashboard layouts. */
 export const LAYOUT_STORAGE_KEY = 'clawd-monitor:layouts'
@@ -16,6 +18,28 @@ export interface AddableWidget {
   id: string
   defaultW: number
   defaultH: number
+}
+
+const DEFAULT_WIDGET_IDS = ['metrics', 'agent-status', 'cron', 'docker']
+
+/** The layout shown when nothing is stored (and after "Reset layout"). */
+export function defaultLayouts(cols: ColCount): ResponsiveLayouts {
+  const lg = DEFAULT_WIDGET_IDS.map((id, i) => {
+    const w = WIDGET_REGISTRY.find((w) => w.id === id)
+    const defaultW = Math.min(w?.defaultW ?? 2, cols)
+    const x = (i * defaultW) % cols
+    const y = Math.floor((i * defaultW) / cols) * (w?.defaultH ?? 2)
+    return {
+      i: id,
+      x,
+      y,
+      w: defaultW,
+      h: w?.defaultH ?? 2,
+      minW: w?.minW,
+      minH: w?.minH,
+    }
+  })
+  return { lg }
 }
 
 function isNum(v: unknown): v is number {
@@ -130,12 +154,16 @@ export function addWidget(layouts: ResponsiveLayouts, widget: AddableWidget): Re
   return result
 }
 
-/** Adds a widget to the stored layouts (the dashboard "+ Widget" path). */
+/**
+ * Adds a widget to the stored layouts (the dashboard "+ Widget" path). When
+ * nothing usable is stored the widget joins `fallback`, the layout currently shown.
+ */
 export function addWidgetToStorage(
   storage: LayoutStorage,
   widget: AddableWidget,
   validIds: ReadonlySet<string>,
+  fallback: ResponsiveLayouts,
 ): void {
-  const current = loadLayouts(storage, validIds) ?? {}
+  const current = loadLayouts(storage, validIds) ?? fallback
   saveLayouts(storage, addWidget(current, widget))
 }

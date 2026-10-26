@@ -7,6 +7,7 @@ import { GridItem } from './GridItem'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { WIDGET_REGISTRY } from '@/lib/widgets'
 import {
+  defaultLayouts,
   loadLayouts,
   saveLayouts,
   widgetIdsOf,
@@ -34,27 +35,6 @@ const WIDGET_COMPONENTS: Record<string, React.LazyExoticComponent<() => React.Re
 const ResponsiveGrid = WidthProvider(Responsive)
 
 const COLS_KEY = 'clawd-monitor:cols'
-
-const DEFAULT_WIDGET_IDS = ['metrics', 'agent-status', 'cron', 'docker']
-
-function defaultLayouts(cols: ColCount): ResponsiveLayouts {
-  const lg = DEFAULT_WIDGET_IDS.map((id, i) => {
-    const w = WIDGET_REGISTRY.find((w) => w.id === id)
-    const defaultW = Math.min(w?.defaultW ?? 2, cols)
-    const x = (i * defaultW) % cols
-    const y = Math.floor((i * defaultW) / cols) * (w?.defaultH ?? 2)
-    return {
-      i: id,
-      x,
-      y,
-      w: defaultW,
-      h: w?.defaultH ?? 2,
-      minW: w?.minW,
-      minH: w?.minH,
-    }
-  })
-  return { lg }
-}
 
 interface Props {
   cols: ColCount

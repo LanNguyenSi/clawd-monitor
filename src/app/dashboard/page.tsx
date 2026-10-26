@@ -8,7 +8,7 @@ import { KeyboardShortcuts } from '@/components/KeyboardShortcuts'
 import { ActiveAgentProvider } from '@/lib/active-agent'
 import { ThemeProvider, useTheme } from '@/lib/theme'
 import { WIDGET_REGISTRY } from '@/lib/widgets'
-import { addWidgetToStorage, resetLayouts } from '@/lib/layout-storage'
+import { addWidgetToStorage, defaultLayouts, resetLayouts } from '@/lib/layout-storage'
 import type { ColCount } from '@/types'
 
 const COLS_KEY = 'clawd-monitor:cols'
@@ -85,9 +85,9 @@ function DashboardInner() {
   const handleAddWidget = useCallback((widgetId: string) => {
     const widget = WIDGET_REGISTRY.find((w) => w.id === widgetId)
     if (!widget) return
-    addWidgetToStorage(localStorage, widget, new Set(WIDGET_REGISTRY.map((w) => w.id)))
+    addWidgetToStorage(localStorage, widget, new Set(WIDGET_REGISTRY.map((w) => w.id)), defaultLayouts(cols))
     setGridKey((k) => k + 1)
-  }, [])
+  }, [cols])
 
   const handleResetLayout = useCallback(() => {
     resetLayouts(localStorage)
