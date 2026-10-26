@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Deployments build the image once, from the pulled commit.** `.relay.yml` lost its only `pre_update` entry, the `docker compose -f docker-compose.traefik.yml build --no-cache` line. agent-relay runs `pre_update` against the tree from before the pull, so that build compiled the previous commit on every deploy (79 s measured) and the deploy system then built the pulled commit again (76 s). A new CI job `relay-config` (`scripts/relay-config.test.sh`, `js-yaml` added as a root devDependency) parses `.relay.yml` the way agent-relay's loader does and rejects a hook entry that is not a string, a hook key left present with no items, and any `pre_update` entry that builds images, so those mistakes fail CI instead of failing every deploy on the server. For a base-image security update or a suspected stale layer the operator runs the manual hard rebuild documented in [docs/configuration.md](docs/configuration.md#hard-rebuild-base-image-or-dependency-updates).
+
 ### Security
 
 - **An agent's system log request no longer reads the dashboard host's logs.** `/api/agents/<id>/logs?source=system` started `journalctl` (then `tail /var/log/syslog`) on the clawd-monitor host for an agent that reported no `gatewayUrl`, so the user saw the host's system log labelled as the agent's. It now answers the same "not available" lines as for an agent with a gateway and starts no process, as the docker source already did. The log tail widget offers only OpenClaw while an agent is selected (docker and system would be the dashboard host's logs) and does not send an earlier docker or system choice to the agent route; without an agent all three sources work as before.
