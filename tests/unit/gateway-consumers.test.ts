@@ -78,6 +78,16 @@ function usesRawFetch(text: string): boolean {
 }
 
 /**
+ * Whether `key` is an entry of one of the lists below. Every lookup goes through
+ * this own-key check, never `in` or a bare index: a plain object inherits
+ * `constructor`, `toString` and `__proto__`, which would otherwise be on every
+ * list.
+ */
+function hasEntry(map: Record<string, unknown>, key: string): boolean {
+  return Object.hasOwn(map, key)
+}
+
+/**
  * Modules a route under src/app/api may import: the ones the routes import
  * today. None of them is an HTTP or socket client, and the `@/` modules are
  * scanned themselves for a client of their own (see TRUSTED_REACHABLE_LIBS).
@@ -154,8 +164,8 @@ function routeImportViolations(text: string, rel: string | null = null): string[
   for (let i = 0; i < computed; i++) offences.push('a computed import() or require() specifier')
   for (const spec of specs) {
     const name = spec.replace(/^node:/, '')
-    if (name in ALLOWED_ROUTE_IMPORTS) continue
-    if (name === 'child_process' && rel !== null && rel in ROUTES_ALLOWED_CHILD_PROCESS) continue
+    if (hasEntry(ALLOWED_ROUTE_IMPORTS, name)) continue
+    if (name === 'child_process' && rel !== null && hasEntry(ROUTES_ALLOWED_CHILD_PROCESS, rel)) continue
     if (name === 'child_process') {
       offences.push(`import of '${spec}', and child_process is allowed only for the routes in ROUTES_ALLOWED_CHILD_PROCESS`)
       continue
@@ -242,6 +252,16 @@ const REACHABLE_ALLOWED_MODULES: Record<string, string> = {
 }
 
 /**
+ * The offence kind of a bare module import: `module:<name>`, without `node:`.
+ * The other kinds (`raw-fetch`, `global-client`, `global-client-type`,
+ * `computed`, `create-require`, `unresolved`) have no `module:` prefix, so a
+ * package named like one of them (`raw-fetch`) is never excused as that kind.
+ */
+function moduleKind(name: string): string {
+  return `module:${name}`
+}
+
+/**
  * Reachable files that are allowed to hold a transport capability, mapped to the
  * offence KINDS they may have. These are the guarded transport layer and the one
  * file that legitimately names a client type; adding one is a read-the-file
@@ -254,7 +274,7 @@ const TRUSTED_REACHABLE_LIBS: Record<string, readonly string[]> = {
   // The gateway URL policy plus the operator default fetch, the boundary the other rules point at.
   'lib/gateway.ts': ['raw-fetch'],
   // The DNS-pinned undici transport: it opens the socket on purpose, after the URL policy has run.
-  'lib/pinned-fetch.ts': ['net', 'undici', 'dns', 'raw-fetch'],
+  'lib/pinned-fetch.ts': [moduleKind('net'), moduleKind('undici'), moduleKind('dns'), 'raw-fetch'],
   // Names the agent's socket only as a type (ws: WebSocket); TypeScript erases it, but it is a use this scan reports.
   'lib/agent-registry.ts': ['global-client-type'],
 }
@@ -361,11 +381,11 @@ function moduleFileViolations(read: (rel: string) => string | null, rel: string,
     const resolved = resolveModule(read, rel, spec)
     if (resolved === null) {
       const name = spec.replace(/^node:/, '')
-      if (name in REACHABLE_ALLOWED_MODULES) continue
+      if (hasEntry(REACHABLE_ALLOWED_MODULES, name)) continue
       if (TRANSPORT_MODULES.includes(name)) {
-        add(name, `imports the transport module '${spec}', so it can open a socket or start a process`)
+        add(moduleKind(name), `imports the transport module '${spec}', so it can open a socket or start a process`)
       } else {
-        add(name, `imports '${spec}', which is not on REACHABLE_ALLOWED_MODULES`)
+        add(moduleKind(name), `imports '${spec}', which is not on REACHABLE_ALLOWED_MODULES`)
       }
     } else if (typeof resolved === 'object') {
       add('unresolved', `import of '${spec}' ${resolved.error}`)
@@ -387,7 +407,7 @@ function collectReachableModules(read: (rel: string) => string | null, rootFiles
   const queue = [...rootFiles]
   while (queue.length > 0) {
     const rel = queue.shift()!
-    if (rel in found) continue
+    if (hasEntry(found, rel)) continue
     const text = read(rel)
     if (text === null) continue
     found[rel] = text
@@ -407,8 +427,8 @@ function collectReachableModules(read: (rel: string) => string | null, rootFiles
 function graphViolations(read: (rel: string) => string | null, rootFiles: string[]): string[] {
   return Object.entries(collectReachableModules(read, rootFiles)).flatMap(([rel, text]) => {
     const violations = moduleFileViolations(read, rel, text)
-    const kinds = TRUSTED_REACHABLE_LIBS[rel]
-    return (kinds ? violations.filter((v) => !kinds.includes(v.kind)) : violations).map((v) => v.text)
+    const kinds = hasEntry(TRUSTED_REACHABLE_LIBS, rel) ? TRUSTED_REACHABLE_LIBS[rel] : []
+    return violations.filter((v) => !kinds.includes(v.kind)).map((v) => v.text)
   })
 }
 
@@ -423,7 +443,7 @@ function readSrc(rel: string): string | null {
 
 /** The same reader over an in-memory fixture tree, for the sample tests. */
 function virtualLibs(files: Record<string, string>): (rel: string) => string | null {
-  return (rel: string) => files[rel] ?? null
+  return (rel: string) => (hasEntry(files, rel) ? files[rel] : null)
 }
 
 const allowedAliasSpecs = Object.keys(ALLOWED_ROUTE_IMPORTS).filter((name) => name.startsWith('@/'))
@@ -676,6 +696,35 @@ describe('gateway consumers, scan rules on sample sources', () => {
     expect(graphViolations(virtualLibs({ 'lib/gateway.ts': 'export function r(u: string) { return fetch(u) }' }), ['lib/gateway.ts'])).toEqual([])
   })
 
+  it('keeps module kinds apart from the other offence kinds, so a package named like a trusted kind is not excused', () => {
+    // gateway.ts is trusted for 'raw-fetch'; a package of that name is kind 'module:raw-fetch', which it is not trusted for.
+    expect(graphViolations(virtualLibs({ 'lib/gateway.ts': "import f from 'raw-fetch'\nexport const g = f" }), ['lib/gateway.ts'])).toEqual([
+      "lib/gateway.ts: imports 'raw-fetch', which is not on REACHABLE_ALLOWED_MODULES",
+    ])
+    expect(graphViolations(virtualLibs({ 'lib/agent-registry.ts': "import c from 'global-client-type'\nexport const g = c" }), ['lib/agent-registry.ts'])).toEqual([
+      "lib/agent-registry.ts: imports 'global-client-type', which is not on REACHABLE_ALLOWED_MODULES",
+    ])
+    expect(moduleFileViolations(virtualLibs({}), 'lib/a.ts', "import { connect } from 'node:net'").map((v) => v.kind)).toEqual(['module:net'])
+  })
+
+  it('looks entries up by own key, so constructor, toString or __proto__ is on no list', () => {
+    for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      expect(routeImportViolations(`import x from '${name}'`), name).toEqual([`import of '${name}', which is not on ALLOWED_ROUTE_IMPORTS`])
+      expect(graphViolations(virtualLibs({ 'lib/data-store.ts': `import x from '${name}'\nexport const y = x` }), ['lib/data-store.ts']), name).toEqual([
+        `lib/data-store.ts: imports '${name}', which is not on REACHABLE_ALLOWED_MODULES`,
+      ])
+      expect(virtualLibs({})(name), name).toBeNull()
+    }
+    // A route path that names an inherited key is not on the per-file child_process list.
+    expect(routeImportViolations("import { spawn } from 'child_process'", 'constructor')).toEqual([
+      "import of 'child_process', and child_process is allowed only for the routes in ROUTES_ALLOWED_CHILD_PROCESS",
+    ])
+    // A file whose path names an inherited key is not trusted for anything.
+    expect(graphViolations(virtualLibs({ toString: "import { request } from 'undici'\nexport const r = request" }), ['toString'])).toEqual([
+      "toString: imports the transport module 'undici', so it can open a socket or start a process",
+    ])
+  })
+
   it('flags an object-literal or ternary use of a global client that a bare colon strip would hide', () => {
     for (const text of ['export const x = { c: WebSocket }', 'export const x = (cond ? a : WebSocket)']) {
       const offences = graphViolations(virtualLibs({ 'a.ts': text }), ['a.ts'])
@@ -745,7 +794,7 @@ describe('gateway consumers', () => {
   })
 
   it('has no route that names fetch or pinnedFetch, apart from the listed non-gateway ones', () => {
-    const offenders = routes.filter((r) => !(r.rel in NON_GATEWAY_FETCH) && usesRawFetch(r.text)).map((r) => r.rel)
+    const offenders = routes.filter((r) => !hasEntry(NON_GATEWAY_FETCH, r.rel) && usesRawFetch(r.text)).map((r) => r.rel)
     expect(offenders).toEqual([])
   })
 
@@ -765,7 +814,7 @@ describe('gateway consumers', () => {
 
   it('has no route that loads child_process except the per-file listed ones', () => {
     const offenders = routes
-      .filter((r) => /\bchild_process\b/.test(stripComments(r.text)) && !(r.rel in ROUTES_ALLOWED_CHILD_PROCESS))
+      .filter((r) => /\bchild_process\b/.test(stripComments(r.text)) && !hasEntry(ROUTES_ALLOWED_CHILD_PROCESS, r.rel))
       .map((r) => r.rel)
     expect(offenders).toEqual([])
     for (const rel of Object.keys(ROUTES_ALLOWED_CHILD_PROCESS)) {
