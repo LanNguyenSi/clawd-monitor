@@ -1,6 +1,4 @@
 name: clawd-monitor
 health: /
 compose_file: docker-compose.traefik.yml
-pre_update:
-  - docker compose -f docker-compose.traefik.yml build --no-cache
 rollback: true
