@@ -155,6 +155,29 @@ flowchart TD
 - `NODE_ENV` and `CLAWD_MONITOR_DATA_DIR` are fixed in the compose files
   (`production`, `/data`) and cannot be changed from the env files.
 
+## Hard rebuild (base image or dependency updates)
+
+A normal deploy builds the image of the pulled commit with the Docker build
+cache, which reuses every unchanged layer (including the base image layers
+already on the server). That is what you want day to day, and `.relay.yml` has
+no build hook: agent-relay runs `pre_update` against the pre-pull tree, so a
+build there would compile the old commit, and the relay builds the pulled
+commit again right after the pull anyway.
+
+For a base-image security update, or when you suspect a stale cached layer,
+run a hard rebuild on the server, in the app directory, after a deploy has
+finished:
+
+```bash
+docker compose -f docker-compose.traefik.yml build --pull --no-cache
+docker compose -f docker-compose.traefik.yml up -d
+```
+
+`--pull` refreshes the base image, `--no-cache` rebuilds every layer, and the
+second command starts the new image. This is a manual maintenance step, not
+part of the relay flow, and it costs a full uncached build (minutes, not
+seconds).
+
 ## Troubleshooting
 
 - **Login does not stick:** the session cookie is marked Secure when

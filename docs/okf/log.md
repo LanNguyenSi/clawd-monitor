@@ -2,6 +2,9 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-26T13:15:50Z, auth-and-config-loading re-verified and re-stamped after `package.json`
+  gained `js-yaml` as a root devDependency for the relay-config CI guard. No
+  script, env loading or auth dependency changed; the doc's claims are unchanged.
 - 2026-10-26T09:24:32Z, widget-data-modes re-verified and re-stamped after the light-scheme
   contrast follow-up. `HeartbeatWidget.tsx`, `LogTailWidget.tsx`,
   `MetricsWidget.tsx`, `ServiceHealthWidget.tsx` and `AgentListWidget.tsx`
