@@ -2,6 +2,7 @@
 
 import useSWR from 'swr'
 import { fetcher } from '@/lib/fetcher'
+import { ScrollRegion } from './ScrollRegion'
 
 interface ServiceResult {
   name: string
@@ -31,7 +32,7 @@ export function ServiceHealthWidget() {
       )}
 
       {!isLoading && services.length > 0 && (
-        <div className="divide-y divide-zinc-200/50 dark:divide-zinc-800/50 overflow-y-auto flex-1">
+        <ScrollRegion label="Service health" className="divide-y divide-zinc-200/50 dark:divide-zinc-800/50 flex-1">
           {services.map((svc) => (
             <div key={svc.name} className="flex items-center gap-3 px-3 py-2.5">
               <div className={`w-2 h-2 rounded-full shrink-0 ${svc.ok ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
@@ -47,7 +48,7 @@ export function ServiceHealthWidget() {
               </span>
             </div>
           ))}
-        </div>
+        </ScrollRegion>
       )}
     </div>
   )

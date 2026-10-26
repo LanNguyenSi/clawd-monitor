@@ -158,7 +158,8 @@ function SettingsInner() {
         <span className="text-sm text-zinc-700 dark:text-zinc-300">Settings</span>
       </nav>
 
-      <div className="max-w-2xl mx-auto px-6 py-10 space-y-10">
+      <main className="max-w-2xl mx-auto px-6 py-10 space-y-10">
+        <h1 className="sr-only">Settings</h1>
 
         {/* Appearance */}
         <section>
@@ -201,10 +202,12 @@ function SettingsInner() {
           <form onSubmit={handleChangePassword} className="space-y-4 bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-xl p-6">
             {(['current', 'newPw', 'confirm'] as const).map((field) => (
               <div key={field}>
-                <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5">
+                <label htmlFor={`pw-${field}`} className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5">
                   {field === 'current' ? 'Current password' : field === 'newPw' ? 'New password (min 8 chars)' : 'Confirm new password'}
                 </label>
-                <input type="password" value={pwForm[field]}
+                <input type="password" id={`pw-${field}`}
+                  autoComplete={field === 'current' ? 'current-password' : 'new-password'}
+                  value={pwForm[field]}
                   onChange={(e) => setPwForm({ ...pwForm, [field]: e.target.value })}
                   required minLength={field !== 'current' ? 8 : undefined}
                   className="w-full bg-zinc-50 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
@@ -235,6 +238,7 @@ function SettingsInner() {
                         <form onSubmit={(e) => { e.preventDefault(); void saveEdit(t.id) }} className="flex items-center gap-2">
                           <input
                             type="text"
+                            aria-label={`Name for token ${t.name}`}
                             value={editName}
                             onChange={(e) => setEditName(e.target.value)}
                             autoFocus
@@ -273,6 +277,7 @@ function SettingsInner() {
             <div className="p-5 border-t border-zinc-200 dark:border-zinc-800">
               <form onSubmit={handleGenerateToken} className="flex gap-2">
                 <input type="text" value={tokenName} onChange={(e) => setTokenName(e.target.value)}
+                  aria-label="Agent name"
                   placeholder="Agent name (e.g. Lava VPS)" required
                   className="flex-1 bg-zinc-50 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                 />
@@ -316,7 +321,7 @@ function SettingsInner() {
             </div>
           )}
         </section>
-      </div>
+      </main>
     </div>
   )
 }

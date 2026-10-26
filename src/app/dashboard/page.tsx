@@ -115,25 +115,26 @@ function DashboardInner() {
         onResetLayout={handleResetLayout}
         activeWidgetIds={activeWidgetIds}
       />
-      <div className="flex-1 overflow-auto p-2">
+      <main className="flex-1 overflow-auto p-2">
+        <h1 className="sr-only">Dashboard</h1>
         <WidgetGrid
           key={gridKey}
           cols={cols}
           editMode={editMode}
           onLayoutChange={setActiveWidgetIds}
         />
-      </div>
+
+        {/* Help hint */}
+        <div className="fixed bottom-3 right-3 text-xs text-zinc-400 dark:text-zinc-700 select-none">
+          Press <kbd className="bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-sm px-1">?</kbd> for shortcuts
+        </div>
+      </main>
 
       <KeyboardShortcuts
         onRefresh={handleRefresh}
         onToggleTheme={toggleTheme}
         onToggleEditMode={handleToggleEditMode}
       />
-
-      {/* Help hint */}
-      <div className="fixed bottom-3 right-3 text-xs text-zinc-400 dark:text-zinc-700 select-none">
-        Press <kbd className="bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-sm px-1">?</kbd> for shortcuts
-      </div>
     </div>
   )
 }

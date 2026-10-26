@@ -32,7 +32,7 @@ export const GridItem = forwardRef<HTMLDivElement, Props>(function GridItem(
     >
       {/* Title bar — drag handle */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 cursor-grab active:cursor-grabbing shrink-0">
-        <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 select-none">{title}</span>
+        <h2 className="text-xs font-medium text-zinc-500 dark:text-zinc-400 select-none">{title}</h2>
         <div className="flex items-center gap-1.5">
           <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />
           <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />
@@ -43,6 +43,7 @@ export const GridItem = forwardRef<HTMLDivElement, Props>(function GridItem(
               onClick={(e) => { e.stopPropagation(); onRemove() }}
               className="ml-1 text-zinc-400 hover:text-red-400 dark:text-zinc-600 dark:hover:text-red-400 transition-colors text-xs leading-none"
               title="Remove widget"
+              aria-label={`Remove ${title} widget`}
             >
               ✕
             </button>

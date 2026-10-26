@@ -4,6 +4,7 @@ import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
 import type { GatewaySession } from '@/types'
 import { fetcher } from '@/lib/fetcher'
+import { ScrollRegion } from './ScrollRegion'
 
 interface SessionsResponse {
   sessions?: GatewaySession[]
@@ -103,7 +104,7 @@ export function AgentStatusWidget() {
       )}
 
       {sessions.length > 0 && (
-        <div className="divide-y divide-zinc-200/50 dark:divide-zinc-800/50 overflow-y-auto flex-1">
+        <ScrollRegion label="Agent sessions" className="divide-y divide-zinc-200/50 dark:divide-zinc-800/50 flex-1">
           {sessions.map((s) => (
             <div key={s.sessionKey} className="px-3 py-2 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/30 transition-colors">
               <div className="flex items-center justify-between gap-2 mb-0.5">
@@ -122,7 +123,7 @@ export function AgentStatusWidget() {
               </div>
             </div>
           ))}
-        </div>
+        </ScrollRegion>
       )}
     </div>
   )

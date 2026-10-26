@@ -2,6 +2,41 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-26T08:36:30Z, auth-and-config-loading, widget-data-modes and agent-registry-lifecycle
+  re-verified and re-stamped after merging the dashboard layout change into
+  the accessibility branch. In `src/app/dashboard/page.tsx` the `main`
+  landmark and the moved shortcut hint add one line before
+  `<ActiveAgentProvider>`, so that citation in widget-data-modes now reads
+  line 145; the `router.replace('/login')` citations (31-33, 37-39) and the
+  AgentSwitcher citations did not move. `Navbar.tsx` still mounts
+  `AgentSwitcher`, `AddWidgetMenu` and `UserMenu`. Checked with
+  `okf-kit check docs/okf`.
+- 2026-10-26T08:35:46Z, widget-data-modes, agent-registry-lifecycle and auth-and-config-loading
+  re-verified and re-stamped after a follow-up to the accessibility change:
+  `src/components/Nav/AgentSwitcher.tsx` now moves keyboard focus to the
+  nearest remaining menu item after an offline agent is removed (or to the
+  trigger when the removed agent was the selected one). Checked against the
+  code: the remove button still sends `DELETE` and drops the entry on 404 or
+  success only, the selection is still persisted through `select()`, and the
+  `localStorage` citations (`:48-50`, `:54-56`) did not move. The `DELETE`
+  citation in agent-registry-lifecycle moved from `:64-65` to `:78-79` and
+  was re-pointed. widget-data-modes cites no changed line;
+  auth-and-config-loading does not depend on the file. Checked with
+  `okf-kit check docs/okf`.
+- 2026-10-26T08:27:20Z, widget-data-modes, agent-registry-lifecycle and auth-and-config-loading
+  re-verified and re-stamped after an accessibility change to
+  `src/app/dashboard/page.tsx`, `src/components/Nav/AgentSwitcher.tsx` and the
+  scrollable widget lists (a `ScrollRegion` wrapper, an `aria-label` on the
+  selects, a `main` landmark with a hidden h1, menu roles and keyboard
+  handling). Checked against the code: which data each widget reads, the
+  agent selection held in `ActiveAgentProvider` and persisted by
+  `AgentSwitcher`, the offline-agent remove button sending `DELETE`, and the
+  auth check in `dashboard/page.tsx` are unchanged. The `file:line`
+  citations into the changed files moved by one to a dozen lines and were
+  re-pointed (the `<ActiveAgentProvider>` citation in widget-data-modes was
+  already off before this change). auth-and-config-loading cites only the
+  auth-check lines of the dashboard page, which still match. Checked with
+  `okf-kit check docs/okf`.
 - 2026-10-26T08:27:00Z, auth-and-config-loading and widget-data-modes re-verified and
   re-stamped after "Reset layout" gained a confirmation prompt in
   `src/app/dashboard/page.tsx` (two added lines shift later lines). The

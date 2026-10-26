@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
 import { useTheme } from '@/lib/theme'
+import { useMenuA11y } from './useMenuA11y'
 
 export function UserMenu() {
   const { theme, toggleTheme } = useTheme()
-  const [open, setOpen] = useState(false)
+  const { open, close, onKeyDown, triggerProps, menuProps } = useMenuA11y()
 
   function handleLogout() {
     void fetch('/api/auth', { method: 'DELETE' }).finally(() => {
@@ -15,9 +15,10 @@ export function UserMenu() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative" onKeyDown={onKeyDown}>
       <button
-        onClick={() => setOpen((v) => !v)}
+        {...triggerProps}
+        aria-label="User menu"
         className="w-7 h-7 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-xs text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors"
         title="User menu"
       >
@@ -29,10 +30,11 @@ export function UserMenu() {
 
       {open && (
         <>
-          <div className="absolute top-full mt-1 right-0 w-48 bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700 rounded-lg shadow-xl z-50 py-1">
+          <div {...menuProps} aria-label="User menu" className="absolute top-full mt-1 right-0 w-48 bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700 rounded-lg shadow-xl z-50 py-1">
             {/* Theme toggle */}
             <button
-              onClick={() => { toggleTheme(); setOpen(false) }}
+              role="menuitem"
+              onClick={() => { toggleTheme(); close() }}
               className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
               <span className="w-4 text-center">{theme === 'dark' ? '☀️' : '🌙'}</span>
@@ -40,22 +42,24 @@ export function UserMenu() {
               <kbd className="ml-auto text-zinc-400 dark:text-zinc-600 font-mono">t</kbd>
             </button>
 
-            <div className="border-t border-zinc-200 dark:border-zinc-800 my-1" />
+            <div role="separator" className="border-t border-zinc-200 dark:border-zinc-800 my-1" />
 
             {/* Settings */}
             <Link
               href="/settings"
-              onClick={() => setOpen(false)}
+              role="menuitem"
+              onClick={close}
               className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
               <span className="w-4 text-center">⚙️</span>
               Settings
             </Link>
 
-            <div className="border-t border-zinc-200 dark:border-zinc-800 my-1" />
+            <div role="separator" className="border-t border-zinc-200 dark:border-zinc-800 my-1" />
 
             {/* Logout */}
             <button
+              role="menuitem"
               onClick={handleLogout}
               className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
@@ -70,7 +74,7 @@ export function UserMenu() {
             </button>
           </div>
 
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-40" aria-hidden="true" onClick={close} />
         </>
       )}
     </div>
