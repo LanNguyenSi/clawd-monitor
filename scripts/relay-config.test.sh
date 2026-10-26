@@ -8,11 +8,8 @@
 # with no items parses as null and is rejected too, so either mistake fails
 # EVERY deploy and rolls back before any step runs. agent-relay also runs
 # pre_update against the pre-pull tree, so an image build there would build
-# the OLD code (this repo's pre_update used to run a no-cache compose build,
-# 79s of wasted time on every deploy, after which the deploy system built the
-# pulled commit again in 76s; the relay builds the pulled commit itself, so
-# the key is gone and clawd-monitor's intended state is that neither
-# pre_update nor post_update exists). This script keeps the config valid and
+# the OLD code (the relay builds the pulled commit itself, so clawd-monitor's
+# intended state is that neither pre_update nor post_update exists). This script keeps the config valid and
 # keeps any re-added hook list valid, so a mistake fails CI instead of every
 # deploy on the server. Unlike the deploy-panel reference, having no hook keys
 # at all passes here; a key left present with null still fails.
