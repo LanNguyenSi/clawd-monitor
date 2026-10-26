@@ -30,25 +30,38 @@
  *   that does not resolve to a file under `src` is an offence naming the file
  *   and the specifier, so a path that leaves `src` (`../server/evil`), an alias
  *   to a directory that is not there (`@/server/evil`) or a broken `.js` require
- *   is refused, not silently dropped.
+ *   is refused, not silently dropped. The walk reads each file once and throws
+ *   if it ever reads more than four times as many files as it found distinct
+ *   ones, so a broken visited check fails the run instead of hanging it.
  * - A reachable file that is not the trusted transport layer may import, as a
  *   bare module, only what is on REACHABLE_ALLOWED_MODULES; anything else is an
  *   offence, so a client nobody thought of (axios, node:dns) is refused too. A
- *   transport module is named as such in its message. A reachable file may also
- *   not call fetch itself, use a global client, or load by a computed name or a
- *   native binding. TypeScript erases an `import type` statement, so it is not
- *   a use and loads nothing.
+ *   transport module is named as such in its message. Every entry of that list
+ *   must be imported by a reachable file. A reachable file may also not call
+ *   fetch itself, use a global client, or load by a computed name or a native
+ *   binding. TypeScript erases an `import type` statement, so it is not a use
+ *   and loads nothing; the strip that erases it stops at the end of its own
+ *   import head, so it cannot swallow the next statement.
+ * - A global client name is the weaker kind `global-client-type` only in a
+ *   parameter annotation, an interface or `type Name = {` member annotation, or
+ *   a generic argument; anywhere else (an object-literal value, a ternary
+ *   branch, a call) it is a real client, kind `global-client`.
  * - The files that are the guarded transport layer, or that legitimately name a
  *   client type, are in TRUSTED_REACHABLE_LIBS, mapped to the offence KINDS they
  *   may have (`gateway.ts`: the operator default fetch only; `pinned-fetch.ts`:
- *   net, undici, dns, the fetch; `agent-registry.ts`: a global-client type
- *   annotation). A trusted file is excused only for the kinds it declares, so a
- *   new capability there (child_process in gateway.ts) is still an offence, and
+ *   `module:net`, `module:undici`, `module:dns`, the fetch; `agent-registry.ts`:
+ *   `global-client-type`). A bare module import is kind `module:<name>`, apart
+ *   from the other kinds, so a package named `raw-fetch` is not the fetch kind.
+ *   A trusted file is excused only for the kinds it declares, so a new
+ *   capability there (child_process in gateway.ts) is still an offence, and
  *   every declared kind is asserted to still be present, so a stale trust entry
  *   fails too.
+ * - Every list is consulted by own key, so an inherited name (`constructor`,
+ *   `toString`, `__proto__`) is on none of them.
  * - It is a text scan: deliberate obfuscation (an aliased require, eval, a
- *   computed global name) is out of its scope; the runtime guard in
- *   src/lib/gateway.ts and src/lib/pinned-fetch.ts stays the boundary.
+ *   computed global name, a bracket in a string written to fake an interface
+ *   body) is out of its scope; the runtime guard in src/lib/gateway.ts and
+ *   src/lib/pinned-fetch.ts stays the boundary.
  *
  * The rules are text scans, so they are generic over files: a new route, or an
  * edit to an existing one, is judged without this file being touched. They do
