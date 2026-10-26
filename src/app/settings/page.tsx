@@ -238,7 +238,7 @@ function SettingsInner() {
                 />
               </div>
             ))}
-            {pwMsg && <p className={`text-sm ${pwStatus === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{pwMsg}</p>}
+            {pwMsg && <p className={`text-sm ${pwStatus === 'success' ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>{pwMsg}</p>}
             <button type="submit" disabled={pwStatus === 'loading'}
               className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm font-medium transition-colors">
               {pwStatus === 'loading' ? 'Updating…' : 'Update Password'}
@@ -329,7 +329,7 @@ function SettingsInner() {
                 <h3 className="text-sm font-medium text-indigo-700 dark:text-indigo-300">Token generated for &ldquo;{newToken.name}&rdquo;</h3>
                 <button onClick={() => setNewToken(null)} aria-label="Dismiss generated token" className="min-w-6 min-h-6 inline-flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 text-sm"><span aria-hidden="true">✕</span></button>
               </div>
-              <p className="text-xs text-yellow-600 dark:text-yellow-500">⚠ Copy this token now — it won&apos;t be shown again.</p>
+              <p className="text-xs text-yellow-800 dark:text-yellow-500">⚠ Copy this token now — it won&apos;t be shown again.</p>
 
               <div className="flex items-center gap-2">
                 <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-800 dark:text-zinc-200 px-3 py-2 rounded-sm font-mono break-all">

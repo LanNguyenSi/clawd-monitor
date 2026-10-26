@@ -17,9 +17,9 @@ function formatBytes(bytes: number): string {
 }
 
 function cpuColor(pct: number): string {
-  if (pct >= 80) return 'text-red-600 dark:text-red-400'
-  if (pct >= 60) return 'text-yellow-500 dark:text-yellow-400'
-  return 'text-green-600 dark:text-green-400'
+  if (pct >= 80) return 'text-red-700 dark:text-red-400'
+  if (pct >= 60) return 'text-yellow-800 dark:text-yellow-400'
+  return 'text-green-700 dark:text-green-400'
 }
 
 function Sparkline({ data, color }: { data: number[]; color: string }) {
@@ -134,7 +134,7 @@ export function MetricsWidget() {
         <div className="text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">Connecting…</div>
       )}
       {status === 'error' && (
-        <div className="text-xs text-red-600 dark:text-red-400">Metrics unavailable</div>
+        <div className="text-xs text-red-700 dark:text-red-400">Metrics unavailable</div>
       )}
 
       {metrics && (

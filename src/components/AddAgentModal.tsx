@@ -224,12 +224,12 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
               </p>
             </div>
             {!originValid && (
-              <p className="text-sm text-red-600 dark:text-red-400">
+              <p className="text-sm text-red-700 dark:text-red-400">
                 Cannot determine the dashboard origin (current: <code>{origin || '<empty>'}</code>). Reload the page and try again.
               </p>
             )}
             {error && (
-              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+              <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
             )}
             <div className="flex justify-end gap-2 pt-2">
               <button
@@ -256,7 +256,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
               <p className="text-sm text-zinc-600 dark:text-zinc-400">
                 Token created for <span className="font-medium text-zinc-800 dark:text-zinc-200">&ldquo;{tokenName}&rdquo;</span>.
               </p>
-              <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-1.5">
+              <p className="text-xs text-yellow-800 dark:text-yellow-500 mt-1.5">
                 ⚠ Copy now — this token won&apos;t be shown again. Click <strong>Done</strong> when finished.
               </p>
             </div>
