@@ -174,10 +174,13 @@ Evidence for the switch in each component, agent URL first:
 
 `LogTailWidget` opens `/api/agents/<id>/logs` with an agent selected and
 `/api/stream/logs` without
-(`src/components/widgets/LogTailWidget.tsx:61-63#"/api/stream/logs?"`). Its
-`source` selector (`openclaw`, `docker`, `system`) is passed through. The
-container drop-down always lists containers on the dashboard host
-(`src/components/widgets/LogTailWidget.tsx:39-40#"'/api/containers'"`,
+(`src/components/widgets/LogTailWidget.tsx:65-67#"/api/stream/logs?"`). Its
+`source` selector offers `openclaw`, `docker` and `system` without an agent
+and only `openclaw` with one, because the agent route serves nothing else
+(`src/components/widgets/LogTailWidget.tsx:41#"activeAgentId ? 'openclaw' : chosenSource"`);
+a docker or system choice made without an agent is kept but not sent while an
+agent is selected. The container drop-down always lists containers on the dashboard host
+(`src/components/widgets/LogTailWidget.tsx:43-44#"'/api/containers'"`,
 route `src/app/api/containers/route.ts:13-14#"docker ps --format"`).
 
 Without an agent (`/api/stream/logs`):
@@ -219,14 +222,15 @@ sources do not read logs from the agent's host, and a `source` outside
   never starts `docker`, because `docker logs` would read the dashboard host's
   containers, not the agent's; the request is not forwarded to the agent's
   gateway either
-  (`src/app/api/agents/[agentId]/logs/route.ts:52#"Docker logs are not available for agents"`).
-- `system`: when the agent reported a `gatewayUrl`, two informational lines
-  and no log stream
-  (`src/app/api/agents/[agentId]/logs/route.ts:58#"System log streaming not available"`);
-  otherwise `journalctl` on the dashboard host.
+  (`src/app/api/agents/[agentId]/logs/route.ts:48#"Docker logs are not available for agents"`).
+- `system`: not read at all. The route answers two informational lines and
+  starts no process, whether or not the agent reported a `gatewayUrl`,
+  because `journalctl` or `tail` here would show the dashboard host's logs
+  under the agent's name
+  (`src/app/api/agents/[agentId]/logs/route.ts:56#"System log streaming not available"`).
 - `openclaw`: the agent's own `gatewayUrl` plus `/logs/stream`, fetched only
   through `remoteGatewayFetch`
-  (`src/app/api/agents/[agentId]/logs/route.ts:89#"remoteGatewayFetch(agent.gatewayUrl"`,
+  (`src/app/api/agents/[agentId]/logs/route.ts:75#"remoteGatewayFetch(agent.gatewayUrl"`,
   defined at `src/lib/gateway.ts:170#"export function remoteGatewayFetch("`).
   It applies the URL rule (https, host and port in `ALLOWED_GATEWAY_HOSTS`, no
   private range) with no exception for the default gateway URL, unlike the

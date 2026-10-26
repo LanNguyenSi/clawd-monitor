@@ -34,7 +34,11 @@ const LEVEL_CLASSES: Record<LogLine['level'], string> = {
 
 export function LogTailWidget() {
   const { activeAgentId } = useActiveAgent()
-  const [source, setSource] = useState<LogSource>('openclaw')
+  const [chosenSource, setSource] = useState<LogSource>('openclaw')
+  // An agent's route serves only the OpenClaw source: docker and system logs
+  // would be the dashboard host's, so the selector offers nothing else and a
+  // choice made without an agent does not carry over to an agent.
+  const source: LogSource = activeAgentId ? 'openclaw' : chosenSource
   const [container, setContainer] = useState('')
   const { data: containerData } = useSWR<{ containers: string[] }>(
     source === 'docker' ? '/api/containers' : null,
@@ -109,8 +113,8 @@ export function LogTailWidget() {
           className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300"
         >
           <option value="openclaw">OpenClaw</option>
-          <option value="docker">Docker</option>
-          <option value="system">System</option>
+          {!activeAgentId && <option value="docker">Docker</option>}
+          {!activeAgentId && <option value="system">System</option>}
         </select>
 
         {source === 'docker' && (
