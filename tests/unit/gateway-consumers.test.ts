@@ -807,6 +807,7 @@ describe('gateway consumers, scan rules on sample sources', () => {
     for (const text of values) {
       expect(globalClientUse(text), text).toBe('global-client')
       expect(moduleFileViolations(virtualLibs({}), 'a.ts', text).map((v) => v.kind), text).toEqual(['global-client'])
+      expect(graphViolations(virtualLibs({ 'a.ts': text }), ['a.ts']), text).toEqual(['a.ts: a global WebSocket, EventSource or XMLHttpRequest client'])
       // The value use is still an offence in the file that is trusted for a client type.
       expect(graphViolations(virtualLibs({ 'lib/agent-registry.ts': text }), ['lib/agent-registry.ts']), text).toEqual([
         'lib/agent-registry.ts: a global WebSocket, EventSource or XMLHttpRequest client',
