@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A narrow window no longer destroys the desktop widget layout.** The dashboard saved the layout react-grid-layout had clamped to the current width (one column at 390 px) as the only layout, so returning to a wide window left every widget in one narrow column until `localStorage` was cleared. Layouts are now stored per breakpoint under `clawd-monitor:layouts`; a visit at a small width changes only that breakpoint's entry. A layout saved in the old single-array format is read as the `lg` layout, unreadable data falls back to the default layout, and the "+ Widget" menu writes the same per-breakpoint format. A new "Reset layout" button next to the edit toggle (also in the mobile layout menu) restores the default layout. A layout already clamped to one column by the old behaviour stays that way until it is reset.
+
 ## [0.3.0] - 2026-10-25
 
 ### Security
