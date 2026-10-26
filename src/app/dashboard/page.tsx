@@ -12,6 +12,7 @@ import { addWidgetToStorage, defaultLayouts, resetLayouts } from '@/lib/layout-s
 import type { ColCount } from '@/types'
 
 const COLS_KEY = 'clawd-monitor:cols'
+const RESET_CONFIRM_MESSAGE = 'Reset the dashboard layout to the default? Your custom arrangement will be lost.'
 
 function DashboardInner() {
   const router = useRouter()
@@ -90,6 +91,7 @@ function DashboardInner() {
   }, [cols])
 
   const handleResetLayout = useCallback(() => {
+    if (!window.confirm(RESET_CONFIRM_MESSAGE)) return
     resetLayouts(localStorage)
     setGridKey((k) => k + 1)
   }, [])
