@@ -297,20 +297,65 @@ function stripTypeOnlyImports(code: string): string {
   )
 }
 
+/** The index of the innermost `(`, `[` or `{` that is still open at `pos`, or -1 at the top level. */
+function enclosingBracket(code: string, pos: number): number {
+  let depth = 0
+  for (let i = pos - 1; i >= 0; i--) {
+    const c = code[i]
+    if (c === ')' || c === ']' || c === '}') depth += 1
+    else if (c === '(' || c === '[' || c === '{') {
+      if (depth === 0) return i
+      depth -= 1
+    }
+  }
+  return -1
+}
+
 /**
- * Whether a lib file uses a global client as a value, and how, or null if it
- * does not name one at all. Only an unambiguous type position is not a use: a
- * `name: X` / `name?: X` annotation (the token right after a `:`), and a generic
- * argument (`Array<WebSocket>`, `<K, WebSocket>`, the token right after a `<` or
- * after a comma inside an open `<`). Everything else — `new WebSocket(...)`,
- * `const w = WebSocket`, an object-literal value `{ c: WebSocket }`, a ternary
- * `cond ? a : WebSocket` — is a real client. A value use is kind
- * `global-client`; a purely-annotational one is the weaker kind
- * `global-client-type` (a client type behind a route, still reported, but the
- * one kind the type-naming lib is trusted for). `ws: WebSocket` and
- * `Array<WebSocket>` read as a type; the scan does not try to tell an interface
- * body from an object literal, so a `{ c: WebSocket }` is reported too and only
- * a vetted file is trusted for it.
+ * The head of an interface body or a type-alias object type, right before its
+ * `{`: `interface Name<...> extends ...` or `type Name<...> =`. The keyword and
+ * the name must be on one line, as TypeScript requires; `type` on a line of its
+ * own is an expression.
+ */
+const TYPE_BODY_HEAD =
+  /\b(?:interface[ \t]+[\w$]+(?:[ \t]*<[^{}()]*>)?(?:[ \t]+extends[ \t]+[^{};()]*)?|type[ \t]+[\w$]+(?:[ \t]*<[^{}()]*>)?[ \t]*=)\s*$/
+
+/**
+ * Whether the client name at `start..end` is in a type position. Only three
+ * shapes are: a `name: X` / `name?: X` annotation whose innermost open bracket
+ * is a `(` and whose name directly follows that `(` or a `,` (a parameter);
+ * the same annotation whose innermost open bracket is the `{` of an interface
+ * body or of a `type Name = {` object type (a member); and a generic argument,
+ * `Name<..., X, ...>`, whose `<` directly follows an identifier and whose `>`
+ * closes it with nothing but type tokens in between. Every other colon is a
+ * value: an object-literal property (`{ c: X }`), a ternary branch
+ * (`cond ? a : X`), a class property, a nested object type in an annotation.
+ */
+function isTypePosition(code: string, start: number, end: number): boolean {
+  const colon = /(?<![\w$.])[\w$]+\s*\??\s*:\s*$/.exec(code.slice(0, start))
+  if (colon) {
+    const open = enclosingBracket(code, colon.index)
+    if (open >= 0 && code[open] === '(') return /[(,]\s*$/.test(code.slice(0, colon.index))
+    if (open >= 0 && code[open] === '{') return TYPE_BODY_HEAD.test(code.slice(0, open))
+    return false
+  }
+  const angle = code.lastIndexOf('<', start - 1)
+  if (angle < 1 || !/[\w$]/.test(code[angle - 1])) return false
+  return /^[\w$.\s|&,[\]]*$/.test(code.slice(angle + 1, start)) && /^[\w$.\s|&,[\]]*>/.test(code.slice(end))
+}
+
+/**
+ * How a file uses a global client, or null if it does not name one at all.
+ * A name in a type position (isTypePosition: a parameter or interface/type
+ * member annotation, or a generic argument) is kind `global-client-type`: a
+ * client type behind a route, still reported, but the one kind the type-naming
+ * lib is trusted for. Any other occurrence makes the whole file kind
+ * `global-client`, a real client: `new WebSocket(...)`, `const w = WebSocket`,
+ * an object-literal value `{ c: WebSocket }`, a ternary branch
+ * `cond ? a : WebSocket`. A shape the scan does not recognise counts as a
+ * value, so a misread fails closed. The bracket scan counts a bracket inside a
+ * string or a regular expression like code, so a string written to fake an
+ * interface body is deliberate obfuscation, out of scope as in the header.
  */
 function globalClientUse(code: string): 'global-client' | 'global-client-type' | null {
   const re = /\b(?:WebSocket|EventSource|XMLHttpRequest)\b/g
@@ -318,9 +363,7 @@ function globalClientUse(code: string): 'global-client' | 'global-client-type' |
   let seen = false
   while ((m = re.exec(code)) !== null) {
     seen = true
-    const before = code.slice(0, m.index).replace(/\s+$/, '')
-    const annotation = /[:<]$/.test(before) || (/,[\w$.\s|&]*$/.test(before) && before.lastIndexOf('<') > before.lastIndexOf('>'))
-    if (!annotation) return 'global-client'
+    if (!isTypePosition(code, m.index, m.index + m[0].length)) return 'global-client'
   }
   return seen ? 'global-client-type' : null
 }
@@ -560,7 +603,7 @@ describe('gateway consumers, scan rules on sample sources', () => {
         `input-validators.ts: imports the transport module '${spec}', so it can open a socket or start a process`,
       ])
     }
-    // pinned-fetch.ts is trusted for net, undici, dns and the fetch — not for anything else.
+    // pinned-fetch.ts is trusted for net, undici, dns and the fetch, and for nothing else.
     const pinned = (spec: string) => graphViolations(virtualLibs({ 'lib/pinned-fetch.ts': `import c from '${spec}'` }), ['lib/pinned-fetch.ts'])
     expect(pinned('node:net')).toEqual([])
     expect(pinned('undici')).toEqual([])
@@ -726,11 +769,46 @@ describe('gateway consumers, scan rules on sample sources', () => {
   })
 
   it('flags an object-literal or ternary use of a global client that a bare colon strip would hide', () => {
-    for (const text of ['export const x = { c: WebSocket }', 'export const x = (cond ? a : WebSocket)']) {
-      const offences = graphViolations(virtualLibs({ 'a.ts': text }), ['a.ts'])
-      expect(offences.length, text).toBe(1)
-      expect(offences[0], text).toContain('WebSocket')
+    const values = [
+      'export const x = { c: WebSocket }',
+      'export const x = { a: 1, c: WebSocket }',
+      'export const x = (cond ? a : WebSocket)',
+      'export const f = (u: string) => (cond ? a : WebSocket)',
+      'export const x = cond\n  ? a\n  : WebSocket',
+    ]
+    for (const text of values) {
+      expect(globalClientUse(text), text).toBe('global-client')
+      expect(moduleFileViolations(virtualLibs({}), 'a.ts', text).map((v) => v.kind), text).toEqual(['global-client'])
+      // The value use is still an offence in the file that is trusted for a client type.
+      expect(graphViolations(virtualLibs({ 'lib/agent-registry.ts': text }), ['lib/agent-registry.ts']), text).toEqual([
+        'lib/agent-registry.ts: a global WebSocket, EventSource or XMLHttpRequest client',
+      ])
     }
+  })
+
+  it('reads only a parameter or interface/type member annotation and a generic argument as a client type', () => {
+    const types = [
+      'export function use(ws: WebSocket) { return ws }',
+      'export function use(id: string, ws?: WebSocket) { return ws }',
+      'export const use = (\n  id: string,\n  ws: WebSocket | null,\n) => ws',
+      'export interface Entry {\n  online: boolean\n  ws: WebSocket\n}',
+      'interface Entry extends Base { ws?: WebSocket; id: string }',
+      'export type Entry = { ws: WebSocket }',
+      'export const m = new Map<string, WebSocket>()',
+      'export const all: Array<WebSocket | null> = []',
+    ]
+    for (const text of types) expect(globalClientUse(text), text).toBe('global-client-type')
+    // Shapes the scan does not read as a type are a value, so a misread fails closed.
+    const failClosed = [
+      'class C { ws: WebSocket }',
+      'export function use(opts: { ws: WebSocket }) { return opts }',
+      'type\nEntry = { ws: WebSocket }',
+      'export const r = f(a < b, WebSocket)',
+      'export const r = a < WebSocket',
+      'x: WebSocket',
+    ]
+    for (const text of failClosed) expect(globalClientUse(text), text).toBe('global-client')
+    expect(globalClientUse('export const WebSocketLike = 1')).toBeNull()
   })
 
   it('flags a lib module that loads a module by a computed name, or uses a native binding, a global client or a raw fetch', () => {
