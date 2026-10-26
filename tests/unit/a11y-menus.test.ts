@@ -77,14 +77,12 @@ describe.each(cases)('$name dropdown semantics', (c) => {
     const trigger = container.querySelector<HTMLButtonElement>(c.triggerSelector)!
     expect(trigger).not.toBeNull()
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
-    expect(trigger.hasAttribute('aria-controls')).toBe(false)
 
     await click(trigger)
     expect(trigger.getAttribute('aria-expanded')).toBe('true')
     const menu = container.querySelector('[role="menu"]')!
     expect(menu).not.toBeNull()
     expect(menu.getAttribute('aria-label')).toBe(c.menuLabel)
-    expect(trigger.getAttribute('aria-controls')).toBe(menu.id)
     expect(menu.querySelectorAll('[role="menuitem"]').length).toBeGreaterThan(0)
   })
 

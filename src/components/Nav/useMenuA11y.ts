@@ -1,13 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
  * Shared open/close and keyboard behaviour for the navbar dropdown menus
  * (agent switcher, widget picker, user menu).
  *
- * - The trigger announces the popup (aria-haspopup, aria-expanded,
- *   aria-controls while open).
+ * - The trigger announces the popup (aria-haspopup, aria-expanded).
  * - Opening moves focus to the first menu item; Arrow Up/Down, Home and End
  *   move between items (wrapping), Escape and Tab close the menu.
  * - Every close path (Escape, item activation, backdrop click) hands focus
@@ -21,7 +20,6 @@ export function useMenuA11y() {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
-  const menuId = useId()
 
   const close = useCallback(() => {
     setOpen(false)
@@ -75,12 +73,10 @@ export function useMenuA11y() {
       ref: triggerRef,
       'aria-haspopup': 'menu' as const,
       'aria-expanded': open,
-      'aria-controls': open ? menuId : undefined,
       onClick: toggle,
     },
     menuProps: {
       ref: menuRef,
-      id: menuId,
       role: 'menu' as const,
     },
   }

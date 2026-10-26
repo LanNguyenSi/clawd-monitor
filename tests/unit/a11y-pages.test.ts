@@ -125,6 +125,8 @@ describe('dashboard page', () => {
     expect(mains[0].querySelector('[data-testid="grid"]')).not.toBeNull()
     expect(container.querySelectorAll('h1')).toHaveLength(1)
     expect(mains[0].querySelector('h1')).not.toBeNull()
+    // the shortcut hint is page content, so it lives inside the landmark
+    expect(mains[0].textContent).toContain('for shortcuts')
   })
 })
 

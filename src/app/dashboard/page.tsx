@@ -121,6 +121,11 @@ function DashboardInner() {
           editMode={editMode}
           onLayoutChange={setActiveWidgetIds}
         />
+
+        {/* Help hint */}
+        <div className="fixed bottom-3 right-3 text-xs text-zinc-400 dark:text-zinc-700 select-none">
+          Press <kbd className="bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-sm px-1">?</kbd> for shortcuts
+        </div>
       </main>
 
       <KeyboardShortcuts
@@ -128,11 +133,6 @@ function DashboardInner() {
         onToggleTheme={toggleTheme}
         onToggleEditMode={handleToggleEditMode}
       />
-
-      {/* Help hint */}
-      <div className="fixed bottom-3 right-3 text-xs text-zinc-400 dark:text-zinc-700 select-none">
-        Press <kbd className="bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-sm px-1">?</kbd> for shortcuts
-      </div>
     </div>
   )
 }
