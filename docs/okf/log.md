@@ -2,6 +2,12 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-26T08:27:00Z, auth-and-config-loading and widget-data-modes re-verified and
+  re-stamped after "Reset layout" gained a confirmation prompt in
+  `src/app/dashboard/page.tsx` (two added lines shift later lines). The
+  `router.replace('/login')` citations now read 31-33 and 37-39 and the
+  `ActiveAgentProvider` citation reads line 144; nothing else the docs state
+  about the page changed. Checked with `okf-kit check docs/okf`.
 - 2026-10-26T08:19:19Z, auth-and-config-loading and widget-data-modes re-verified and
   re-stamped after the dashboard layout change. `src/app/dashboard/page.tsx`
   now stores widget layouts per breakpoint through `src/lib/layout-storage.ts`
