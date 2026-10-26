@@ -6,6 +6,14 @@ import type { Layout } from 'react-grid-layout'
 import { GridItem } from './GridItem'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { WIDGET_REGISTRY } from '@/lib/widgets'
+import {
+  defaultLayouts,
+  loadLayouts,
+  saveLayouts,
+  widgetIdsOf,
+  removeWidget,
+  type ResponsiveLayouts,
+} from '@/lib/layout-storage'
 import type { ColCount } from '@/types'
 
 // Lazy-load widgets to keep initial bundle small
@@ -26,28 +34,7 @@ const WIDGET_COMPONENTS: Record<string, React.LazyExoticComponent<() => React.Re
 
 const ResponsiveGrid = WidthProvider(Responsive)
 
-const STORAGE_KEY = 'clawd-monitor:layouts'
 const COLS_KEY = 'clawd-monitor:cols'
-
-const DEFAULT_WIDGET_IDS = ['metrics', 'agent-status', 'cron', 'docker']
-
-function defaultLayouts(cols: ColCount): Layout[] {
-  return DEFAULT_WIDGET_IDS.map((id, i) => {
-    const w = WIDGET_REGISTRY.find((w) => w.id === id)
-    const defaultW = Math.min(w?.defaultW ?? 2, cols)
-    const x = (i * defaultW) % cols
-    const y = Math.floor((i * defaultW) / cols) * (w?.defaultH ?? 2)
-    return {
-      i: id,
-      x,
-      y,
-      w: defaultW,
-      h: w?.defaultH ?? 2,
-      minW: w?.minW,
-      minH: w?.minH,
-    }
-  })
-}
 
 interface Props {
   cols: ColCount
@@ -56,31 +43,21 @@ interface Props {
 }
 
 export function WidgetGrid({ cols, editMode = true, onLayoutChange }: Props) {
-  const [layouts, setLayouts] = useState<Layout[]>([])
+  const [layouts, setLayouts] = useState<ResponsiveLayouts>({})
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) {
-        const parsed = JSON.parse(saved) as Layout[]
-        // Validate that saved layouts contain known widget ids
-        const validIds = new Set(WIDGET_REGISTRY.map((w) => w.id))
-        const valid = parsed.filter((l) => validIds.has(l.i))
-        setLayouts(valid.length > 0 ? valid : defaultLayouts(cols))
-      } else {
-        setLayouts(defaultLayouts(cols))
-      }
-    } catch {
-      setLayouts(defaultLayouts(cols))
-    }
+    const validIds = new Set(WIDGET_REGISTRY.map((w) => w.id))
+    setLayouts(loadLayouts(localStorage, validIds) ?? defaultLayouts(cols))
     setMounted(true)
   }, [cols])
 
-  const handleLayoutChange = useCallback((newLayout: Layout[]) => {
-    setLayouts(newLayout)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newLayout))
-    onLayoutChange?.(newLayout.map((l) => l.i))
+  const handleLayoutChange = useCallback((current: Layout[], all: ResponsiveLayouts) => {
+    // Keep every breakpoint's layout separate: a narrow viewport only changes
+    // its own entry and never overwrites the desktop layout.
+    setLayouts(all)
+    saveLayouts(localStorage, all)
+    onLayoutChange?.(current.map((l) => l.i))
   }, [onLayoutChange])
 
   if (!mounted) return null
@@ -90,32 +67,32 @@ export function WidgetGrid({ cols, editMode = true, onLayoutChange }: Props) {
   return (
     <ResponsiveGrid
       className="react-grid-layout"
-      layouts={{ lg: layouts, md: layouts, sm: layouts }}
+      layouts={layouts}
       cols={colsMap}
       rowHeight={150}
       breakpoints={{ lg: 1200, md: 768, sm: 480, xs: 320, xxs: 0 }}
-      onLayoutChange={(layout) => handleLayoutChange(layout)}
+      onLayoutChange={(current, all) => handleLayoutChange(current, all as ResponsiveLayouts)}
       draggableHandle=".cursor-grab"
       isResizable={editMode}
       isDraggable={editMode}
       margin={[8, 8]}
     >
-      {layouts.map((layout) => {
-        const widget = WIDGET_REGISTRY.find((w) => w.id === layout.i)
+      {widgetIdsOf(layouts).map((id) => {
+        const widget = WIDGET_REGISTRY.find((w) => w.id === id)
         if (!widget) return null
 
         const WidgetComp = WIDGET_COMPONENTS[widget.component]
 
         return (
           <GridItem
-            key={layout.i}
+            key={id}
             title={widget.title}
             editMode={editMode}
             onRemove={() => {
-              const next = layouts.filter((l) => l.i !== layout.i)
+              const next = removeWidget(layouts, id)
               setLayouts(next)
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-              onLayoutChange?.(next.map((l) => l.i))
+              saveLayouts(localStorage, next)
+              onLayoutChange?.(widgetIdsOf(next))
             }}
           >
             <ErrorBoundary>

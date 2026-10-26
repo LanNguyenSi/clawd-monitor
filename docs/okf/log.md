@@ -28,6 +28,20 @@
   already off before this change). auth-and-config-loading cites only the
   auth-check lines of the dashboard page, which still match. Checked with
   `okf-kit check docs/okf`.
+- 2026-10-26T08:27:00Z, auth-and-config-loading and widget-data-modes re-verified and
+  re-stamped after "Reset layout" gained a confirmation prompt in
+  `src/app/dashboard/page.tsx` (two added lines shift later lines). The
+  `router.replace('/login')` citations now read 31-33 and 37-39 and the
+  `ActiveAgentProvider` citation reads line 144; nothing else the docs state
+  about the page changed. Checked with `okf-kit check docs/okf`.
+- 2026-10-26T08:19:19Z, auth-and-config-loading and widget-data-modes re-verified and
+  re-stamped after the dashboard layout change. `src/app/dashboard/page.tsx`
+  now stores widget layouts per breakpoint through `src/lib/layout-storage.ts`
+  and `Navbar.tsx` gets a "Reset layout" button; the cited `router.replace`
+  lines (28-32, 36-38) and the Navbar imports (4-7) are unchanged, the
+  navbar still mounts `AgentSwitcher`, `AddWidgetMenu`, `UserMenu` and
+  `AddAgentModal`, and the `ActiveAgentProvider` citation was re-pointed
+  from line 159 to 142. `addWidgetToStorage` now also takes the shown default layout as fallback. Checked with `okf-kit check docs/okf`.
 - 2026-10-25T08:26:51Z, release cut 0.3.0 changed only the `version` field on line 3 of
   `package.json` (no line shift). auth-and-config-loading re-verified (the cited
   scripts block still names `node dist/server.js` as the start command) and

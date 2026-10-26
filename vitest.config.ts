@@ -20,12 +20,8 @@ const execArgv = process.allowedNodeEnvironmentFlags.has('--no-experimental-webs
   : []
 
 export default defineConfig({
-  // tsconfig keeps `jsx: preserve` for Next, so vitest's own transform has to
-  // compile the .tsx components the a11y tests import (automatic runtime, no
-  // `import React` needed).
-  oxc: {
-    jsx: { runtime: 'automatic' },
-  },
+  // tsconfig keeps `jsx: preserve` for Next; component tests need JSX compiled.
+  oxc: { jsx: { runtime: 'automatic' } },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
@@ -34,7 +30,7 @@ export default defineConfig({
   test: {
     execArgv,
     environment: 'node',
-    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'tests/**/*.test.ts', 'tests/**/*.test.tsx'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

@@ -68,7 +68,7 @@ machine that source runs on.
 `ActiveAgentProvider` keeps `activeAgentId` in React state, initially
 `null` (`src/lib/active-agent.tsx:17#"useState<string | null>(null)"`); the
 dashboard page wraps its grid in it
-(`src/app/dashboard/page.tsx:143#"<ActiveAgentProvider>"`). Two components
+(`src/app/dashboard/page.tsx:145#"<ActiveAgentProvider>"`). Two components
 set it:
 
 - `AgentSwitcher` in the navbar restores the last choice from the
