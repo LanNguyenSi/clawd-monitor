@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ThemeProvider, useTheme } from '@/lib/theme'
@@ -11,6 +11,10 @@ interface TokenEntry {
   name: string
   createdAt: string
   lastUsedAt?: string
+}
+
+function revokeConfirmMessage(name: string): string {
+  return `Revoke token "${name}"? Any agent using it loses access immediately. This cannot be undone.`
 }
 
 function SettingsInner() {
@@ -28,6 +32,9 @@ function SettingsInner() {
   const [tokenName, setTokenName] = useState('')
   const [newToken, setNewToken] = useState<{ token: string; name: string } | null>(null)
   const [tokenLoading, setTokenLoading] = useState(false)
+  const [revokeError, setRevokeError] = useState('')
+  const [revokingId, setRevokingId] = useState<string | null>(null)
+  const revokeInFlight = useRef(false)
   // Inline name editing
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
@@ -115,8 +122,25 @@ function SettingsInner() {
     } finally { setTokenLoading(false) }
   }
 
-  async function handleRevokeToken(id: string) {
-    await fetch(`/api/settings/tokens/${id}`, { method: 'DELETE' })
+  async function handleRevokeToken(t: TokenEntry) {
+    if (revokeInFlight.current) return
+    setRevokeError('')
+    if (!window.confirm(revokeConfirmMessage(t.name))) return
+    revokeInFlight.current = true
+    setRevokingId(t.id)
+    try {
+      const res = await fetch(`/api/settings/tokens/${t.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        setRevokeError(`Could not revoke token "${t.name}" (HTTP ${res.status}). The token list was not changed; reload to see its current state.`)
+        return
+      }
+    } catch {
+      setRevokeError(`Could not revoke token "${t.name}": network error. The token list was not changed; reload to see its current state.`)
+      return
+    } finally {
+      revokeInFlight.current = false
+      setRevokingId(null)
+    }
     await loadTokens()
   }
 
@@ -263,13 +287,21 @@ function SettingsInner() {
                       </div>
                     </div>
                     {editingId !== t.id && (
-                      <button onClick={() => void handleRevokeToken(t.id)}
-                        className="text-xs text-zinc-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors px-2 py-1 rounded-sm border border-zinc-200 dark:border-zinc-800 hover:border-red-300 dark:hover:border-red-800">
+                      <button onClick={() => void handleRevokeToken(t)}
+                        aria-label={`Revoke token ${t.name}`}
+                        aria-disabled={revokingId !== null}
+                        className="text-xs text-red-700 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 transition-colors px-2 py-1 rounded-sm border border-red-300 dark:border-red-900 hover:border-red-400 dark:hover:border-red-700">
                         Revoke
                       </button>
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {revokeError && (
+              <div role="alert" className="px-5 py-3 text-sm text-red-700 dark:text-red-400 border-t border-zinc-200 dark:border-zinc-800">
+                {revokeError}
               </div>
             )}
 
