@@ -126,11 +126,11 @@ function SettingsInner() {
     try {
       const res = await fetch(`/api/settings/tokens/${t.id}`, { method: 'DELETE' })
       if (!res.ok) {
-        setRevokeError(`Could not revoke token "${t.name}" (HTTP ${res.status}). It is still active.`)
+        setRevokeError(`Could not revoke token "${t.name}" (HTTP ${res.status}). The token list was not changed; reload to see its current state.`)
         return
       }
     } catch {
-      setRevokeError(`Could not revoke token "${t.name}": network error. It is still active.`)
+      setRevokeError(`Could not revoke token "${t.name}": network error. The token list was not changed; reload to see its current state.`)
       return
     }
     await loadTokens()
