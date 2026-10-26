@@ -21,17 +21,31 @@
  * - `child_process` is not on that allowlist either. It is allowed per file,
  *   for the routes named in ROUTES_ALLOWED_CHILD_PROCESS with the process each
  *   one runs; any other route that loads it, in any of those forms, fails.
- * - The `@/lib` modules a route may import are scanned too, transitively
- *   through their own `@/lib/...` and relative imports, for anything that can
- *   open a socket or start a process behind the route that imports them: the
- *   transport modules (net, tls, http, https, http2, dgram, child_process,
- *   undici, ws, with or without `node:`), createRequire and process.binding, a
- *   raw fetch, and the global WebSocket, EventSource and XMLHttpRequest. Only
- *   the files that are the guarded transport layer itself may have those, and
- *   they are each named with a reason in TRUSTED_TRANSPORT_LIBS; every other
- *   reachable lib file must be clean. There an `import type` statement and a
- *   type annotation are not a use, because TypeScript erases them and they
- *   load nothing at run time.
+ * - The `@/` modules a route may import are scanned too. Every `@/` entry of
+ *   ALLOWED_ROUTE_IMPORTS (including `@/types`) is a root of a walk over all of
+ *   `src`: a specifier is resolved as `@/*` -> `src/*` or relative to the
+ *   importing file, over the candidates `.ts .tsx .js .jsx .mjs .cjs` and
+ *   `index.*` (tsconfig has `allowJs: true`), and the walk follows the runtime
+ *   imports it finds. It fails open on nothing: a relative or `@/` specifier
+ *   that does not resolve to a file under `src` is an offence naming the file
+ *   and the specifier, so a path that leaves `src` (`../server/evil`), an alias
+ *   to a directory that is not there (`@/server/evil`) or a broken `.js` require
+ *   is refused, not silently dropped.
+ * - A reachable file that is not the trusted transport layer may import, as a
+ *   bare module, only what is on REACHABLE_ALLOWED_MODULES; anything else is an
+ *   offence, so a client nobody thought of (axios, node:dns) is refused too. A
+ *   transport module is named as such in its message. A reachable file may also
+ *   not call fetch itself, use a global client, or load by a computed name or a
+ *   native binding. TypeScript erases an `import type` statement, so it is not
+ *   a use and loads nothing.
+ * - The files that are the guarded transport layer, or that legitimately name a
+ *   client type, are in TRUSTED_REACHABLE_LIBS, mapped to the offence KINDS they
+ *   may have (`gateway.ts`: the operator default fetch only; `pinned-fetch.ts`:
+ *   net, undici, dns, the fetch; `agent-registry.ts`: a global-client type
+ *   annotation). A trusted file is excused only for the kinds it declares, so a
+ *   new capability there (child_process in gateway.ts) is still an offence, and
+ *   every declared kind is asserted to still be present, so a stale trust entry
+ *   fails too.
  * - It is a text scan: deliberate obfuscation (an aliased require, eval, a
  *   computed global name) is out of its scope; the runtime guard in
  *   src/lib/gateway.ts and src/lib/pinned-fetch.ts stays the boundary.
@@ -65,8 +79,8 @@ function usesRawFetch(text: string): boolean {
 
 /**
  * Modules a route under src/app/api may import: the ones the routes import
- * today. None of them is an HTTP or socket client, and the `@/lib` modules are
- * scanned themselves for a client of their own (see TRUSTED_TRANSPORT_LIBS).
+ * today. None of them is an HTTP or socket client, and the `@/` modules are
+ * scanned themselves for a client of their own (see TRUSTED_REACHABLE_LIBS).
  * A route that needs another module adds it here with a reason, which makes
  * the addition a reviewed line. Names are compared without a `node:` prefix.
  * `child_process` is deliberately absent: it is allowed per file, below.
@@ -191,15 +205,14 @@ const NON_GATEWAY_FETCH: Record<string, string> = {
   'proxy/github/route.ts': 'calls the fixed api.github.com host',
 }
 
-/** Everything a route can reach in src/lib starts at a `@/lib/...` allowlist entry. */
-const LIB_PREFIX = '@/lib/'
-const LIB_ROOT = join(__dirname, '..', '..', 'src', 'lib')
+/** The walk root: `@/*` maps to `src/*`, and every path a file lives at is relative to `src`. */
+const SRC_ROOT = join(__dirname, '..', '..', 'src')
 
 /**
- * Modules that open a socket, speak a protocol or start a process, with or
- * without the `node:` prefix. A route imports a `@/lib` module by name, so the
- * module is scanned for these too: a client inside `@/lib/data-store` would sit
- * behind every route that imports it, unseen by the route rules.
+ * Bare modules that open a socket, speak a protocol or start a process, with or
+ * without the `node:` prefix. They are never on REACHABLE_ALLOWED_MODULES, so a
+ * reachable file that imports one is refused; this list is kept for the offence
+ * message, so the failure names the transport rather than just "not allowed".
  */
 const TRANSPORT_MODULES: readonly string[] = [
   'net',
@@ -214,95 +227,163 @@ const TRANSPORT_MODULES: readonly string[] = [
 ]
 
 /**
- * The lib modules that are the guarded transport layer, by path under src/lib.
- * These are the files the scan may find a transport capability in, because
- * running the URL policy and owning the one socket a route request lands on is
- * what they are for. A file is added here by reading it, never to silence a
- * failure: the failure names the file and the module to read.
+ * The bare modules a reachable file (that is not a trusted transport file) may
+ * import: the non-transport runtime dependencies the src/lib and src/types
+ * layer uses today (`rg -n "from '|from \"|require\(" src/lib src/types`). This
+ * is an allowlist, so a module the layer does not use yet (axios, node:dns) is
+ * refused until it is added here with a reason. Transport modules are never
+ * added: they are what the transport layer owns, and they stay an offence.
  */
-const TRUSTED_TRANSPORT_LIBS: Record<string, string> = {
-  'gateway.ts': 'the gateway URL policy plus the operator default fetch, which is the boundary every other rule points at',
-  'pinned-fetch.ts': 'the DNS-pinned undici transport: it opens the socket on purpose, after the URL policy has run',
+const REACHABLE_ALLOWED_MODULES: Record<string, string> = {
+  jsonwebtoken: 'signs and verifies the dashboard session cookie (auth.ts)',
+  bcryptjs: 'hashes agent tokens and the password store',
+  zod: 'validates agent payloads (schemas.ts)',
+  fs: 'reads and writes the local JSON stores (data-store.ts)',
+  path: 'joins paths inside the local data directory (data-store.ts)',
 }
 
 /**
- * `import type ... from '...'` and `export type ... from '...'` statements.
- * TypeScript erases them, so they neither load a module nor construct a client.
- * A statement is matched as a whole, and only while it stays a single
- * specifier-free import head, so a type-only import can never swallow the
- * value import that follows it. `import { type X } from 'ws'` is not treated as
- * type-only (the whole statement is only erased when every binding is a type,
- * which is not worth reasoning about in a text scan).
+ * Reachable files that are allowed to hold a transport capability, mapped to the
+ * offence KINDS they may have. These are the guarded transport layer and the one
+ * file that legitimately names a client type; adding one is a read-the-file
+ * decision, never a way to silence a failure. A trusted file is excused only for
+ * the kinds it lists, and each listed kind is asserted to still be present (in
+ * the real-tree test), so a stale trust entry that no longer matches the file
+ * fails too.
+ */
+const TRUSTED_REACHABLE_LIBS: Record<string, readonly string[]> = {
+  // The gateway URL policy plus the operator default fetch, the boundary the other rules point at.
+  'lib/gateway.ts': ['raw-fetch'],
+  // The DNS-pinned undici transport: it opens the socket on purpose, after the URL policy has run.
+  'lib/pinned-fetch.ts': ['net', 'undici', 'dns', 'raw-fetch'],
+  // Names the agent's socket only as a type (ws: WebSocket); TypeScript erases it, but it is a use this scan reports.
+  'lib/agent-registry.ts': ['global-client-type'],
+}
+
+/**
+ * A real `import type ... from '...'` / `export type ... from '...'` statement.
+ * TypeScript erases it, so it neither loads a module nor constructs a client.
+ * The match is a single, bounded import head (`{ ... }`, `* as name`, or a bare
+ * name) immediately followed by its own `from '...'`; it never reaches across a
+ * newline to a later `from`, so a type ALIAS (`export type N = number`) is not a
+ * match and can never swallow the value import or re-export that follows it.
+ * `import { type X } from 'ws'` is not treated as type-only (the whole statement
+ * is only erased when every binding is a type, which is not worth reasoning
+ * about in a text scan).
  */
 function stripTypeOnlyImports(code: string): string {
   return code.replace(
-    /\b(?:import|export)\s+type\s+(?:(?!from\b)[^'"`;])*?\bfrom\s*(['"`])[^'"`]*\1/g,
+    /\b(?:import|export)\s+type\s+(?:\{[^}]*\}|\*\s+as\s+[\w$]+|[\w$]+)\s+from\s*(['"`])[^'"`]*\1/g,
     '',
   )
 }
 
 /**
- * A global client that is used rather than named in a type position. Only `ws:
- * WebSocket` and `Array<WebSocket>` are read as a type, so a bare reference
- * (`const w = WebSocket`) is an offence even though a type alias of the same
- * shape would be too: the scan errs towards flagging.
+ * Whether a lib file uses a global client as a value, and how, or null if it
+ * does not name one at all. Only an unambiguous type position is not a use: a
+ * `name: X` / `name?: X` annotation (the token right after a `:`), and a generic
+ * argument (`Array<WebSocket>`, `<K, WebSocket>`, the token right after a `<` or
+ * after a comma inside an open `<`). Everything else — `new WebSocket(...)`,
+ * `const w = WebSocket`, an object-literal value `{ c: WebSocket }`, a ternary
+ * `cond ? a : WebSocket` — is a real client. A value use is kind
+ * `global-client`; a purely-annotational one is the weaker kind
+ * `global-client-type` (a client type behind a route, still reported, but the
+ * one kind the type-naming lib is trusted for). `ws: WebSocket` and
+ * `Array<WebSocket>` read as a type; the scan does not try to tell an interface
+ * body from an object literal, so a `{ c: WebSocket }` is reported too and only
+ * a vetted file is trusted for it.
  */
-function usesGlobalClient(code: string): boolean {
-  return /\b(?:WebSocket|EventSource|XMLHttpRequest)\b/.test(
-    code.replace(/[:<]\s*\b(?:WebSocket|EventSource|XMLHttpRequest)\b/g, ''),
-  )
+function globalClientUse(code: string): 'global-client' | 'global-client-type' | null {
+  const re = /\b(?:WebSocket|EventSource|XMLHttpRequest)\b/g
+  let m: RegExpExecArray | null
+  let seen = false
+  while ((m = re.exec(code)) !== null) {
+    seen = true
+    const before = code.slice(0, m.index).replace(/\s+$/, '')
+    const annotation = /[:<]$/.test(before) || (/,[\w$.\s|&]*$/.test(before) && before.lastIndexOf('<') > before.lastIndexOf('>'))
+    if (!annotation) return 'global-client'
+  }
+  return seen ? 'global-client-type' : null
 }
 
 /** The runtime module specifiers of a lib file (type-only imports erased). */
-function libImportSpecifiers(text: string): string[] {
+function moduleImportSpecifiers(text: string): string[] {
   return importedSpecifiers(stripTypeOnlyImports(stripComments(text))).specs
 }
 
+/** A file under `src` resolved from a specifier, an error for a broken path, or null for a bare module. */
+type ResolvedModule = string | { error: string } | null
+
+/** The candidate file paths a stem could name, mirroring the `@/*` alias and the `.js`-to-source rewrite. */
+function moduleCandidates(stem: string): string[] {
+  const base = stem.replace(/\.(?:js|jsx|mjs|cjs)$/, '')
+  const exts = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
+  return [...exts.map((e) => base + e), ...exts.map((e) => `${base}/index${e}`)]
+}
+
 /**
- * What one lib file does that a module behind a route must not do: load a
- * transport module, load a module by a computed name or a native binding, call
- * fetch itself, or use a global client. Type positions are erased and are not
- * an offence here (the route rules keep their stricter text).
+ * Where a specifier points, as a path under `src`. `@/*` maps to `src/*`; a
+ * relative specifier is resolved from the importing file. A package or Node
+ * built-in is null (checked by REACHABLE_ALLOWED_MODULES instead). A relative or
+ * `@/` specifier that names no file under `src` is an error, not a silent drop:
+ * it must not become a way to reach code outside the scan.
  */
-function libFileViolations(rel: string, text: string): string[] {
+function resolveModule(read: (rel: string) => string | null, fromRel: string, spec: string): ResolvedModule {
+  let stem: string | null = null
+  if (spec.startsWith('@/')) stem = spec.slice(2)
+  else if (spec === '.' || spec === '..' || spec.startsWith('./') || spec.startsWith('../')) {
+    const joined = posix.normalize(posix.join(posix.dirname(fromRel), spec))
+    if (joined === '..' || joined.startsWith('../')) return { error: 'resolves to a path above src' }
+    stem = joined
+  }
+  if (stem === null) return null
+  const found = moduleCandidates(stem).find((c) => read(c) !== null)
+  if (found !== undefined) return found
+  return { error: 'does not resolve to a file under src' }
+}
+
+/** An offence of a reachable file: an offence kind (for the trust filter) and its message. */
+type Violation = { kind: string; text: string }
+
+/**
+ * What one reachable file does that a module behind a route must not do: a
+ * relative or `@/` specifier that resolves to no file under src, a bare module
+ * that is not on REACHABLE_ALLOWED_MODULES, a computed name or a native binding,
+ * a raw fetch, or a global client. The type-only imports are erased first; an
+ * internal import is followed by the walk, not reported here.
+ */
+function moduleFileViolations(read: (rel: string) => string | null, rel: string, text: string): Violation[] {
   const code = stripTypeOnlyImports(stripComments(text))
   const { specs, computed } = importedSpecifiers(code)
-  const offences = [] as string[]
-  for (let i = 0; i < computed; i++) offences.push('a computed import() or require() specifier')
+  const out: Violation[] = []
+  const add = (kind: string, desc: string) => out.push({ kind, text: `${rel}: ${desc}` })
+  for (let i = 0; i < computed; i++) add('computed', 'a computed import() or require() specifier')
   for (const spec of specs) {
-    if (TRANSPORT_MODULES.includes(spec.replace(/^node:/, ''))) {
-      offences.push(`imports the transport module '${spec}', so it can open a socket or start a process`)
+    const resolved = resolveModule(read, rel, spec)
+    if (resolved === null) {
+      const name = spec.replace(/^node:/, '')
+      if (name in REACHABLE_ALLOWED_MODULES) continue
+      if (TRANSPORT_MODULES.includes(name)) {
+        add(name, `imports the transport module '${spec}', so it can open a socket or start a process`)
+      } else {
+        add(name, `imports '${spec}', which is not on REACHABLE_ALLOWED_MODULES`)
+      }
+    } else if (typeof resolved === 'object') {
+      add('unresolved', `import of '${spec}' ${resolved.error}`)
     }
   }
   if (/\bcreateRequire\b|\bprocess\s*\.\s*(?:binding|dlopen)\b/.test(code)) {
-    offences.push('createRequire or process.binding (loads a module or a native client without a visible specifier)')
+    add('create-require', 'createRequire or process.binding (loads a module or a native client without a visible specifier)')
   }
-  if (usesGlobalClient(code)) offences.push('a global WebSocket, EventSource or XMLHttpRequest client')
-  if (usesRawFetch(code)) offences.push('calls fetch or pinnedFetch itself instead of going through the gateway helpers')
-  return offences.map((o) => `${rel}: ${o}`)
+  const client = globalClientUse(code)
+  if (client === 'global-client') add(client, 'a global WebSocket, EventSource or XMLHttpRequest client')
+  else if (client === 'global-client-type') add(client, 'a WebSocket, EventSource or XMLHttpRequest type annotation (a client type behind a route)')
+  if (usesRawFetch(code)) add('raw-fetch', 'calls fetch or pinnedFetch itself instead of going through the gateway helpers')
+  return out
 }
 
-/** Files under src/lib a specifier could name, mirroring the `@/*` alias and the `.js`-to-`.ts` rewrite. */
-function libCandidates(fromRel: string, spec: string): string[] {
-  let stem: string | null = null
-  if (spec.startsWith(LIB_PREFIX)) stem = spec.slice(LIB_PREFIX.length)
-  else if (spec === '.' || spec === '..' || spec.startsWith('./') || spec.startsWith('../')) {
-    const joined = posix.normalize(posix.join(posix.dirname(fromRel), spec))
-    if (joined === '..' || joined.startsWith('../')) return []
-    stem = joined
-  }
-  if (stem === null || stem === '' || stem === '.' || stem.startsWith('..')) return []
-  const base = stem.replace(/\.(?:js|mjs|cjs|jsx)$/, '')
-  return [`${base}.ts`, `${base}.tsx`, `${base}/index.ts`, `${base}/index.tsx`]
-}
-
-/** The one file a specifier names, or null when it is an outside module or nothing matches. */
-function resolveLib(read: (rel: string) => string | null, fromRel: string, spec: string): string | null {
-  return libCandidates(fromRel, spec).find((candidate) => read(candidate) !== null) ?? null
-}
-
-/** Every lib file reachable from `rootFiles` through runtime `@/lib/...` and relative imports. */
-function collectReachableLibs(read: (rel: string) => string | null, rootFiles: string[]): Record<string, string> {
+/** Every file under src reachable from `rootFiles` through runtime `@/` and relative imports. */
+function collectReachableModules(read: (rel: string) => string | null, rootFiles: string[]): Record<string, string> {
   const found: Record<string, string> = {}
   const queue = [...rootFiles]
   while (queue.length > 0) {
@@ -311,25 +392,31 @@ function collectReachableLibs(read: (rel: string) => string | null, rootFiles: s
     const text = read(rel)
     if (text === null) continue
     found[rel] = text
-    for (const spec of libImportSpecifiers(text)) {
-      const next = resolveLib(read, rel, spec)
-      if (next !== null) queue.push(next)
+    for (const spec of moduleImportSpecifiers(text)) {
+      const next = resolveModule(read, rel, spec)
+      if (typeof next === 'string') queue.push(next)
     }
   }
   return found
 }
 
-/** Offences of a reachable lib graph: everything but the trusted transport files must be clean. */
-function libGraphViolations(read: (rel: string) => string | null, rootFiles: string[]): string[] {
-  return Object.entries(collectReachableLibs(read, rootFiles))
-    .filter(([rel]) => !(rel in TRUSTED_TRANSPORT_LIBS))
-    .flatMap(([rel, text]) => libFileViolations(rel, text))
+/**
+ * Offences of a reachable module graph. A trusted file is excused only for the
+ * kinds it declares; every other violation, and every violation of an
+ * untrusted file, is reported.
+ */
+function graphViolations(read: (rel: string) => string | null, rootFiles: string[]): string[] {
+  return Object.entries(collectReachableModules(read, rootFiles)).flatMap(([rel, text]) => {
+    const violations = moduleFileViolations(read, rel, text)
+    const kinds = TRUSTED_REACHABLE_LIBS[rel]
+    return (kinds ? violations.filter((v) => !kinds.includes(v.kind)) : violations).map((v) => v.text)
+  })
 }
 
-/** Reads a lib file by its path under src/lib; null when there is no such file. */
-function readLib(rel: string): string | null {
+/** Reads a file by its path under src; null when there is no such file. */
+function readSrc(rel: string): string | null {
   try {
-    return readFileSync(join(LIB_ROOT, rel), 'utf8')
+    return readFileSync(join(SRC_ROOT, rel), 'utf8')
   } catch {
     return null
   }
@@ -340,12 +427,13 @@ function virtualLibs(files: Record<string, string>): (rel: string) => string | n
   return (rel: string) => files[rel] ?? null
 }
 
-const allowedLibSpecs = Object.keys(ALLOWED_ROUTE_IMPORTS).filter((name) => name.startsWith(LIB_PREFIX))
-const unresolvedAllowedLibs = allowedLibSpecs.filter((spec) => resolveLib(readLib, '', spec) === null)
-const reachableLibFiles = allowedLibSpecs
-  .map((spec) => resolveLib(readLib, '', spec))
-  .filter((rel): rel is string => rel !== null)
-const reachableLibSources = collectReachableLibs(readLib, reachableLibFiles)
+const allowedAliasSpecs = Object.keys(ALLOWED_ROUTE_IMPORTS).filter((name) => name.startsWith('@/'))
+const allowedAliasFiles = allowedAliasSpecs.map((spec) => ({ spec, resolved: resolveModule(readSrc, '', spec) }))
+const unresolvedAllowedAlias = allowedAliasFiles.filter((e) => typeof e.resolved !== 'string').map((e) => e.spec)
+const reachableFiles = allowedAliasFiles
+  .map((e) => e.resolved)
+  .filter((r): r is string => typeof r === 'string')
+const reachableSources = collectReachableModules(readSrc, reachableFiles)
 
 describe('gateway consumers, scan rules on sample sources', () => {
   it('flags a raw fetch call, an alias of fetch, a global fetch and pinnedFetch', () => {
@@ -446,14 +534,20 @@ describe('gateway consumers, scan rules on sample sources', () => {
     }
   })
 
-  it('flags a lib module that loads a transport module, and excuses only a trusted transport file', () => {
+  it('flags a lib module that loads a transport module, and excuses a trusted file only for the kinds it declares', () => {
     for (const spec of ['node:net', 'tls', 'http', 'https', 'http2', 'node:dgram', 'child_process', 'undici', 'ws']) {
       const text = `import c from '${spec}'\nexport const x = c`
-      expect(libGraphViolations(virtualLibs({ 'input-validators.ts': text }), ['input-validators.ts']), spec).toEqual([
+      expect(graphViolations(virtualLibs({ 'input-validators.ts': text }), ['input-validators.ts']), spec).toEqual([
         `input-validators.ts: imports the transport module '${spec}', so it can open a socket or start a process`,
       ])
-      expect(libGraphViolations(virtualLibs({ 'pinned-fetch.ts': text }), ['pinned-fetch.ts']), spec).toEqual([])
     }
+    // pinned-fetch.ts is trusted for net, undici, dns and the fetch — not for anything else.
+    const pinned = (spec: string) => graphViolations(virtualLibs({ 'lib/pinned-fetch.ts': `import c from '${spec}'` }), ['lib/pinned-fetch.ts'])
+    expect(pinned('node:net')).toEqual([])
+    expect(pinned('undici')).toEqual([])
+    expect(pinned('node:dns')).toEqual([])
+    expect(pinned('tls')).toEqual(["lib/pinned-fetch.ts: imports the transport module 'tls', so it can open a socket or start a process"])
+    expect(pinned('child_process')).toEqual(["lib/pinned-fetch.ts: imports the transport module 'child_process', so it can open a socket or start a process"])
   })
 
   it('flags a transport module reached through the lib modules a lib module imports', () => {
@@ -461,7 +555,7 @@ describe('gateway consumers, scan rules on sample sources', () => {
       'auth.ts': "import { x } from './b'\nexport const y = x",
       'b.ts': "import { request } from 'undici'\nexport const x = request",
     }
-    expect(libGraphViolations(virtualLibs(direct), ['auth.ts'])).toEqual([
+    expect(graphViolations(virtualLibs(direct), ['auth.ts'])).toEqual([
       "b.ts: imports the transport module 'undici', so it can open a socket or start a process",
     ])
     const deep = {
@@ -469,49 +563,121 @@ describe('gateway consumers, scan rules on sample sources', () => {
       'gate/index.ts': "export { x } from '../b.js'",
       'b.ts': "export { Agent } from 'node:https'",
     }
-    expect(libGraphViolations(virtualLibs(deep), ['auth.ts'])).toEqual([
+    expect(graphViolations(virtualLibs(deep), ['auth.ts'])).toEqual([
       "b.ts: imports the transport module 'node:https', so it can open a socket or start a process",
     ])
     const clean = {
       'auth.ts': "import { x } from './b'\nexport const y = x",
       'b.ts': "import { hash } from 'bcryptjs'\nexport const x = hash",
     }
-    expect(libGraphViolations(virtualLibs(clean), ['auth.ts'])).toEqual([])
+    expect(graphViolations(virtualLibs(clean), ['auth.ts'])).toEqual([])
   })
 
-  it('reads a type-only import and a type annotation in a lib module as no use at all', () => {
-    const erased = {
-      'agent-registry.ts':
-        "import type WebSocket from 'ws'\nimport type { S } from './schemas.js'\nexport const s: S = 1\nexport function use(ws: WebSocket | null) { return ws === null }",
-      'schemas.ts': 'export type S = number',
-    }
-    expect(libGraphViolations(virtualLibs(erased), ['agent-registry.ts'])).toEqual([])
-    const mixed = {
-      'agent-registry.ts':
-        "import type WebSocket from 'ws'\nexport const s = 1\nexport function use(ws: WebSocket | null) { return ws === null }\nimport { connect } from 'net'\nexport const c = connect",
-    }
-    expect(libGraphViolations(virtualLibs(mixed), ['agent-registry.ts'])).toEqual([
-      "agent-registry.ts: imports the transport module 'net', so it can open a socket or start a process",
+  it('erases a type-only import, but reports a global-client type annotation unless the file is trusted for it', () => {
+    // An `import type` from a transport module is erased (TypeScript loads nothing), and X is not a client.
+    expect(graphViolations(virtualLibs({ 'foo.ts': "import type { X } from 'ws'\nexport const x = 1 as X" }), ['foo.ts'])).toEqual([])
+    // A `ws: WebSocket` annotation is a use this scan reports, but it is the only kind lib/agent-registry.ts is trusted for.
+    const wsType = 'export function use(ws: WebSocket | null) { return ws === null }'
+    expect(graphViolations(virtualLibs({ 'agent-registry.ts': wsType }), ['agent-registry.ts'])).toEqual([
+      'agent-registry.ts: a WebSocket, EventSource or XMLHttpRequest type annotation (a client type behind a route)',
     ])
+    expect(graphViolations(virtualLibs({ 'lib/agent-registry.ts': wsType }), ['lib/agent-registry.ts'])).toEqual([])
+  })
+
+  it('does not let a type alias swallow the value import or re-export that follows it', () => {
+    const flagged: Array<[string, string]> = [
+      ["export type N = number\nexport { spawn } from 'child_process'", 'child_process'],
+      ["export type N = number\nimport { connect } from 'net'", 'net'],
+      ["export type Handler = (n: number) => void\nexport { spawn } from 'node:child_process'", 'node:child_process'],
+    ]
+    for (const [text, spec] of flagged) {
+      const offences = graphViolations(virtualLibs({ 'input-validators.ts': text }), ['input-validators.ts'])
+      expect(offences.length, text).toBe(1)
+      expect(offences[0], text).toContain(`transport module '${spec}'`)
+    }
+    // Controls: a real type-only import, and a type alias that does NOT swallow the following import.
+    expect(graphViolations(virtualLibs({ 'input-validators.ts': "import type { X } from 'ws'" }), ['input-validators.ts'])).toEqual([])
+    expect(graphViolations(virtualLibs({ 'input-validators.ts': "export type Y = number\nexport type X = Y\nimport { z } from 'zod'" }), ['input-validators.ts'])).toEqual([])
+  })
+
+  it('refuses a relative or @/ specifier that does not resolve to a file under src', () => {
+    const cases: Array<[Record<string, string>, string]> = [
+      [{ 'lib/a.ts': "import { x } from '../server/evil'\nexport const y = x" }, '../server/evil'],
+      [{ 'lib/a.ts': "import { x } from '@/server/evil'\nexport const y = x" }, '@/server/evil'],
+      [{ 'lib/a.ts': "const m = require('./evil.js')\nexport const y = m" }, './evil.js'],
+    ]
+    for (const [files, spec] of cases) {
+      const offences = graphViolations(virtualLibs(files), ['lib/a.ts'])
+      expect(offences.length, spec).toBe(1)
+      expect(offences[0], spec).toContain(spec)
+      expect(offences[0], spec).toContain('does not resolve')
+    }
+    // Widening the walk to all of src also follows a runtime import into a .js file and scans it.
+    expect(
+      graphViolations(virtualLibs({ 'lib/a.ts': "import { x } from './b.js'\nexport const y = x", 'lib/b.js': "import { request } from 'undici'\nexport const x = request" }), ['lib/a.ts']),
+    ).toEqual(["lib/b.js: imports the transport module 'undici', so it can open a socket or start a process"])
+  })
+
+  it('scans every @/ allowlist root, including @/types', () => {
+    expect(resolveModule(readSrc, '', '@/types')).toBe('types/index.ts')
+    expect(
+      graphViolations(virtualLibs({ 'types/index.ts': "import { spawn } from 'child_process'\nexport const s = spawn" }), ['types/index.ts']),
+    ).toEqual(["types/index.ts: imports the transport module 'child_process', so it can open a socket or start a process"])
+  })
+
+  it('allows a reachable module only the bare modules on REACHABLE_ALLOWED_MODULES', () => {
+    for (const [text, spec] of [["import axios from 'axios'", 'axios'], ["import dns from 'node:dns'", 'node:dns']] as const) {
+      const offences = graphViolations(virtualLibs({ 'data-store.ts': text }), ['data-store.ts'])
+      expect(offences.length, text).toBe(1)
+      expect(offences[0], text).toContain(spec)
+      expect(offences[0], text).toContain('REACHABLE_ALLOWED_MODULES')
+    }
+    expect(graphViolations(virtualLibs({ 'data-store.ts': "import jwt from 'jsonwebtoken'\nexport const j = jwt" }), ['data-store.ts'])).toEqual([])
+  })
+
+  it('excuses a trusted transport file only for its kinds, so child_process in gateway.ts is an offence', () => {
+    expect(graphViolations(virtualLibs({ 'lib/gateway.ts': "import { exec } from 'child_process'\nexport const run = exec" }), ['lib/gateway.ts'])).toEqual([
+      "lib/gateway.ts: imports the transport module 'child_process', so it can open a socket or start a process",
+    ])
+    // gateway.ts is trusted for the operator default fetch, which is present but is not an offence when it is its only kind.
+    expect(graphViolations(virtualLibs({ 'lib/gateway.ts': 'export function r(u: string) { return fetch(u) }' }), ['lib/gateway.ts'])).toEqual([])
+  })
+
+  it('flags an object-literal or ternary use of a global client that a bare colon strip would hide', () => {
+    for (const text of ['export const x = { c: WebSocket }', 'export const x = (cond ? a : WebSocket)']) {
+      const offences = graphViolations(virtualLibs({ 'a.ts': text }), ['a.ts'])
+      expect(offences.length, text).toBe(1)
+      expect(offences[0], text).toContain('WebSocket')
+    }
   })
 
   it('flags a lib module that loads a module by a computed name, or uses a native binding, a global client or a raw fetch', () => {
     const cases: Array<[string, string]> = [
-      ["import { createRequire } from 'node:module'\nexport const r = createRequire", 'createRequire'],
+      ['export const r = createRequire(import.meta.url)', 'createRequire'],
       ["export const t = process.binding('tcp_wrap')", 'process.binding'],
       ["export const ws = new WebSocket('wss://x')", 'global WebSocket'],
       ["export const es = new EventSource('https://x')", 'global WebSocket, EventSource or XMLHttpRequest client'],
-      ["export const r = new XMLHttpRequest()", 'global WebSocket, EventSource or XMLHttpRequest client'],
+      ['export const r = new XMLHttpRequest()', 'global WebSocket, EventSource or XMLHttpRequest client'],
       ['export const get = (u: string) => fetch(u)', 'fetch'],
     ]
     for (const [text, expected] of cases) {
-      const offences = libGraphViolations(virtualLibs({ 'data-store.ts': text }), ['data-store.ts'])
+      const offences = graphViolations(virtualLibs({ 'data-store.ts': text }), ['data-store.ts'])
       expect(offences.length, text).toBe(1)
       expect(offences[0], text).toContain('data-store.ts')
       expect(offences[0], text).toContain(expected)
     }
-    expect(libGraphViolations(virtualLibs({ 'a.ts': 'const m = await import(name)\nexport { m }' }), ['a.ts'])).toEqual([
+    expect(graphViolations(virtualLibs({ 'a.ts': 'const m = await import(name)\nexport { m }' }), ['a.ts'])).toEqual([
       expect.stringContaining('computed import()'),
+    ])
+  })
+
+  it('stops the walk on a cycle (the visited check), reporting the transport module once', { timeout: 3000 }, () => {
+    const files = {
+      'lib/a.ts': "import { x } from './b'\nexport const y = x",
+      'lib/b.ts': "import { request } from 'undici'\nexport { a } from './a'\nexport const r = request",
+    }
+    expect(graphViolations(virtualLibs(files), ['lib/a.ts'])).toEqual([
+      "lib/b.ts: imports the transport module 'undici', so it can open a socket or start a process",
     ])
   })
 
@@ -607,27 +773,30 @@ describe('gateway consumers', () => {
     expect(route.text).not.toMatch(/urlSource/)
   })
 
-  it('resolves every allowlisted @/lib module to a file, so the lib scan has something to read', () => {
-    expect(allowedLibSpecs.length).toBeGreaterThan(3)
-    expect(unresolvedAllowedLibs).toEqual([])
-    const found = Object.keys(reachableLibSources)
-    for (const rel of ['gateway.ts', 'pinned-fetch.ts', 'agent-registry.ts', 'auth.ts']) {
-      expect(found, `src/lib/${rel} must be reachable from a route`).toContain(rel)
+  it('resolves every allowlisted @/ module to a file, including @/types, so the walk has roots', () => {
+    expect(allowedAliasSpecs.length).toBeGreaterThan(4)
+    expect(unresolvedAllowedAlias).toEqual([])
+    const found = Object.keys(reachableSources)
+    for (const rel of ['lib/gateway.ts', 'lib/pinned-fetch.ts', 'lib/agent-registry.ts', 'lib/auth.ts', 'types/index.ts']) {
+      expect(found, `src/${rel} must be reachable from a route`).toContain(rel)
     }
     expect(found.length).toBeGreaterThan(5)
   })
 
   it('has no module reachable from a route that opens a socket or starts a process of its own', () => {
-    const offenders = libGraphViolations(readLib, reachableLibFiles)
+    const offenders = graphViolations(readSrc, reachableFiles)
     expect(offenders).toEqual([])
   })
 
-  it('trusts only transport files that are reachable and really hold the capability', () => {
-    const trusted = Object.keys(TRUSTED_TRANSPORT_LIBS)
+  it('trusts a reachable file only for the capability kinds it declares, and needs them all', () => {
+    const trusted = Object.keys(TRUSTED_REACHABLE_LIBS)
     expect(trusted.length).toBeGreaterThan(0)
     for (const rel of trusted) {
-      expect(Object.keys(reachableLibSources), `src/lib/${rel} must be reachable from a route`).toContain(rel)
-      expect(libFileViolations(rel, reachableLibSources[rel]).length, `src/lib/${rel} must need its trust`).toBeGreaterThan(0)
+      expect(Object.keys(reachableSources), `src/${rel} must be reachable from a route`).toContain(rel)
+      const kinds = new Set(moduleFileViolations(readSrc, rel, reachableSources[rel]).map((v) => v.kind))
+      for (const kind of TRUSTED_REACHABLE_LIBS[rel]) {
+        expect(kinds.has(kind), `src/${rel} must still hold its trusted '${kind}' capability (stale trust entry)`).toBe(true)
+      }
     }
   })
 })
