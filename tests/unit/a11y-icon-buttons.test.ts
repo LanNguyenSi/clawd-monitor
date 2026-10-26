@@ -243,6 +243,18 @@ describe('secondary text contrast floor', () => {
     expect(offenders).toEqual([])
   })
 
+  it('keeps white button text at 4.5:1 in the hover state (indigo-500 is 4.46:1)', () => {
+    const offenders: string[] = []
+    for (const file of walk(join(__dirname, '../../src'))) {
+      for (const { text, line } of stringLiterals(readFileSync(file, 'utf8'))) {
+        if (/(?<![\w:-])text-white\b/.test(text) && /\bhover:bg-(indigo|green|red|yellow|orange)-[1-5]00\b/.test(text)) {
+          offenders.push(`${file.replace(/.*src\//, 'src/')}:${line}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
   it('checks every branch of a ternary on its own, not the whole expression', () => {
     const src = "const c = `x ${ok ? 'text-zinc-500 dark:text-zinc-400' : 'text-zinc-500'}`"
     expect(stringLiterals(src).filter((l) => unpairedZinc(l.text)).map((l) => l.text)).toEqual(['text-zinc-500'])

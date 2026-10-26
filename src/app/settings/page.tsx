@@ -240,7 +240,7 @@ function SettingsInner() {
             ))}
             {pwMsg && <p className={`text-sm ${pwStatus === 'success' ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>{pwMsg}</p>}
             <button type="submit" disabled={pwStatus === 'loading'}
-              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm font-medium transition-colors">
+              className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm font-medium transition-colors">
               {pwStatus === 'loading' ? 'Updating…' : 'Update Password'}
             </button>
           </form>
@@ -315,7 +315,7 @@ function SettingsInner() {
                   className="flex-1 bg-zinc-50 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                 />
                 <button type="submit" disabled={tokenLoading}
-                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm transition-colors whitespace-nowrap">
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm transition-colors whitespace-nowrap">
                   {tokenLoading ? '…' : '+ Generate Token'}
                 </button>
               </form>
