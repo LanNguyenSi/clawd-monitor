@@ -8,6 +8,7 @@ import { KeyboardShortcuts } from '@/components/KeyboardShortcuts'
 import { ActiveAgentProvider } from '@/lib/active-agent'
 import { ThemeProvider, useTheme } from '@/lib/theme'
 import { WIDGET_REGISTRY } from '@/lib/widgets'
+import { addWidgetToStorage, resetLayouts } from '@/lib/layout-storage'
 import type { ColCount } from '@/types'
 
 const COLS_KEY = 'clawd-monitor:cols'
@@ -82,17 +83,15 @@ function DashboardInner() {
   }, [])
 
   const handleAddWidget = useCallback((widgetId: string) => {
-    const STORAGE_KEY = 'clawd-monitor:layouts'
     const widget = WIDGET_REGISTRY.find((w) => w.id === widgetId)
     if (!widget) return
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      const layouts = saved ? JSON.parse(saved) as { i: string; x: number; y: number; w: number; h: number }[] : []
-      const maxY = layouts.reduce((max, l) => Math.max(max, l.y + l.h), 0)
-      layouts.push({ i: widgetId, x: 0, y: maxY, w: widget.defaultW, h: widget.defaultH })
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(layouts))
-      setGridKey((k) => k + 1)
-    } catch {}
+    addWidgetToStorage(localStorage, widget, new Set(WIDGET_REGISTRY.map((w) => w.id)))
+    setGridKey((k) => k + 1)
+  }, [])
+
+  const handleResetLayout = useCallback(() => {
+    resetLayouts(localStorage)
+    setGridKey((k) => k + 1)
   }, [])
 
   const handleToggleEditMode = useCallback(() => {
@@ -111,6 +110,7 @@ function DashboardInner() {
         editMode={editMode}
         onToggleEditMode={handleToggleEditMode}
         onAddWidget={handleAddWidget}
+        onResetLayout={handleResetLayout}
         activeWidgetIds={activeWidgetIds}
       />
       <div className="flex-1 overflow-auto p-2">
