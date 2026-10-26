@@ -228,16 +228,15 @@ const TRANSPORT_MODULES: readonly string[] = [
 
 /**
  * The bare modules a reachable file (that is not a trusted transport file) may
- * import: the non-transport runtime dependencies the src/lib and src/types
- * layer uses today (`rg -n "from '|from \"|require\(" src/lib src/types`). This
- * is an allowlist, so a module the layer does not use yet (axios, node:dns) is
- * refused until it is added here with a reason. Transport modules are never
- * added: they are what the transport layer owns, and they stay an offence.
+ * import: the non-transport runtime dependencies the reachable files import
+ * today. This is an allowlist, so a module the layer does not use yet (axios,
+ * node:dns) is refused until it is added here with a reason. Transport modules
+ * are never added: they are what the transport layer owns, and they stay an
+ * offence. Every entry must be in use by a reachable file (checked in the
+ * real-tree tests), so the list cannot keep a permission nobody needs.
  */
 const REACHABLE_ALLOWED_MODULES: Record<string, string> = {
   jsonwebtoken: 'signs and verifies the dashboard session cookie (auth.ts)',
-  bcryptjs: 'hashes agent tokens and the password store',
-  zod: 'validates agent payloads (schemas.ts)',
   fs: 'reads and writes the local JSON stores (data-store.ts)',
   path: 'joins paths inside the local data directory (data-store.ts)',
 }
@@ -568,7 +567,7 @@ describe('gateway consumers, scan rules on sample sources', () => {
     ])
     const clean = {
       'auth.ts': "import { x } from './b'\nexport const y = x",
-      'b.ts': "import { hash } from 'bcryptjs'\nexport const x = hash",
+      'b.ts': "import { join } from 'path'\nexport const x = join",
     }
     expect(graphViolations(virtualLibs(clean), ['auth.ts'])).toEqual([])
   })
@@ -582,6 +581,40 @@ describe('gateway consumers, scan rules on sample sources', () => {
       'agent-registry.ts: a WebSocket, EventSource or XMLHttpRequest type annotation (a client type behind a route)',
     ])
     expect(graphViolations(virtualLibs({ 'lib/agent-registry.ts': wsType }), ['lib/agent-registry.ts'])).toEqual([])
+    // A type import plus the annotation is clean in the trusted file, and the relative `import type` is not followed:
+    // schemas.ts imports a module that is on no list, so following it would be an offence.
+    const erased = {
+      'lib/agent-registry.ts':
+        "import type WebSocket from 'ws'\nimport type { S } from './schemas.js'\nexport const s: S = 1\nexport function use(ws: WebSocket | null) { return ws === null }",
+      'lib/schemas.ts': "import { z } from 'zod'\nexport const schema = z",
+    }
+    expect(graphViolations(virtualLibs(erased), ['lib/agent-registry.ts'])).toEqual([])
+    expect(Object.keys(collectReachableModules(virtualLibs(erased), ['lib/agent-registry.ts']))).toEqual(['lib/agent-registry.ts'])
+    // The same type import and annotation do not hide a value `net` import that follows them.
+    const mixed = {
+      'lib/agent-registry.ts':
+        "import type WebSocket from 'ws'\nexport const s = 1\nexport function use(ws: WebSocket | null) { return ws === null }\nimport { connect } from 'net'\nexport const c = connect",
+    }
+    expect(graphViolations(virtualLibs(mixed), ['lib/agent-registry.ts'])).toEqual([
+      "lib/agent-registry.ts: imports the transport module 'net', so it can open a socket or start a process",
+    ])
+  })
+
+  it('strips a type-only import only up to the end of its own import head, so it cannot swallow the next statement', () => {
+    // `export type { A }` re-exports a local type and has no `from`: the strip must not run on to the next `from`.
+    const flagged: Array<[string, string]> = [
+      ["export type { A }\nimport { spawn } from 'child_process'\nexport const s = spawn", 'child_process'],
+      ["export type { A }\nexport { connect } from 'net'", 'net'],
+    ]
+    for (const [text, spec] of flagged) {
+      expect(graphViolations(virtualLibs({ 'lib/data-store.ts': text }), ['lib/data-store.ts']), text).toEqual([
+        `lib/data-store.ts: imports the transport module '${spec}', so it can open a socket or start a process`,
+      ])
+    }
+    // Controls: each import head form is still erased (a default name, and a namespace).
+    for (const text of ["import type WebSocket from 'ws'", "import type * as ns from 'ws'"]) {
+      expect(graphViolations(virtualLibs({ 'lib/data-store.ts': text }), ['lib/data-store.ts']), text).toEqual([])
+    }
   })
 
   it('does not let a type alias swallow the value import or re-export that follows it', () => {
@@ -597,7 +630,7 @@ describe('gateway consumers, scan rules on sample sources', () => {
     }
     // Controls: a real type-only import, and a type alias that does NOT swallow the following import.
     expect(graphViolations(virtualLibs({ 'input-validators.ts': "import type { X } from 'ws'" }), ['input-validators.ts'])).toEqual([])
-    expect(graphViolations(virtualLibs({ 'input-validators.ts': "export type Y = number\nexport type X = Y\nimport { z } from 'zod'" }), ['input-validators.ts'])).toEqual([])
+    expect(graphViolations(virtualLibs({ 'input-validators.ts': "export type Y = number\nexport type X = Y\nimport { join } from 'path'" }), ['input-validators.ts'])).toEqual([])
   })
 
   it('refuses a relative or @/ specifier that does not resolve to a file under src', () => {
@@ -786,6 +819,17 @@ describe('gateway consumers', () => {
   it('has no module reachable from a route that opens a socket or starts a process of its own', () => {
     const offenders = graphViolations(readSrc, reachableFiles)
     expect(offenders).toEqual([])
+  })
+
+  it('keeps every REACHABLE_ALLOWED_MODULES entry in use by a reachable file', () => {
+    const used = new Set(
+      Object.entries(reachableSources).flatMap(([rel, text]) =>
+        moduleImportSpecifiers(text)
+          .filter((spec) => resolveModule(readSrc, rel, spec) === null)
+          .map((spec) => spec.replace(/^node:/, '')),
+      ),
+    )
+    expect(Object.keys(REACHABLE_ALLOWED_MODULES).filter((name) => !used.has(name))).toEqual([])
   })
 
   it('trusts a reachable file only for the capability kinds it declares, and needs them all', () => {
