@@ -13,10 +13,11 @@ interface Props {
   editMode?: boolean
   onToggleEditMode?: () => void
   onAddWidget?: (widgetId: string) => void
+  onResetLayout?: () => void
   activeWidgetIds?: string[]
 }
 
-export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWidget, activeWidgetIds = [] }: Props) {
+export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWidget, onResetLayout, activeWidgetIds = [] }: Props) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [addAgentOpen, setAddAgentOpen] = useState(false)
 
@@ -51,6 +52,16 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
               title={editMode ? 'Lock layout (e)' : 'Edit layout (e)'}
             >
               {editMode ? '✏️ editing' : '🔒 locked'}
+            </button>
+          )}
+
+          {onResetLayout && (
+            <button
+              onClick={onResetLayout}
+              className="text-xs px-2 py-1 rounded-sm border border-zinc-300 text-zinc-600 hover:text-zinc-900 hover:border-zinc-400 dark:border-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:border-zinc-700 transition-colors"
+              title="Restore the default widget layout"
+            >
+              Reset layout
             </button>
           )}
 
@@ -103,6 +114,15 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
                 }`}
               >
                 {editMode ? '✏️ editing' : '🔒 locked'}
+              </button>
+            )}
+
+            {onResetLayout && (
+              <button
+                onClick={onResetLayout}
+                className="text-xs px-2 py-1 rounded-sm border border-zinc-300 text-zinc-600 dark:border-zinc-800 dark:text-zinc-400"
+              >
+                Reset layout
               </button>
             )}
 
