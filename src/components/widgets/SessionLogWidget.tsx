@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
 import { fetcher } from '@/lib/fetcher'
+import { ScrollRegion } from './ScrollRegion'
 
 interface SessionMessage {
   role: string
@@ -90,6 +91,7 @@ export function SessionLogWidget() {
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-2 py-1.5 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
         <select
+          aria-label="Session"
           value={selectedSession}
           onChange={(e) => setSelectedSession(e.target.value)}
           className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 flex-1 min-w-0"
@@ -114,7 +116,7 @@ export function SessionLogWidget() {
         >↓</button>
       </div>
 
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-2 py-2 space-y-1.5">
+      <ScrollRegion label="Session log" scrollRef={scrollContainerRef} className="flex-1 px-2 py-2 space-y-1.5">
         {!snapshotData && (
           <div className="flex items-center justify-center h-full">
             <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Loading…</span>
@@ -145,7 +147,7 @@ export function SessionLogWidget() {
           </div>
         ))}
         <div ref={bottomRef} />
-      </div>
+      </ScrollRegion>
     </div>
   )
 }

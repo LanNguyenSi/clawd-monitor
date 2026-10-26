@@ -113,14 +113,15 @@ function DashboardInner() {
         onAddWidget={handleAddWidget}
         activeWidgetIds={activeWidgetIds}
       />
-      <div className="flex-1 overflow-auto p-2">
+      <main className="flex-1 overflow-auto p-2">
+        <h1 className="sr-only">Dashboard</h1>
         <WidgetGrid
           key={gridKey}
           cols={cols}
           editMode={editMode}
           onLayoutChange={setActiveWidgetIds}
         />
-      </div>
+      </main>
 
       <KeyboardShortcuts
         onRefresh={handleRefresh}

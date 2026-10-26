@@ -2,6 +2,7 @@
 
 import useSWR from 'swr'
 import { fetcher } from '@/lib/fetcher'
+import { ScrollRegion } from './ScrollRegion'
 
 interface Alert {
   key: string
@@ -51,7 +52,7 @@ export function AlertHistoryWidget() {
       )}
 
       {alerts.length > 0 && (
-        <div className="overflow-y-auto divide-y divide-zinc-200/50 dark:divide-zinc-800/50 flex-1">
+        <ScrollRegion label="Alert history" className="divide-y divide-zinc-200/50 dark:divide-zinc-800/50 flex-1">
           {alerts.map((alert, i) => (
             <div key={i} className="flex items-center gap-3 px-3 py-2">
               <span className="text-sm">⚠️</span>
@@ -61,7 +62,7 @@ export function AlertHistoryWidget() {
               </div>
             </div>
           ))}
-        </div>
+        </ScrollRegion>
       )}
     </div>
   )

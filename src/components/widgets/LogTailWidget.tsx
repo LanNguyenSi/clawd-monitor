@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
 import { fetcher } from '@/lib/fetcher'
+import { ScrollRegion } from './ScrollRegion'
 
 
 type LogSource = 'openclaw' | 'docker' | 'system'
@@ -102,6 +103,7 @@ export function LogTailWidget() {
       {/* Controls */}
       <div className="flex items-center gap-2 px-2 py-1.5 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
         <select
+          aria-label="Log source"
           value={source}
           onChange={(e) => setSource(e.target.value as LogSource)}
           className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300"
@@ -113,6 +115,7 @@ export function LogTailWidget() {
 
         {source === 'docker' && (
           <select
+            aria-label="Docker container"
             value={container}
             onChange={(e) => { setContainer(e.target.value); connect('docker', e.target.value, activeAgentId) }}
             className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 max-w-40"
@@ -151,7 +154,7 @@ export function LogTailWidget() {
       </div>
 
       {/* Log output */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto font-mono text-xs leading-relaxed px-2 py-1">
+      <ScrollRegion label="Log output" scrollRef={scrollContainerRef} className="flex-1 font-mono text-xs leading-relaxed px-2 py-1">
         {status === 'connecting' && lines.length === 0 && (
           <div className="text-zinc-400 dark:text-zinc-600 animate-pulse">Connecting…</div>
         )}
@@ -164,7 +167,7 @@ export function LogTailWidget() {
           </div>
         ))}
         <div ref={bottomRef} />
-      </div>
+      </ScrollRegion>
     </div>
   )
 }

@@ -4,6 +4,7 @@ import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
 import { fetcher } from '@/lib/fetcher'
 import { restartBadge, createdLabel } from '@/lib/docker-display'
+import { ScrollRegion } from './ScrollRegion'
 
 interface DockerContainer {
   id: string; name: string; image: string
@@ -67,7 +68,7 @@ export function DockerWidget() {
       )}
 
       {!isLoading && containers.length > 0 && (
-        <div className="overflow-y-auto divide-y divide-zinc-200/50 dark:divide-zinc-800/50 flex-1">
+        <ScrollRegion label="Docker containers" className="divide-y divide-zinc-200/50 dark:divide-zinc-800/50 flex-1">
           {containers.map((c) => (
             <div key={c.id} className="px-3 py-2 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/20 transition-colors">
               <div className="flex items-center gap-2">
@@ -83,7 +84,7 @@ export function DockerWidget() {
               </div>
             </div>
           ))}
-        </div>
+        </ScrollRegion>
       )}
     </div>
   )

@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import useSWR from 'swr'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import { useActiveAgent } from '@/lib/active-agent'
 import { fetcher } from '@/lib/fetcher'
+import { ScrollRegion } from './ScrollRegion'
 
 type MemFile = 'memory' | 'current' | 'today' | 'yesterday'
 
@@ -13,6 +14,17 @@ const FILE_LABELS: Record<MemFile, string> = {
   current:   'CURRENT.md',
   today:     "Today's log",
   yesterday: "Yesterday's log",
+}
+
+// The page owns the h1 and each widget title is an h2, so headings inside a
+// memory file are shifted down by two levels (h1 -> h3 ... h4-h6 -> h6).
+export const MARKDOWN_HEADINGS: Components = {
+  h1: 'h3',
+  h2: 'h4',
+  h3: 'h5',
+  h4: 'h6',
+  h5: 'h6',
+  h6: 'h6',
 }
 
 interface MemoryResponse {
@@ -103,6 +115,7 @@ export function MemoryWidget() {
       {/* Controls */}
       <div className="flex items-center gap-2 px-2 py-1.5 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
         <select
+          aria-label="Memory file"
           value={selectedFile}
           onChange={(e) => setSelectedFile(e.target.value as MemFile)}
           className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 flex-1"
@@ -134,7 +147,7 @@ export function MemoryWidget() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-3 py-2">
+      <ScrollRegion label="Memory file content" className="flex-1 px-3 py-2">
         {isLoading && <div className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Loading…</div>}
         {!isLoading && errorMsg && (
           <div className="space-y-1">
@@ -147,11 +160,11 @@ export function MemoryWidget() {
           </div>
         )}
         {!isLoading && content && (
-          <div className="prose prose-zinc dark:prose-invert prose-xs max-w-none text-xs *:text-zinc-700 dark:*:text-zinc-300 [&>h1]:text-sm [&>h2]:text-xs [&>h3]:text-xs [&_code]:text-xs [&_pre]:text-xs">
-            <ReactMarkdown>{content}</ReactMarkdown>
+          <div className="prose prose-zinc dark:prose-invert prose-xs max-w-none text-xs *:text-zinc-700 dark:*:text-zinc-300 [&>h3]:text-sm [&>h4]:text-xs [&>h5]:text-xs [&_code]:text-xs [&_pre]:text-xs">
+            <ReactMarkdown components={MARKDOWN_HEADINGS}>{content}</ReactMarkdown>
           </div>
         )}
-      </div>
+      </ScrollRegion>
     </div>
   )
 }

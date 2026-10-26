@@ -4,6 +4,7 @@ import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
 import type { CronJob } from '@/types'
 import { fetcher } from '@/lib/fetcher'
+import { ScrollRegion } from './ScrollRegion'
 
 interface CronResponse { jobs?: CronJob[]; error?: string }
 interface SnapshotResponse { snapshot?: { cronJobs?: CronJob[] }; online?: boolean; lastSnapshotAt?: number }
@@ -94,7 +95,7 @@ export function CronWidget() {
       )}
 
       {jobs.length > 0 && (
-        <div className="overflow-y-auto divide-y divide-zinc-200/50 dark:divide-zinc-800/50 flex-1">
+        <ScrollRegion label="Cron jobs" className="divide-y divide-zinc-200/50 dark:divide-zinc-800/50 flex-1">
           {jobs.map((job) => (
             <div key={job.id} className="px-3 py-2 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/20 transition-colors">
               <div className="flex items-center justify-between gap-2">
@@ -110,7 +111,7 @@ export function CronWidget() {
               </div>
             </div>
           ))}
-        </div>
+        </ScrollRegion>
       )}
     </div>
   )

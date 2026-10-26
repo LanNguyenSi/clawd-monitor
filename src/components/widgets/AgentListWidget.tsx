@@ -3,6 +3,7 @@
 import useSWR from 'swr'
 import { useActiveAgent } from '@/lib/active-agent'
 import { fetcher } from '@/lib/fetcher'
+import { ScrollRegion } from './ScrollRegion'
 
 interface AgentEntry {
   agentId: string
@@ -58,7 +59,7 @@ export function AgentListWidget() {
       )}
 
       {agents.length > 0 && (
-        <div className="divide-y divide-zinc-200/50 dark:divide-zinc-800/50 overflow-y-auto flex-1">
+        <ScrollRegion label="Connected agents" className="divide-y divide-zinc-200/50 dark:divide-zinc-800/50 flex-1">
           {agents.map((agent) => {
             const isActive = activeAgentId === agent.agentId
             return (
@@ -90,7 +91,7 @@ export function AgentListWidget() {
               </button>
             )
           })}
-        </div>
+        </ScrollRegion>
       )}
     </div>
   )

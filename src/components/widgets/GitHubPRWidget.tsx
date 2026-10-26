@@ -2,6 +2,7 @@
 
 import useSWR from 'swr'
 import { fetcher } from '@/lib/fetcher'
+import { ScrollRegion } from './ScrollRegion'
 
 interface GitHubPR {
   id: number
@@ -60,7 +61,7 @@ export function GitHubPRWidget() {
       )}
 
       {prs.length > 0 && (
-        <div className="overflow-y-auto divide-y divide-zinc-200/50 dark:divide-zinc-800/50 flex-1">
+        <ScrollRegion label="GitHub pull requests" className="divide-y divide-zinc-200/50 dark:divide-zinc-800/50 flex-1">
           {prs.map((pr) => (
             <a
               key={pr.id}
@@ -81,7 +82,7 @@ export function GitHubPRWidget() {
               </div>
             </a>
           ))}
-        </div>
+        </ScrollRegion>
       )}
     </div>
   )
