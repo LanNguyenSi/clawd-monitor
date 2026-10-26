@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Form fields, menus, the shortcut overlay and scrollable widgets work with a screen reader and the keyboard.** The three password fields on `/settings` and the token name inputs now have labels and `autocomplete` hints (`current-password`, `new-password`), so assistive technology and password managers can tell them apart; the login field has a visually hidden label and a failed login is announced (`role="alert"`). The agent switcher, `+ Widget` and user menus announce `aria-haspopup`/`aria-expanded`, use `role="menu"`/`menuitem`, open with focus on the first item, move with the arrow keys, Home and End, close on Escape, Tab or a click outside, and return focus to their trigger. The `?` overlay is a modal `dialog` with a name and a labelled close button, takes focus when it opens, gives it back when it closes, and also closes on a click outside it. `/dashboard` and `/settings` have a `main` landmark and one (visually hidden) `h1`, widget titles are `h2`, and headings inside a memory file are shifted below them so the page keeps one `h1`. Every scrollable widget list is a focusable, named region with a visible focus ring, so it scrolls with the arrow keys; the widget selects and the widget remove button have accessible names. Colour contrast is not part of this change.
+
 ## [0.3.0] - 2026-10-25
 
 ### Security
