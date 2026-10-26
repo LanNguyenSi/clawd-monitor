@@ -96,6 +96,15 @@ describe('decorative glyphs', () => {
     expect(exposedGlyphs(container)).toEqual([])
   })
 
+  it('hides the emoji of the open user menu', async () => {
+    const { container } = await mount(navbar())
+    await flush()
+    await click(container.querySelector('button[aria-label="User menu"]')!)
+    const menu = container.querySelector('[role="menu"]')!
+    expect(menu.textContent).toContain('Settings')
+    expect(exposedGlyphs(menu)).toEqual([])
+  })
+
   it('hides the settings page emoji and names the rename button', async () => {
     const { container } = await mount(h(SettingsPage))
     await flush()
