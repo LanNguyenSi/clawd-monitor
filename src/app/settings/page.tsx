@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ThemeProvider, useTheme } from '@/lib/theme'
@@ -33,6 +33,8 @@ function SettingsInner() {
   const [newToken, setNewToken] = useState<{ token: string; name: string } | null>(null)
   const [tokenLoading, setTokenLoading] = useState(false)
   const [revokeError, setRevokeError] = useState('')
+  const [revokingId, setRevokingId] = useState<string | null>(null)
+  const revokeInFlight = useRef(false)
   // Inline name editing
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
@@ -121,8 +123,11 @@ function SettingsInner() {
   }
 
   async function handleRevokeToken(t: TokenEntry) {
-    if (!window.confirm(revokeConfirmMessage(t.name))) return
+    if (revokeInFlight.current) return
     setRevokeError('')
+    if (!window.confirm(revokeConfirmMessage(t.name))) return
+    revokeInFlight.current = true
+    setRevokingId(t.id)
     try {
       const res = await fetch(`/api/settings/tokens/${t.id}`, { method: 'DELETE' })
       if (!res.ok) {
@@ -132,6 +137,9 @@ function SettingsInner() {
     } catch {
       setRevokeError(`Could not revoke token "${t.name}": network error. The token list was not changed; reload to see its current state.`)
       return
+    } finally {
+      revokeInFlight.current = false
+      setRevokingId(null)
     }
     await loadTokens()
   }
@@ -281,6 +289,7 @@ function SettingsInner() {
                     {editingId !== t.id && (
                       <button onClick={() => void handleRevokeToken(t)}
                         aria-label={`Revoke token ${t.name}`}
+                        aria-disabled={revokingId !== null}
                         className="text-xs text-red-700 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 transition-colors px-2 py-1 rounded-sm border border-red-300 dark:border-red-900 hover:border-red-400 dark:hover:border-red-700">
                         Revoke
                       </button>

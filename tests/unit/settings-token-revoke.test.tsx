@@ -23,6 +23,7 @@ let host: HTMLDivElement
 let root: Root
 let deleteImpl: (url: string) => Promise<Response>
 let deleteCalls: string[]
+let listCalls: number
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status })
@@ -50,6 +51,7 @@ async function click(b: HTMLElement) {
 
 beforeEach(() => {
   deleteCalls = []
+  listCalls = 0
   deleteImpl = async () => json({ ok: true })
   let tokens = [...TOKENS]
   vi.stubGlobal(
@@ -61,7 +63,10 @@ beforeEach(() => {
         if (res.ok) tokens = tokens.filter((t) => `/api/settings/tokens/${t.id}` !== url)
         return res
       }
-      if (url === '/api/settings/tokens') return json({ tokens })
+      if (url === '/api/settings/tokens') {
+        listCalls++
+        return json({ tokens })
+      }
       return json({ authenticated: true })
     }),
   )
@@ -112,6 +117,8 @@ describe('token revoke', () => {
     expect(alert?.textContent).toContain('vps-main')
     expect(alert?.textContent).toContain('500')
     expect(revokeButtons()).toHaveLength(2)
+    // A failed delete must not reload the list (a reload would hide the failure).
+    expect(listCalls).toBe(1)
   })
 
   it('shows an alert and keeps the token on a network error', async () => {
@@ -123,6 +130,7 @@ describe('token revoke', () => {
     await click(revokeButtons()[0])
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('network error')
     expect(revokeButtons()).toHaveLength(2)
+    expect(listCalls).toBe(1)
   })
 
   it('clears the previous error on the next successful revoke', async () => {
@@ -134,5 +142,39 @@ describe('token revoke', () => {
     deleteImpl = async () => json({ ok: true })
     await click(revokeButtons()[0])
     expect(host.querySelector('[role="alert"]')).toBeNull()
+  })
+
+  it('clears a stale error when a later confirmation is cancelled', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    deleteImpl = async () => json({}, 500)
+    await mount()
+    await click(revokeButtons()[0])
+    expect(host.querySelector('[role="alert"]')).not.toBeNull()
+    confirm.mockReturnValue(false)
+    await click(revokeButtons()[1])
+    expect(host.querySelector('[role="alert"]')).toBeNull()
+    expect(deleteCalls).toHaveLength(1)
+  })
+
+  it('ignores a second click while a revoke is in flight and marks the button busy', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    let release!: () => void
+    deleteImpl = () =>
+      new Promise<Response>((resolve) => {
+        release = () => resolve(json({ ok: true }))
+      })
+    await mount()
+    const first = revokeButtons()[0]
+    await click(first)
+    await click(first)
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(deleteCalls).toEqual(['/api/settings/tokens/t1'])
+    expect(revokeButtons().every((b) => b.getAttribute('aria-disabled') === 'true')).toBe(true)
+    await act(async () => release())
+    await act(async () => {})
+    expect(revokeButtons()).toHaveLength(1)
+    expect(revokeButtons()[0].getAttribute('aria-disabled')).toBe('false')
+    await click(revokeButtons()[0])
+    expect(deleteCalls).toHaveLength(2)
   })
 })
