@@ -345,7 +345,7 @@ const TYPE_BODY_HEAD =
  * (`cond ? a : X`), a class property, a nested object type in an annotation.
  */
 function isTypePosition(code: string, start: number, end: number): boolean {
-  const colon = /(?<![\w$.])[\w$]+\s*\??\s*:\s*$/.exec(code.slice(0, start))
+  const colon = /[\w$]+\s*\??\s*:\s*$/.exec(code.slice(0, start))
   if (colon) {
     const open = enclosingBracket(code, colon.index)
     if (open >= 0 && code[open] === '(') return /[(,]\s*$/.test(code.slice(0, colon.index))
@@ -799,6 +799,7 @@ describe('gateway consumers, scan rules on sample sources', () => {
     const values = [
       'export const x = { c: WebSocket }',
       'export const x = { a: 1, c: WebSocket }',
+      'export const x = { a: f(1), c: WebSocket }',
       'export const x = (cond ? a : WebSocket)',
       'export const f = (u: string) => (cond ? a : WebSocket)',
       'export const x = cond\n  ? a\n  : WebSocket',
@@ -831,7 +832,10 @@ describe('gateway consumers, scan rules on sample sources', () => {
       'export function use(opts: { ws: WebSocket }) { return opts }',
       'type\nEntry = { ws: WebSocket }',
       'export const r = f(a < b, WebSocket)',
+      'export const r = f(a<b, WebSocket)',
+      'export const r = f(a<b(), WebSocket>c)',
       'export const r = a < WebSocket',
+      'export const r = a < WebSocket > b',
       'x: WebSocket',
     ]
     for (const text of failClosed) expect(globalClientUse(text), text).toBe('global-client')
