@@ -125,7 +125,7 @@ function DashboardInner() {
         />
 
         {/* Help hint */}
-        <div className="mt-3 text-right text-xs text-zinc-500 dark:text-zinc-400 select-none">
+        <div className="mt-3 text-right text-xs text-zinc-600 dark:text-zinc-400 select-none">
           Press <kbd className="bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-sm px-1">?</kbd> for shortcuts
         </div>
       </main>

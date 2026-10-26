@@ -168,7 +168,7 @@ function SettingsInner() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-zinc-800 dark:text-zinc-200">Theme</p>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Keyboard shortcut: <kbd className="font-mono bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-sm px-1">t</kbd></p>
+                <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">Keyboard shortcut: <kbd className="font-mono bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-sm px-1">t</kbd></p>
               </div>
               <div className="flex items-center gap-0.5 bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-lg p-0.5">
                 <button
@@ -176,7 +176,7 @@ function SettingsInner() {
                   className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                     theme === 'light'
                       ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
-                      : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'
+                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-300'
                   }`}
                 >
                   <span aria-hidden="true">☀️</span> Light
@@ -186,7 +186,7 @@ function SettingsInner() {
                   className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                     theme === 'dark'
                       ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
-                      : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'
+                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-300'
                   }`}
                 >
                   <span aria-hidden="true">🌙</span> Dark

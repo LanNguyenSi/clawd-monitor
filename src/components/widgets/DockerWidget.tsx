@@ -75,7 +75,7 @@ export function DockerWidget() {
                 <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATE_DOT[c.state] ?? STATE_DOT.unknown}`} />
                 <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200 truncate flex-1">{c.name}</span>
                 {restartBadge(c.restarts) && (
-                  <span className="text-xs text-orange-500 dark:text-orange-400 shrink-0" title={restartBadge(c.restarts)!.title}>{restartBadge(c.restarts)!.text}</span>
+                  <span className="text-xs text-orange-700 dark:text-orange-400 shrink-0" title={restartBadge(c.restarts)!.title}>{restartBadge(c.restarts)!.text}</span>
                 )}
               </div>
               <div className="flex gap-3 mt-0.5 text-xs text-zinc-500 dark:text-zinc-400 ml-3.5">

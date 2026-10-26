@@ -73,7 +73,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
                 className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                   cols === c
                     ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
-                    : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300'
+                    : 'text-zinc-600 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-300'
                 }`}
                 title={`${c} columns`}
               >
@@ -137,7 +137,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
                   className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                     cols === c
                       ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
-                      : 'text-zinc-500 dark:text-zinc-400'
+                      : 'text-zinc-600 dark:text-zinc-400'
                   }`}
                 >
                   {c}
