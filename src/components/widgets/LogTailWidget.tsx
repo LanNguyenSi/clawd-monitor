@@ -130,7 +130,7 @@ export function LogTailWidget() {
         <div className="flex-1" />
 
         {activeAgentId && (
-          <span className="text-xs bg-indigo-900/30 text-indigo-400 px-1.5 rounded-sm border border-indigo-800/30">
+          <span className="text-xs bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 px-1.5 rounded-sm border border-indigo-200 dark:border-indigo-800/30">
             agent
           </span>
         )}

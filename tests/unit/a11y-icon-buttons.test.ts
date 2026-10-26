@@ -189,6 +189,8 @@ describe('secondary text contrast floor', () => {
     'amber-500': 'f59e0b', 'amber-600': 'd97706', 'amber-700': 'b45309', 'amber-800': '92400e', 'amber-900': '78350f',
     'red-500': 'ef4444', 'red-600': 'dc2626', 'red-700': 'b91c1c', 'red-800': '991b1b',
     'orange-500': 'f97316', 'orange-600': 'ea580c', 'orange-700': 'c2410c', 'orange-800': '9a3412',
+    'green-400': '4ade80', 'yellow-400': 'facc15', 'amber-400': 'fbbf24', 'red-400': 'f87171',
+    'orange-400': 'fb923c', 'indigo-400': '818cf8',
     'indigo-500': '6366f1', 'indigo-600': '4f46e5', 'indigo-700': '4338ca', 'indigo-800': '3730a3', 'indigo-900': '312e81',
   }
   const SURFACE: Record<string, string> = {
