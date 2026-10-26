@@ -96,7 +96,7 @@ those constants are read (after the `.env` files were loaded).
    `remoteGatewayFetch`, which applies the full URL rule (https, host and port
    in `ALLOWED_GATEWAY_HOSTS`, no private range) without the default-gateway
    exception and connects only to addresses it checked
-   (`src/app/api/agents/[agentId]/logs/route.ts:89#"remoteGatewayFetch(agent.gatewayUrl"`).
+   (`src/app/api/agents/[agentId]/logs/route.ts:75#"remoteGatewayFetch(agent.gatewayUrl"`).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored

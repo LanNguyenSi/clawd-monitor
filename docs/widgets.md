@@ -41,7 +41,7 @@ host. Four widgets always show the same server-wide data.
 | Cron Jobs | Agent snapshot `cronJobs` | Default gateway `/cron/jobs` |
 | Docker Containers | Agent snapshot `containers` | `docker ps -a` plus one batched `docker inspect` (restart count) on the clawd-monitor host |
 | Heartbeat Pulse | Agent snapshot (online state, uptime) | Default gateway `/status` |
-| Log Tail | `/api/agents/<id>/logs`: the agent's gateway when its `gatewayUrl` is an allowlisted `https` host and port that resolves only to public addresses (see `ALLOWED_GATEWAY_HOSTS`; the default gateway URL gets no exception), otherwise a "not available" note; the docker source is not available for an agent (the widget lists containers of the clawd-monitor host, which are tailed only without an agent selected) | `/api/stream/logs`: default gateway, or local `docker logs`, `journalctl` or syslog |
+| Log Tail | `/api/agents/<id>/logs`: the agent's gateway when its `gatewayUrl` is an allowlisted `https` host and port that resolves only to public addresses (see `ALLOWED_GATEWAY_HOSTS`; the default gateway URL gets no exception), otherwise a "not available" note; the docker and system sources are not available for an agent (the widget offers only OpenClaw while an agent is selected; containers and system logs of the clawd-monitor host are tailed only without an agent selected) | `/api/stream/logs`: default gateway, or local `docker logs`, `journalctl` or syslog |
 
 Connected Agents (agent registry), GitHub PRs (GitHub API), Service Health
 (fixed URL list) and Alert History (`CLAWD_DIR/memory/smart-alert-state.json`

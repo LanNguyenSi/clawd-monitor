@@ -247,7 +247,7 @@ sources do not read logs from the agent's host, and a `source` outside
   for 300 s ends in the same "not available" lines)
   (`src/lib/pinned-fetch.ts:52-54#"bodyMs: 300_000"`). A
   rejected URL, a non-OK answer (its body cancelled unread,
-  `src/app/api/agents/[agentId]/logs/route.ts:96#"await res.body?.cancel()"`)
+  `src/app/api/agents/[agentId]/logs/route.ts:82#"await res.body?.cancel()"`)
   and a failed request all end in the same two "log streaming not available"
   lines. The handshake stores whatever URL the agent reported, so this check
   is the only one.
