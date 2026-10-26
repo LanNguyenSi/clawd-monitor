@@ -32,6 +32,14 @@ vi.mock('@/components/Grid/GridItem', () => ({ GridItem: () => null }))
 vi.mock('@/components/Nav/AgentSwitcher', () => ({ AgentSwitcher: () => null }))
 vi.mock('@/components/Nav/UserMenu', () => ({ UserMenu: () => null }))
 vi.mock('@/components/AddAgentModal', () => ({ AddAgentModal: () => null }))
+vi.mock('@/lib/theme', () => ({
+  ThemeProvider: ({ children }: { children: unknown }) => children,
+  useTheme: () => ({ toggleTheme: vi.fn() }),
+}))
+vi.mock('@/lib/active-agent', () => ({
+  ActiveAgentProvider: ({ children }: { children: unknown }) => children,
+  useActiveAgent: () => ({ activeAgentId: null }),
+}))
 vi.mock('@/components/KeyboardShortcuts', () => ({ KeyboardShortcuts: () => null }))
 
 import DashboardPage from '@/app/dashboard/page'
