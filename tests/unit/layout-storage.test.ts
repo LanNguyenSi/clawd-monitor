@@ -78,6 +78,18 @@ describe('parseStoredLayouts', () => {
     expect(parseStoredLayouts(raw, VALID)).toEqual({ lg: [item('metrics')] })
   })
 
+  it('requires finite numbers for every coordinate', () => {
+    const bad = [
+      { i: 'metrics', x: 0, y: 'a', w: 1, h: 1 },
+      { i: 'cron', x: 0, y: 0, w: null, h: 1 },
+      { i: 'docker', x: 0, y: 0, w: 1, h: Number.NaN },
+      { i: 'log-tail', x: Infinity, y: 0, w: 1, h: 1 },
+    ]
+    expect(parseStoredLayouts(JSON.stringify([...bad, item('metrics')]), VALID)).toEqual({
+      lg: [item('metrics')],
+    })
+  })
+
   it('returns null when no valid item survives', () => {
     expect(parseStoredLayouts(JSON.stringify([item('nope')]), VALID)).toBeNull()
     expect(parseStoredLayouts('{}', VALID)).toBeNull()

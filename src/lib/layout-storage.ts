@@ -27,7 +27,7 @@ function cleanItems(value: unknown, validIds: ReadonlySet<string>): Layout[] {
   const seen = new Set<string>()
   const out: Layout[] = []
   for (const item of value) {
-    if (!item || typeof item !== 'object') continue
+    if (!item) continue
     const l = item as Layout
     if (typeof l.i !== 'string' || !validIds.has(l.i) || seen.has(l.i)) continue
     if (!isNum(l.x) || !isNum(l.y) || !isNum(l.w) || !isNum(l.h)) continue
