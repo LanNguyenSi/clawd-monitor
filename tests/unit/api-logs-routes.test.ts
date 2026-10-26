@@ -153,13 +153,49 @@ describe('GET /api/agents/:id/logs, source parameter', () => {
     expect(h.pinnedFetch.mock.calls[0][0]).toBe('https://gw.example.com/logs/stream?source=openclaw')
   })
 
-  it('accepts system and answers it without a gateway fetch', async () => {
+  const SYSTEM_NOT_AVAILABLE = [
+    '[info] System log streaming not available for agents.',
+    '[info] Use SSH or the agent host directly to view system logs.',
+  ]
+
+  it('accepts system and answers it without a gateway fetch or a process', async () => {
     addAgent({ gatewayUrl: 'https://gw.example.com' })
     const { agentGET } = await loadRoutes()
     const res = await agentGET(agentReq('source=system'), params)
     expect(res.status).toBe(200)
-    expect(await readLines(res, 1)).toEqual(['[info] System log streaming not available for remote agents.'])
+    expect(await readLines(res, 2)).toEqual(SYSTEM_NOT_AVAILABLE)
     expect(h.pinnedFetch).not.toHaveBeenCalled()
+    expect(h.spawn).not.toHaveBeenCalled()
+  })
+
+  it('answers the same not-available lines for an agent without a gateway URL and starts no process', async () => {
+    addAgent()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { agentGET } = await loadRoutes()
+    const res = await agentGET(agentReq('source=system'), params)
+    expect(res.status).toBe(200)
+    expect(await readLines(res, 2)).toEqual(SYSTEM_NOT_AVAILABLE)
+    expect(h.spawn).not.toHaveBeenCalled()
+    expect(h.pinnedFetch).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /api/stream/logs, system source without an agent', () => {
+  it('still tails the dashboard host: journalctl, then syslog when journalctl reports a failure', async () => {
+    const first = new FakeChild()
+    const second = new FakeChild()
+    h.spawn.mockReturnValueOnce(first).mockReturnValueOnce(second)
+    const { streamGET } = await loadRoutes()
+    const res = await streamGET(new NextRequest('http://localhost/api/stream/logs?source=system'))
+    expect(h.spawn).toHaveBeenCalledTimes(1)
+    expect(h.spawn.mock.calls[0][0]).toBe('journalctl')
+    first.stderr.emit('data', Buffer.from('journalctl: failed'))
+    expect(h.spawn).toHaveBeenCalledTimes(2)
+    expect(h.spawn.mock.calls[1][0]).toBe('tail')
+    expect(h.spawn.mock.calls[1][1]).toEqual(['-f', '-n', '50', '/var/log/syslog'])
+    await res.body!.cancel()
   })
 })
 

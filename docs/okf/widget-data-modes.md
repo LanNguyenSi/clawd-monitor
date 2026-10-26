@@ -3,7 +3,7 @@ type: module
 title: Widget data modes, agent snapshot vs default gateway vs dashboard host
 description: For each dashboard widget, where its data comes from when an agent is selected (the agent's last WebSocket snapshot) and when none is (the default gateway or the dashboard host itself), which widgets ignore the selection, and how the selection is held.
 tags: [widgets, dashboard, agents, data-sources]
-timestamp: 2026-10-26T09:24:32Z
+timestamp: 2026-10-26T13:17:53Z
 sources:
   - src/lib/widgets.ts
   - src/lib/active-agent.tsx
@@ -174,10 +174,13 @@ Evidence for the switch in each component, agent URL first:
 
 `LogTailWidget` opens `/api/agents/<id>/logs` with an agent selected and
 `/api/stream/logs` without
-(`src/components/widgets/LogTailWidget.tsx:61-63#"/api/stream/logs?"`). Its
-`source` selector (`openclaw`, `docker`, `system`) is passed through. The
-container drop-down always lists containers on the dashboard host
-(`src/components/widgets/LogTailWidget.tsx:39-40#"'/api/containers'"`,
+(`src/components/widgets/LogTailWidget.tsx:65-67#"/api/stream/logs?"`). Its
+`source` selector offers `openclaw`, `docker` and `system` without an agent
+and only `openclaw` with one, because the agent route serves nothing else
+(`src/components/widgets/LogTailWidget.tsx:41#"activeAgentId ? 'openclaw' : chosenSource"`);
+a docker or system choice made without an agent is kept but not sent while an
+agent is selected. The container drop-down always lists containers on the dashboard host
+(`src/components/widgets/LogTailWidget.tsx:43-44#"'/api/containers'"`,
 route `src/app/api/containers/route.ts:13-14#"docker ps --format"`).
 
 Without an agent (`/api/stream/logs`):
@@ -219,14 +222,15 @@ sources do not read logs from the agent's host, and a `source` outside
   never starts `docker`, because `docker logs` would read the dashboard host's
   containers, not the agent's; the request is not forwarded to the agent's
   gateway either
-  (`src/app/api/agents/[agentId]/logs/route.ts:52#"Docker logs are not available for agents"`).
-- `system`: when the agent reported a `gatewayUrl`, two informational lines
-  and no log stream
-  (`src/app/api/agents/[agentId]/logs/route.ts:58#"System log streaming not available"`);
-  otherwise `journalctl` on the dashboard host.
+  (`src/app/api/agents/[agentId]/logs/route.ts:48#"Docker logs are not available for agents"`).
+- `system`: not read at all. The route answers two informational lines and
+  starts no process, whether or not the agent reported a `gatewayUrl`,
+  because `journalctl` or `tail` here would show the dashboard host's logs
+  under the agent's name
+  (`src/app/api/agents/[agentId]/logs/route.ts:56#"System log streaming not available"`).
 - `openclaw`: the agent's own `gatewayUrl` plus `/logs/stream`, fetched only
   through `remoteGatewayFetch`
-  (`src/app/api/agents/[agentId]/logs/route.ts:89#"remoteGatewayFetch(agent.gatewayUrl"`,
+  (`src/app/api/agents/[agentId]/logs/route.ts:75#"remoteGatewayFetch(agent.gatewayUrl"`,
   defined at `src/lib/gateway.ts:170#"export function remoteGatewayFetch("`).
   It applies the URL rule (https, host and port in `ALLOWED_GATEWAY_HOSTS`, no
   private range) with no exception for the default gateway URL, unlike the
@@ -243,7 +247,7 @@ sources do not read logs from the agent's host, and a `source` outside
   for 300 s ends in the same "not available" lines)
   (`src/lib/pinned-fetch.ts:52-54#"bodyMs: 300_000"`). A
   rejected URL, a non-OK answer (its body cancelled unread,
-  `src/app/api/agents/[agentId]/logs/route.ts:96#"await res.body?.cancel()"`)
+  `src/app/api/agents/[agentId]/logs/route.ts:82#"await res.body?.cancel()"`)
   and a failed request all end in the same two "log streaming not available"
   lines. The handshake stores whatever URL the agent reported, so this check
   is the only one.

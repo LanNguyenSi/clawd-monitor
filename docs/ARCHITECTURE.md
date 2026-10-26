@@ -83,7 +83,9 @@ Log tailing and metrics use SSE (Server-Sent Events) from Next.js API routes. Th
 the clawd-monitor host and never contacts a Gateway; with an agent selected,
 the CPU + RAM widget reads the agent snapshot instead. `/api/stream/logs`
 reaches the Gateway only for `source=openclaw`; its docker and system sources
-read the clawd-monitor host.
+read the clawd-monitor host. `/api/agents/<id>/logs` never starts a process:
+its docker and system sources answer "not available" lines, and the log tail
+widget offers only OpenClaw while an agent is selected.
 
 **Update (agent-push model):** browser-facing streaming still uses SSE, but
 agent-to-server transport is now a WebSocket (`/api/agents/ws`, handled in

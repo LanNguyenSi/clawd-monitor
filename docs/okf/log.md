@@ -2,6 +2,13 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-26T13:17:53Z, agent logs `system` source never spawns: `widget-data-modes.md` and
+  `agent-registry-lifecycle.md` re-verified and re-stamped. The agent route answers
+  `system` with two info lines for every agent and imports no `child_process`; the
+  widget offers only OpenClaw while an agent is selected. The route citations
+  (body cancel, gateway fetch) were re-pointed to the shifted lines. The other widget files newer
+  than the previous stamp only changed colour classes in place (light-mode contrast,
+  `git show 8380b49`); their polling and data-mode claims are unchanged.
 - 2026-10-26T13:15:50Z, auth-and-config-loading re-verified and re-stamped after `package.json`
   gained `js-yaml` as a root devDependency for the relay-config CI guard. No
   script, env loading or auth dependency changed; the doc's claims are unchanged.

@@ -3,7 +3,6 @@ import { isAuthenticated } from '@/lib/auth'
 import { registry } from '@/lib/agent-registry'
 import { remoteGatewayFetch } from '@/lib/gateway'
 import { isLogSource } from '@/lib/input-validators'
-import { spawn } from 'child_process'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,10 +35,7 @@ export async function GET(req: NextRequest, { params }: Props) {
         catch { /* connection closed */ }
       }
 
-      let child: ReturnType<typeof spawn> | null = null
-
       const abort = () => {
-        try { child?.kill() } catch { /* ignore */ }
         try { controller.close() } catch { /* ignore */ }
       }
 
@@ -53,22 +49,12 @@ export async function GET(req: NextRequest, { params }: Props) {
         send('[info] Clear the agent selection to tail containers on the clawd-monitor host.')
 
       } else if (source === 'system') {
-        // Remote agent: system logs are on the agent host, not on this server
-        if (agent.gatewayUrl) {
-          send('[info] System log streaming not available for remote agents.')
-          send('[info] Use SSH or the agent host directly to view system logs.')
-        } else {
-          child = spawn('journalctl', ['-f', '-n', '50', '--no-pager', '--output=short'], {
-            stdio: ['ignore', 'pipe', 'pipe'],
-          })
-          child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
-          child.stderr?.on('data', () => { /* journalctl prints to stderr on failure */ })
-          child.on('error', () => {
-            child = spawn('tail', ['-f', '-n', '50', '/var/log/syslog'], { stdio: ['ignore', 'pipe', 'pipe'] })
-            child.stdout?.on('data', (d: Buffer) => d.toString().split('\n').filter(Boolean).forEach(send))
-            child.on('error', () => send('[error] no system log available'))
-          })
-        }
+        // The agent's system logs are on the agent host. `journalctl` or `tail`
+        // here would read the dashboard host's logs under the agent's name, so
+        // the server never starts a process for a request that names an agent,
+        // whether or not the agent reported a gateway URL.
+        send('[info] System log streaming not available for agents.')
+        send('[info] Use SSH or the agent host directly to view system logs.')
 
       } else {
         // openclaw: try gateway /logs/stream, then fall back to the "not available" lines
