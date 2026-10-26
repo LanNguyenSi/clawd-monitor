@@ -71,7 +71,7 @@ export function SessionLogWidget() {
   if (!activeAgentId) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-1 px-4">
-        <span className="text-xs text-zinc-500 dark:text-zinc-600">Select an agent to view session logs</span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">Select an agent to view session logs</span>
       </div>
     )
   }
@@ -82,7 +82,7 @@ export function SessionLogWidget() {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-1">
         <div className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-600" />
-        <span className="text-xs text-zinc-500">Agent offline · last seen {lastSeen}</span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">Agent offline · last seen {lastSeen}</span>
       </div>
     )
   }
@@ -110,7 +110,7 @@ export function SessionLogWidget() {
           className={`text-xs px-1.5 py-0.5 rounded-sm shrink-0 transition-colors ${
             autoScroll
               ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-600/20 dark:text-indigo-400'
-              : 'text-zinc-400 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400'
+              : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
           }`}
           title="Toggle auto-scroll"
         >↓</button>
@@ -119,17 +119,17 @@ export function SessionLogWidget() {
       <ScrollRegion label="Session log" scrollRef={scrollContainerRef} className="flex-1 px-2 py-2 space-y-1.5">
         {!snapshotData && (
           <div className="flex items-center justify-center h-full">
-            <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Loading…</span>
+            <span className="text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">Loading…</span>
           </div>
         )}
         {snapshotData && sessions.length === 0 && (
           <div className="flex items-center justify-center h-full">
-            <span className="text-xs text-zinc-500 dark:text-zinc-600">No sessions</span>
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">No sessions</span>
           </div>
         )}
         {activeSession && messages.length === 0 && (
           <div className="flex items-center justify-center h-full">
-            <span className="text-xs text-zinc-500 dark:text-zinc-600">No messages</span>
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">No messages</span>
           </div>
         )}
         {messages.map((msg, i) => (

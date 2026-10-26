@@ -44,8 +44,8 @@ export function DockerWidget() {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-1 px-4">
         <div className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-600" />
-        <span className="text-xs text-zinc-500">Agent offline</span>
-        <span className="text-xs text-zinc-400 dark:text-zinc-700">last seen {lastSeen}</span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">Agent offline</span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">last seen {lastSeen}</span>
       </div>
     )
   }
@@ -54,15 +54,15 @@ export function DockerWidget() {
     <div className="flex flex-col h-full">
       {isLoading && (
         <div className="flex items-center justify-center h-full">
-          <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Loading…</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">Loading…</span>
         </div>
       )}
 
       {!isLoading && errorMsg && containers.length === 0 && (
         <div className="flex items-center justify-center h-full px-4">
           <div className="text-center">
-            <p className="text-xs text-zinc-400 dark:text-zinc-600">{errorMsg}</p>
-            <p className="text-xs text-zinc-400 dark:text-zinc-700 mt-1">Select an agent to view Docker containers</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">{errorMsg}</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Select an agent to view Docker containers</p>
           </div>
         </div>
       )}
@@ -75,10 +75,10 @@ export function DockerWidget() {
                 <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATE_DOT[c.state] ?? STATE_DOT.unknown}`} />
                 <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200 truncate flex-1">{c.name}</span>
                 {restartBadge(c.restarts) && (
-                  <span className="text-xs text-orange-500 dark:text-orange-400 shrink-0" title={restartBadge(c.restarts)!.title}>{restartBadge(c.restarts)!.text}</span>
+                  <span className="text-xs text-orange-700 dark:text-orange-400 shrink-0" title={restartBadge(c.restarts)!.title}>{restartBadge(c.restarts)!.text}</span>
                 )}
               </div>
-              <div className="flex gap-3 mt-0.5 text-xs text-zinc-400 dark:text-zinc-600 ml-3.5">
+              <div className="flex gap-3 mt-0.5 text-xs text-zinc-500 dark:text-zinc-400 ml-3.5">
                 <span className="font-mono truncate">{c.image}</span>
                 <span className="shrink-0">{createdLabel(c.uptime)}</span>
               </div>

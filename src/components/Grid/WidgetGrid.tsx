@@ -98,7 +98,7 @@ export function WidgetGrid({ cols, editMode = true, onLayoutChange }: Props) {
             <ErrorBoundary>
               <Suspense fallback={
                 <div className="flex items-center justify-center h-full">
-                  <span className="text-xs text-zinc-400 dark:text-zinc-700 animate-pulse">Loading…</span>
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">Loading…</span>
                 </div>
               }>
                 {WidgetComp ? <WidgetComp /> : null}

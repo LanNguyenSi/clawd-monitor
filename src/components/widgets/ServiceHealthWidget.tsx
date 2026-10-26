@@ -27,7 +27,7 @@ export function ServiceHealthWidget() {
     <div className="flex flex-col h-full">
       {isLoading && (
         <div className="flex items-center justify-center h-full">
-          <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Checking…</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">Checking…</span>
         </div>
       )}
 
@@ -38,12 +38,12 @@ export function ServiceHealthWidget() {
               <div className={`w-2 h-2 rounded-full shrink-0 ${svc.ok ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium text-zinc-800 dark:text-zinc-200">{svc.name}</div>
-                <div className="text-xs text-zinc-400 dark:text-zinc-600">
+                <div className="text-xs text-zinc-500 dark:text-zinc-400">
                   {svc.ok ? `${svc.responseMs}ms` : 'DOWN'}
                   {svc.status > 0 && ` · ${svc.status}`}
                 </div>
               </div>
-              <span className={`text-xs font-medium ${svc.ok ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+              <span className={`text-xs font-medium ${svc.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                 {svc.ok ? 'UP' : 'DOWN'}
               </span>
             </div>

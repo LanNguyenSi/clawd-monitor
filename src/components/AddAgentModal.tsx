@@ -194,9 +194,9 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
           <button
             onClick={onClose}
             aria-label="Close"
-            className="text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 text-lg leading-none"
+            className="min-w-6 min-h-6 inline-flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 text-lg leading-none"
           >
-            ✕
+            <span aria-hidden="true">✕</span>
           </button>
         </div>
 
@@ -219,17 +219,17 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
                 required
                 className="w-full bg-zinc-50 border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-sm px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
               />
-              <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-1.5">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5">
                 Used as the token label in Settings. The agent itself defaults to <code>/etc/hostname</code> for its display name on the dashboard.
               </p>
             </div>
             {!originValid && (
-              <p className="text-sm text-red-500 dark:text-red-400">
+              <p className="text-sm text-red-600 dark:text-red-400">
                 Cannot determine the dashboard origin (current: <code>{origin || '<empty>'}</code>). Reload the page and try again.
               </p>
             )}
             {error && (
-              <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
+              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
             )}
             <div className="flex justify-end gap-2 pt-2">
               <button
@@ -292,7 +292,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
                   {copied === 'snippet' ? 'Copied' : 'Copy'}
                 </button>
               </div>
-              <p className="text-xs text-zinc-400 dark:text-zinc-600">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
                 The installer sets up Node, the agent, and a systemd service. Re-running with a different token rotates cleanly.
               </p>
             </div>

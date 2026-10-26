@@ -25,7 +25,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
     <nav className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 shrink-0">
       <div className="h-12 flex items-center px-4 gap-3">
         <div className="flex items-center gap-2">
-          <span className="text-sm">🐾</span>
+          <span className="text-sm" aria-hidden="true">🐾</span>
           <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-200 hidden sm:inline">clawd-monitor</span>
         </div>
 
@@ -47,11 +47,11 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
               className={`text-xs px-2 py-1 rounded-sm transition-colors border ${
                 editMode
                   ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-600 dark:border-indigo-600/40 dark:bg-indigo-600/10 dark:text-indigo-400'
-                  : 'border-zinc-300 text-zinc-500 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-600 dark:hover:text-zinc-400'
+                  : 'border-zinc-300 text-zinc-500 hover:text-zinc-700 dark:border-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
               }`}
               title={editMode ? 'Lock layout (e)' : 'Edit layout (e)'}
             >
-              {editMode ? '✏️ editing' : '🔒 locked'}
+              <span aria-hidden="true">{editMode ? '✏️' : '🔒'}</span> {editMode ? 'editing' : 'locked'}
             </button>
           )}
 
@@ -73,7 +73,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
                 className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                   cols === c
                     ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
-                    : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-300'
+                    : 'text-zinc-600 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-300'
                 }`}
                 title={`${c} columns`}
               >
@@ -93,16 +93,19 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
         {/* Mobile menu toggle for layout controls */}
         <button
           onClick={() => setMobileMenuOpen((v) => !v)}
-          className="md:hidden text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors px-1"
+          aria-label="Layout controls"
+          aria-expanded={mobileMenuOpen}
+          aria-controls="mobile-layout-controls"
+          className="md:hidden min-w-8 min-h-8 inline-flex items-center justify-center text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors px-1"
           title="Layout controls"
         >
-          {mobileMenuOpen ? '✕' : '☰'}
+          <span aria-hidden="true">{mobileMenuOpen ? '✕' : '☰'}</span>
         </button>
       </div>
 
       {/* Mobile layout controls */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-4 py-3">
+        <div id="mobile-layout-controls" className="md:hidden border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-4 py-3">
           <div className="flex items-center gap-3">
             {onToggleEditMode && (
               <button
@@ -110,10 +113,10 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
                 className={`text-xs px-2 py-1 rounded-sm transition-colors border ${
                   editMode
                     ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-600 dark:border-indigo-600/40 dark:bg-indigo-600/10 dark:text-indigo-400'
-                    : 'border-zinc-300 text-zinc-500 dark:border-zinc-800 dark:text-zinc-600'
+                    : 'border-zinc-300 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400'
                 }`}
               >
-                {editMode ? '✏️ editing' : '🔒 locked'}
+                <span aria-hidden="true">{editMode ? '✏️' : '🔒'}</span> {editMode ? 'editing' : 'locked'}
               </button>
             )}
 
@@ -134,7 +137,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
                   className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                     cols === c
                       ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
-                      : 'text-zinc-500 dark:text-zinc-500'
+                      : 'text-zinc-600 dark:text-zinc-400'
                   }`}
                 >
                   {c}

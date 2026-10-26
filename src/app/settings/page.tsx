@@ -177,7 +177,7 @@ function SettingsInner() {
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <nav className="h-12 border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 flex items-center px-6 gap-4">
-        <Link href="/dashboard" className="text-sm font-semibold text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200">🐾 clawd-monitor</Link>
+        <Link href="/dashboard" className="text-sm font-semibold text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"><span aria-hidden="true">🐾</span> clawd-monitor</Link>
         <span className="text-zinc-300 dark:text-zinc-700">/</span>
         <span className="text-sm text-zinc-700 dark:text-zinc-300">Settings</span>
       </nav>
@@ -192,7 +192,7 @@ function SettingsInner() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-zinc-800 dark:text-zinc-200">Theme</p>
-                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">Keyboard shortcut: <kbd className="font-mono bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-sm px-1">t</kbd></p>
+                <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">Keyboard shortcut: <kbd className="font-mono bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-sm px-1">t</kbd></p>
               </div>
               <div className="flex items-center gap-0.5 bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-lg p-0.5">
                 <button
@@ -200,20 +200,20 @@ function SettingsInner() {
                   className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                     theme === 'light'
                       ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
-                      : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
+                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-300'
                   }`}
                 >
-                  ☀️ Light
+                  <span aria-hidden="true">☀️</span> Light
                 </button>
                 <button
                   onClick={() => setTheme('dark')}
                   className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                     theme === 'dark'
                       ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
-                      : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
+                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-300'
                   }`}
                 >
-                  🌙 Dark
+                  <span aria-hidden="true">🌙</span> Dark
                 </button>
               </div>
             </div>
@@ -238,7 +238,7 @@ function SettingsInner() {
                 />
               </div>
             ))}
-            {pwMsg && <p className={`text-sm ${pwStatus === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>{pwMsg}</p>}
+            {pwMsg && <p className={`text-sm ${pwStatus === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{pwMsg}</p>}
             <button type="submit" disabled={pwStatus === 'loading'}
               className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm font-medium transition-colors">
               {pwStatus === 'loading' ? 'Updating…' : 'Update Password'}
@@ -269,19 +269,20 @@ function SettingsInner() {
                             className="bg-zinc-50 border border-indigo-500 dark:bg-zinc-800 rounded-sm px-2 py-0.5 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-hidden w-40"
                           />
                           <button type="submit" className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-200 px-1.5">Save</button>
-                          <button type="button" onClick={() => setEditingId(null)} className="text-xs text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 px-1.5">Cancel</button>
+                          <button type="button" onClick={() => setEditingId(null)} className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 px-1.5">Cancel</button>
                         </form>
                       ) : (
                         <div className="flex items-center gap-1.5">
                           <div className="text-sm text-zinc-800 dark:text-zinc-200">{t.name}</div>
                           <button
                             onClick={() => startEdit(t)}
-                            className="text-xs text-zinc-400 dark:text-zinc-700 hover:text-zinc-600 dark:hover:text-zinc-400 transition-colors"
+                            className="min-w-6 min-h-6 inline-flex items-center justify-center text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
                             title="Edit name"
-                          >✏️</button>
+                            aria-label={`Edit name of token ${t.name}`}
+                          ><span aria-hidden="true">✏️</span></button>
                         </div>
                       )}
-                      <div className="text-xs text-zinc-400 dark:text-zinc-600">
+                      <div className="text-xs text-zinc-500 dark:text-zinc-400">
                         Created {new Date(t.createdAt).toLocaleDateString()}
                         {t.lastUsedAt && ` · Last used ${new Date(t.lastUsedAt).toLocaleDateString()}`}
                       </div>
@@ -326,7 +327,7 @@ function SettingsInner() {
             <div className="mt-4 bg-indigo-50 border border-indigo-200 dark:bg-zinc-900 dark:border-indigo-700/50 rounded-xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium text-indigo-700 dark:text-indigo-300">Token generated for &ldquo;{newToken.name}&rdquo;</h3>
-                <button onClick={() => setNewToken(null)} className="text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 text-sm">✕</button>
+                <button onClick={() => setNewToken(null)} aria-label="Dismiss generated token" className="min-w-6 min-h-6 inline-flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 text-sm"><span aria-hidden="true">✕</span></button>
               </div>
               <p className="text-xs text-yellow-600 dark:text-yellow-500">⚠ Copy this token now — it won&apos;t be shown again.</p>
 
@@ -341,7 +342,7 @@ function SettingsInner() {
               </div>
 
               <div className="space-y-2">
-                <p className="text-xs text-zinc-500">Install command (run on the target host as root):</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Install command (run on the target host as root):</p>
                 <div className="flex items-start gap-2">
                   <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-sm font-mono whitespace-pre-wrap break-all">{installSnippet}</code>
                   <button onClick={() => copyToClipboard(installSnippet)}

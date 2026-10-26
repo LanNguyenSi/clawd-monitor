@@ -33,21 +33,21 @@ export function AlertHistoryWidget() {
   return (
     <div className="flex flex-col h-full">
       {data?.lastCheck && (
-        <div className="px-3 py-1 border-b border-zinc-200 dark:border-zinc-800 text-xs text-zinc-400 dark:text-zinc-600 shrink-0">
+        <div className="px-3 py-1 border-b border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 shrink-0">
           Last check: {formatTime(data.lastCheck)}
         </div>
       )}
 
       {isLoading && (
         <div className="flex items-center justify-center h-full">
-          <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Loading…</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">Loading…</span>
         </div>
       )}
 
       {!isLoading && alerts.length === 0 && (
         <div className="flex flex-col items-center justify-center h-full gap-1">
           <span className="text-lg">🔕</span>
-          <span className="text-xs text-zinc-400 dark:text-zinc-600">{data?.error ?? 'No alerts in last 7 days'}</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400">{data?.error ?? 'No alerts in last 7 days'}</span>
         </div>
       )}
 
@@ -58,7 +58,7 @@ export function AlertHistoryWidget() {
               <span className="text-sm">⚠️</span>
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-zinc-800 dark:text-zinc-200 truncate">{alert.label}</div>
-                <div className="text-xs text-zinc-400 dark:text-zinc-600">{formatTime(alert.timestamp)}</div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400">{formatTime(alert.timestamp)}</div>
               </div>
             </div>
           ))}

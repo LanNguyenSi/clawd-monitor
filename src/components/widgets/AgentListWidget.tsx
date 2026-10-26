@@ -44,15 +44,15 @@ export function AgentListWidget() {
     <div className="flex flex-col h-full">
       {isLoading && (
         <div className="flex items-center justify-center h-full">
-          <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Loading…</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">Loading…</span>
         </div>
       )}
 
       {!isLoading && agents.length === 0 && (
         <div className="flex flex-col items-center justify-center h-full gap-2 px-4 text-center">
           <span className="text-2xl">🔌</span>
-          <p className="text-xs text-zinc-400 dark:text-zinc-600">No agents connected</p>
-          <p className="text-xs text-zinc-400 dark:text-zinc-700">
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">No agents connected</p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
             Run <code className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1 rounded-sm">clawd-monitor-agent --server ...</code> on your OpenClaw VPS
           </p>
         </div>
@@ -77,15 +77,15 @@ export function AgentListWidget() {
                   <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200 flex-1 truncate">
                     {agent.name}
                   </span>
-                  <span className="text-xs text-zinc-400 dark:text-zinc-600 shrink-0">
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">
                     {agent.online ? formatAge(agent.lastSnapshotAt) : 'offline'}
                   </span>
                 </div>
                 {agent.lastSnapshot && (
-                  <div className="flex gap-3 mt-0.5 text-xs text-zinc-400 dark:text-zinc-600 ml-4">
+                  <div className="flex gap-3 mt-0.5 text-xs text-zinc-500 dark:text-zinc-400 ml-4">
                     <span>{agent.lastSnapshot.sessions?.length ?? 0} sessions</span>
                     <span>{agent.lastSnapshot.cronJobs?.length ?? 0} crons</span>
-                    <span className="font-mono text-zinc-400 dark:text-zinc-700">v{agent.version}</span>
+                    <span className="font-mono text-zinc-500 dark:text-zinc-400">v{agent.version}</span>
                   </div>
                 )}
               </button>

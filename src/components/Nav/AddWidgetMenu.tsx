@@ -26,7 +26,7 @@ export function AddWidgetMenu({ onAdd, activeWidgetIds }: Props) {
       {open && (
         <div {...menuProps} aria-label="Add widget" className="absolute top-full mt-1 right-0 w-56 bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700 rounded-lg shadow-xl z-50 py-1">
           {available.length === 0 ? (
-            <p role="none" className="text-xs text-zinc-400 dark:text-zinc-600 px-3 py-2">All widgets added</p>
+            <p role="none" className="text-xs text-zinc-500 dark:text-zinc-400 px-3 py-2">All widgets added</p>
           ) : (
             available.map((w) => (
               <button

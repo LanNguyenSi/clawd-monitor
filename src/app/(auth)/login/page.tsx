@@ -38,9 +38,9 @@ export default function LoginPage() {
     <main className="min-h-screen flex items-center justify-center bg-zinc-100 dark:bg-zinc-950">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="text-3xl mb-2">🐾</div>
+          <div className="text-3xl mb-2" aria-hidden="true">🐾</div>
           <h1 className="text-xl font-bold text-zinc-800 dark:text-zinc-100">clawd-monitor</h1>
-          <p className="text-zinc-500 text-sm mt-1">OpenClaw Dashboard</p>
+          <p className="text-zinc-600 dark:text-zinc-400 text-sm mt-1">OpenClaw Dashboard</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

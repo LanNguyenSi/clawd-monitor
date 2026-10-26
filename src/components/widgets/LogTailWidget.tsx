@@ -26,10 +26,10 @@ function detectLevel(line: string): LogLine['level'] {
 }
 
 const LEVEL_CLASSES: Record<LogLine['level'], string> = {
-  error: 'text-red-500 dark:text-red-400',
+  error: 'text-red-600 dark:text-red-400',
   warn:  'text-yellow-600 dark:text-yellow-400',
   info:  'text-zinc-700 dark:text-zinc-300',
-  debug: 'text-zinc-400 dark:text-zinc-600',
+  debug: 'text-zinc-500 dark:text-zinc-400',
 }
 
 export function LogTailWidget() {
@@ -139,7 +139,7 @@ export function LogTailWidget() {
         <button
           onClick={() => setAutoScroll((v) => !v)}
           className={`text-xs px-2 py-0.5 rounded-sm transition-colors ${
-            autoScroll ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-600/20 dark:text-indigo-400' : 'text-zinc-400 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400'
+            autoScroll ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-600/20 dark:text-indigo-400' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
           }`}
         >
           ↓ auto
@@ -156,10 +156,10 @@ export function LogTailWidget() {
       {/* Log output */}
       <ScrollRegion label="Log output" scrollRef={scrollContainerRef} className="flex-1 font-mono text-xs leading-relaxed px-2 py-1">
         {status === 'connecting' && lines.length === 0 && (
-          <div className="text-zinc-400 dark:text-zinc-600 animate-pulse">Connecting…</div>
+          <div className="text-zinc-500 dark:text-zinc-400 animate-pulse">Connecting…</div>
         )}
         {status === 'disconnected' && lines.length === 0 && (
-          <div className="text-red-500 dark:text-red-400">Disconnected — retrying…</div>
+          <div className="text-red-600 dark:text-red-400">Disconnected — retrying…</div>
         )}
         {lines.map((line) => (
           <div key={line.id} className={`${LEVEL_CLASSES[line.level]} whitespace-pre-wrap break-all`}>

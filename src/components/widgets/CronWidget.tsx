@@ -65,8 +65,8 @@ export function CronWidget() {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-1 px-4">
         <div className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-600" />
-        <span className="text-xs text-zinc-500">Agent offline</span>
-        <span className="text-xs text-zinc-400 dark:text-zinc-700">last seen {lastSeen}</span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">Agent offline</span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">last seen {lastSeen}</span>
       </div>
     )
   }
@@ -75,22 +75,22 @@ export function CronWidget() {
     <div className="flex flex-col h-full">
       {isLoading && (
         <div className="flex items-center justify-center h-full">
-          <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Loading…</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">Loading…</span>
         </div>
       )}
 
       {!isLoading && errorMsg && (
         <div className="flex items-center justify-center h-full px-4">
           <div className="text-center">
-            <p className="text-xs text-zinc-400 dark:text-zinc-600">{errorMsg}</p>
-            <p className="text-xs text-zinc-400 dark:text-zinc-700 mt-1">Select an agent to view cron jobs</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">{errorMsg}</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Select an agent to view cron jobs</p>
           </div>
         </div>
       )}
 
       {!isLoading && !errorMsg && jobs.length === 0 && (
         <div className="flex items-center justify-center h-full">
-          <span className="text-xs text-zinc-400 dark:text-zinc-600">No cron jobs</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400">No cron jobs</span>
         </div>
       )}
 
@@ -104,7 +104,7 @@ export function CronWidget() {
                   <span className="text-xs text-zinc-800 dark:text-zinc-200 truncate">{job.name ?? job.id.slice(0, 12)}</span>
                 </div>
               </div>
-              <div className="flex items-center gap-3 mt-0.5 text-xs text-zinc-400 dark:text-zinc-600">
+              <div className="flex items-center gap-3 mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
                 <span className="font-mono">{scheduleLabel(job)}</span>
                 <span>next: {formatNext(job.state?.nextRunAtMs)}</span>
                 <span>last: {formatLast(job.state?.lastRunAtMs)}</span>

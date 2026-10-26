@@ -37,9 +37,9 @@ export function UserMenu() {
               onClick={() => { toggleTheme(); close() }}
               className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
-              <span className="w-4 text-center">{theme === 'dark' ? '☀️' : '🌙'}</span>
+              <span className="w-4 text-center" aria-hidden="true">{theme === 'dark' ? '☀️' : '🌙'}</span>
               {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-              <kbd className="ml-auto text-zinc-400 dark:text-zinc-600 font-mono">t</kbd>
+              <kbd className="ml-auto text-zinc-500 dark:text-zinc-400 font-mono">t</kbd>
             </button>
 
             <div role="separator" className="border-t border-zinc-200 dark:border-zinc-800 my-1" />
@@ -51,7 +51,7 @@ export function UserMenu() {
               onClick={close}
               className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             >
-              <span className="w-4 text-center">⚙️</span>
+              <span className="w-4 text-center" aria-hidden="true">⚙️</span>
               Settings
             </Link>
 

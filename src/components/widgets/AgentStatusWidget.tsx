@@ -64,10 +64,10 @@ export function AgentStatusWidget() {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-1 px-4">
         <div className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-600" />
-        <span className="text-xs text-zinc-500">Agent offline</span>
-        <span className="text-xs text-zinc-400 dark:text-zinc-700">last seen {lastSeen}</span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">Agent offline</span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">last seen {lastSeen}</span>
         {(snapshotData.snapshot?.sessions?.length ?? 0) > 0 && (
-          <span className="text-xs text-zinc-400 dark:text-zinc-700 mt-1">showing last known data</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">showing last known data</span>
         )}
       </div>
     )
@@ -83,23 +83,23 @@ export function AgentStatusWidget() {
     <div className="flex flex-col h-full">
       {isLoading && (
         <div className="flex items-center justify-center h-full">
-          <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Loading…</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">Loading…</span>
         </div>
       )}
 
       {!isLoading && errorMsg && (
         <div className="flex items-center justify-center h-full px-4">
           <div className="text-center">
-            <p className="text-xs text-zinc-400 dark:text-zinc-600">{errorMsg}</p>
-            <p className="text-xs text-zinc-400 dark:text-zinc-700 mt-1">Select a connected agent to view sessions</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">{errorMsg}</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Select a connected agent to view sessions</p>
           </div>
         </div>
       )}
 
       {!isLoading && !errorMsg && sessions.length === 0 && (
         <div className="flex flex-col items-center justify-center h-full gap-1">
-          <span className="text-zinc-400 dark:text-zinc-700 text-lg">💤</span>
-          <span className="text-xs text-zinc-400 dark:text-zinc-600">No active sessions</span>
+          <span className="text-zinc-500 dark:text-zinc-400 text-lg" aria-hidden="true">💤</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400">No active sessions</span>
         </div>
       )}
 
@@ -115,9 +115,9 @@ export function AgentStatusWidget() {
               </div>
               <div className="flex items-center justify-between gap-2">
                 {s.lastMessage && (
-                  <span className="text-xs text-zinc-400 dark:text-zinc-600 truncate max-w-[70%]">{s.lastMessage}</span>
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate max-w-[70%]">{s.lastMessage}</span>
                 )}
-                <span className="text-xs text-zinc-400 dark:text-zinc-700 tabular-nums shrink-0 ml-auto">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400 tabular-nums shrink-0 ml-auto">
                   {formatAge(s.lastActiveAt)}
                 </span>
               </div>

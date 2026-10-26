@@ -2,6 +2,24 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-26T09:05:52Z, widget-data-modes re-verified and re-stamped after the contrast sweep
+  follow-up. `HeartbeatWidget.tsx`, `MemoryWidget.tsx`, `LogTailWidget.tsx`
+  and `SessionLogWidget.tsx` only gained or changed colour classes in place
+  (dark text pair, dark hover colour, `red-600` error text); no line moved,
+  the polling and data-mode claims of the doc are unchanged. Checked with
+  `git diff e47b688..HEAD` on the four files.
+- 2026-10-26T08:52:48Z, auth-and-config-loading, widget-data-modes and agent-registry-lifecycle
+  re-verified and re-stamped after the contrast and icon-button change.
+  The edits to `dashboard/page.tsx`, `AgentSwitcher.tsx`, `Navbar.tsx` and
+  the widget files swap colour classes, add `aria-*` attributes and wrap
+  glyphs in spans in place, and move the shortcut hint into the page flow;
+  no line count changed, the cited `router.replace` lines, the
+  `<ActiveAgentProvider>` line, the AgentSwitcher storage and `DELETE`
+  lines and the Navbar imports (4-7) are where the docs cite them, the
+  offline-only remove button still sends `DELETE`, and the navbar still
+  mounts `AgentSwitcher`, `AddWidgetMenu` and `UserMenu`. Checked with
+  `okf-kit check docs/okf`: clean.
+
 - 2026-10-26T08:36:30Z, auth-and-config-loading, widget-data-modes and agent-registry-lifecycle
   re-verified and re-stamped after merging the dashboard layout change into
   the accessibility branch. In `src/app/dashboard/page.tsx` the `main`
