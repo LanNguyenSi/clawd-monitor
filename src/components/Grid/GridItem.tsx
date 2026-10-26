@@ -61,7 +61,7 @@ export const GridItem = forwardRef<HTMLDivElement, Props>(function GridItem(
           </div>
         ) : error ? (
           <div className="flex items-center justify-center h-full px-4">
-            <span className="text-xs text-red-500 dark:text-red-400 text-center">{error}</span>
+            <span className="text-xs text-red-600 dark:text-red-400 text-center">{error}</span>
           </div>
         ) : (
           children

@@ -224,12 +224,12 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
               </p>
             </div>
             {!originValid && (
-              <p className="text-sm text-red-500 dark:text-red-400">
+              <p className="text-sm text-red-600 dark:text-red-400">
                 Cannot determine the dashboard origin (current: <code>{origin || '<empty>'}</code>). Reload the page and try again.
               </p>
             )}
             {error && (
-              <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
+              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
             )}
             <div className="flex justify-end gap-2 pt-2">
               <button

@@ -91,7 +91,7 @@ export function HeartbeatWidget() {
             {new Date(data.checkedAt).toLocaleTimeString()}
           </div>
           {data.error && (
-            <div className="text-xs text-red-500 dark:text-red-400 text-center">{data.error}</div>
+            <div className="text-xs text-red-600 dark:text-red-400 text-center">{data.error}</div>
           )}
         </>
       )}

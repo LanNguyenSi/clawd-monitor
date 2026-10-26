@@ -238,7 +238,7 @@ function SettingsInner() {
                 />
               </div>
             ))}
-            {pwMsg && <p className={`text-sm ${pwStatus === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>{pwMsg}</p>}
+            {pwMsg && <p className={`text-sm ${pwStatus === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>{pwMsg}</p>}
             <button type="submit" disabled={pwStatus === 'loading'}
               className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm font-medium transition-colors">
               {pwStatus === 'loading' ? 'Updating…' : 'Update Password'}

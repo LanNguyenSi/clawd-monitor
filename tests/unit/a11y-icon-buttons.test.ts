@@ -196,6 +196,16 @@ describe('secondary text contrast floor', () => {
     expect(offenders).toEqual([])
   })
 
+  it('uses text-red-600 or darker for plain red text, since red-500 is about 3.8:1 on white', () => {
+    const offenders: string[] = []
+    for (const file of walk(join(__dirname, '../../src'))) {
+      readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+        if (/(?<![\w:-])text-red-500\b/.test(line)) offenders.push(`${file.replace(/.*src\//, 'src/')}:${i + 1}`)
+      })
+    }
+    expect(offenders).toEqual([])
+  })
+
   it('does not let a dark hover colour equal the dark resting colour', () => {
     const offenders: string[] = []
     for (const file of walk(join(__dirname, '../../src'))) {
