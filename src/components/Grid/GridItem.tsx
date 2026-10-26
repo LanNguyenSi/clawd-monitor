@@ -34,18 +34,20 @@ export const GridItem = forwardRef<HTMLDivElement, Props>(function GridItem(
       <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 cursor-grab active:cursor-grabbing shrink-0">
         <h2 className="text-xs font-medium text-zinc-500 dark:text-zinc-400 select-none">{title}</h2>
         <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-          <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-          <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+          <div className="flex items-center gap-1.5" aria-hidden="true" data-testid="drag-dots">
+            <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+            <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+            <div className="w-1.5 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+          </div>
           {editMode && onRemove && (
             <button
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); onRemove() }}
-              className="ml-1 text-zinc-400 hover:text-red-400 dark:text-zinc-600 dark:hover:text-red-400 transition-colors text-xs leading-none"
+              className="ml-1 min-w-6 min-h-6 inline-flex items-center justify-center text-zinc-500 hover:text-red-500 dark:text-zinc-400 dark:hover:text-red-400 transition-colors text-xs leading-none"
               title="Remove widget"
               aria-label={`Remove ${title} widget`}
             >
-              ✕
+              <span aria-hidden="true">✕</span>
             </button>
           )}
         </div>
@@ -55,7 +57,7 @@ export const GridItem = forwardRef<HTMLDivElement, Props>(function GridItem(
       <div className="flex-1 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-full">
-            <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Loading…</span>
+            <span className="text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">Loading…</span>
           </div>
         ) : error ? (
           <div className="flex items-center justify-center h-full px-4">

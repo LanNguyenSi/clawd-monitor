@@ -109,8 +109,8 @@ export function KeyboardShortcuts({ onRefresh, onToggleTheme, onToggleEditMode }
             ref={closeRef}
             onClick={() => setShowHelp(false)}
             aria-label="Close keyboard shortcuts"
-            className="text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300"
-          >✕</button>
+            className="min-w-6 min-h-6 inline-flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
+          ><span aria-hidden="true">✕</span></button>
         </div>
         <div className="space-y-2">
           {SHORTCUTS.map((s) => (
@@ -122,7 +122,7 @@ export function KeyboardShortcuts({ onRefresh, onToggleTheme, onToggleEditMode }
             </div>
           ))}
         </div>
-        <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-4 text-center">Press ? to toggle</p>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-4 text-center">Press ? to toggle</p>
       </div>
     </div>
   )

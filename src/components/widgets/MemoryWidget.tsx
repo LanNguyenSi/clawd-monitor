@@ -104,8 +104,8 @@ export function MemoryWidget() {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-1 px-4">
         <div className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-600" />
-        <span className="text-xs text-zinc-500">Agent offline</span>
-        <span className="text-xs text-zinc-400 dark:text-zinc-700">last seen {lastSeen}</span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">Agent offline</span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">last seen {lastSeen}</span>
       </div>
     )
   }
@@ -134,7 +134,7 @@ export function MemoryWidget() {
         </button>
 
         {updatedAt && (
-          <span className="text-xs text-zinc-400 dark:text-zinc-600 font-mono">
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
             {new Date(updatedAt).toLocaleTimeString()}
           </span>
         )}
@@ -148,12 +148,12 @@ export function MemoryWidget() {
 
       {/* Content */}
       <ScrollRegion label="Memory file content" className="flex-1 px-3 py-2">
-        {isLoading && <div className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Loading…</div>}
+        {isLoading && <div className="text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">Loading…</div>}
         {!isLoading && errorMsg && (
           <div className="space-y-1">
-            <p className="text-xs text-zinc-500">{errorMsg}</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">{errorMsg}</p>
             {!activeAgentId && (
-              <p className="text-xs text-zinc-400 dark:text-zinc-700">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
                 Select a connected agent above to read memory files remotely.
               </p>
             )}

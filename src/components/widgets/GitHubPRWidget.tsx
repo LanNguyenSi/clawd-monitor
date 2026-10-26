@@ -43,20 +43,20 @@ export function GitHubPRWidget() {
     <div className="flex flex-col h-full">
       {isLoading && (
         <div className="flex items-center justify-center h-full">
-          <span className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Loading…</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">Loading…</span>
         </div>
       )}
 
       {data?.error && !isLoading && (
         <div className="flex items-center justify-center h-full px-4">
-          <span className="text-xs text-zinc-400 dark:text-zinc-600 text-center">{data.error}</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400 text-center">{data.error}</span>
         </div>
       )}
 
       {!isLoading && !data?.error && prs.length === 0 && (
         <div className="flex flex-col items-center justify-center h-full gap-1">
           <span className="text-lg">✅</span>
-          <span className="text-xs text-zinc-400 dark:text-zinc-600">No open PRs</span>
+          <span className="text-xs text-zinc-500 dark:text-zinc-400">No open PRs</span>
         </div>
       )}
 
@@ -73,10 +73,10 @@ export function GitHubPRWidget() {
               <div className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${CI_DOT[pr.ciStatus]}`} />
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-zinc-800 dark:text-zinc-200 truncate">
-                  {pr.draft && <span className="text-zinc-400 dark:text-zinc-600 mr-1">[draft]</span>}
+                  {pr.draft && <span className="text-zinc-500 dark:text-zinc-400 mr-1">[draft]</span>}
                   {pr.title}
                 </div>
-                <div className="text-xs text-zinc-400 dark:text-zinc-600">
+                <div className="text-xs text-zinc-500 dark:text-zinc-400">
                   {pr.repo} #{pr.number} · {formatAge(pr.createdAt)} ago
                 </div>
               </div>

@@ -108,11 +108,11 @@ export function AgentSwitcher() {
         ) : (
           <>
             <div className="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-600 shrink-0" />
-            <span className="text-zinc-500">All agents</span>
-            {onlineCount > 0 && <span className="text-zinc-400 dark:text-zinc-700 tabular-nums">({onlineCount})</span>}
+            <span className="text-zinc-500 dark:text-zinc-400">All agents</span>
+            {onlineCount > 0 && <span className="text-zinc-500 dark:text-zinc-400 tabular-nums">({onlineCount})</span>}
           </>
         )}
-        <span aria-hidden="true" className="text-zinc-400 dark:text-zinc-700 shrink-0">▾</span>
+        <span aria-hidden="true" className="text-zinc-500 dark:text-zinc-400 shrink-0">▾</span>
       </button>
 
       {open && (
@@ -140,12 +140,12 @@ export function AgentSwitcher() {
                 onClick={() => select(agent.agentId)}
                 className="flex items-center gap-2 flex-1 min-w-0 text-left"
               >
-                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${agent.online ? 'bg-green-500' : 'bg-zinc-400 dark:bg-zinc-600'}`} />
+                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${agent.online ? 'bg-green-500' : 'bg-zinc-400 dark:bg-zinc-600'}`} aria-hidden="true" />
                 <div className="flex-1 min-w-0">
                   <div className={`truncate ${activeAgentId === agent.agentId ? 'text-indigo-600 dark:text-indigo-300' : 'text-zinc-700 dark:text-zinc-300'}`}>
                     {agent.name}
                   </div>
-                  <div className="text-zinc-400 dark:text-zinc-600 text-xs">
+                  <div className="text-zinc-500 dark:text-zinc-400 text-xs">
                     {agent.online ? `online · ${formatAge(agent.lastSnapshotAt)}` : `offline · ${formatAge(agent.lastSnapshotAt)}`}
                   </div>
                 </div>
@@ -157,16 +157,16 @@ export function AgentSwitcher() {
                   disabled={removing === agent.agentId}
                   aria-label={`Remove offline agent ${agent.name}`}
                   title="Remove offline agent"
-                  className="shrink-0 text-zinc-400 dark:text-zinc-700 hover:text-red-500 dark:hover:text-red-400 transition-colors px-1 disabled:opacity-40"
+                  className="shrink-0 min-w-6 min-h-6 inline-flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors px-1 disabled:opacity-40"
                 >
-                  {removing === agent.agentId ? '…' : '✕'}
+                  <span aria-hidden="true">{removing === agent.agentId ? '…' : '✕'}</span>
                 </button>
               )}
             </div>
           ))}
 
           {agents.length === 0 && (
-            <p role="none" className="text-xs text-zinc-400 dark:text-zinc-600 px-3 py-2">No agents connected</p>
+            <p role="none" className="text-xs text-zinc-500 dark:text-zinc-400 px-3 py-2">No agents connected</p>
           )}
         </div>
       )}

@@ -121,9 +121,9 @@ export function MetricsWidget() {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-1 px-4">
         <div className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-600" />
-        <span className="text-xs text-zinc-500">Agent offline</span>
-        <span className="text-xs text-zinc-400 dark:text-zinc-700">last seen {lastSeen}</span>
-        {metrics && <span className="text-xs text-zinc-400 dark:text-zinc-700 mt-1">last: CPU {metrics.cpu}% · RAM {Math.round((metrics.memUsed / metrics.memTotal) * 100)}%</span>}
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">Agent offline</span>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">last seen {lastSeen}</span>
+        {metrics && <span className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">last: CPU {metrics.cpu}% · RAM {Math.round((metrics.memUsed / metrics.memTotal) * 100)}%</span>}
       </div>
     )
   }
@@ -131,7 +131,7 @@ export function MetricsWidget() {
   return (
     <div className="flex flex-col h-full px-3 py-2 gap-3">
       {status === 'connecting' && (
-        <div className="text-xs text-zinc-400 dark:text-zinc-600 animate-pulse">Connecting…</div>
+        <div className="text-xs text-zinc-500 dark:text-zinc-400 animate-pulse">Connecting…</div>
       )}
       {status === 'error' && (
         <div className="text-xs text-red-500 dark:text-red-400">Metrics unavailable</div>
@@ -142,7 +142,7 @@ export function MetricsWidget() {
           {/* CPU */}
           <div>
             <div className="flex items-end justify-between mb-1">
-              <span className="text-xs text-zinc-500">CPU</span>
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">CPU</span>
               <span className={`text-2xl font-bold tabular-nums ${cpuColor(metrics.cpu)}`}>
                 {metrics.cpu}%
               </span>
@@ -156,7 +156,7 @@ export function MetricsWidget() {
           {/* RAM */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs text-zinc-500">RAM</span>
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">RAM</span>
               <span className="text-xs tabular-nums text-zinc-600 dark:text-zinc-300">
                 {formatBytes(metrics.memUsed)} / {formatBytes(metrics.memTotal)}
               </span>
@@ -167,7 +167,7 @@ export function MetricsWidget() {
                 style={{ width: `${memPct}%` }}
               />
             </div>
-            <div className="text-xs text-zinc-400 dark:text-zinc-600 mt-0.5 text-right">{memPct}%</div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 text-right">{memPct}%</div>
           </div>
         </>
       )}
