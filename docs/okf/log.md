@@ -2,14 +2,14 @@
 
 <!-- Add new entries at the top, newest first. -->
 
-- 2026-10-26T08:17:28Z, auth-and-config-loading and widget-data-modes re-verified and
+- 2026-10-26T08:19:19Z, auth-and-config-loading and widget-data-modes re-verified and
   re-stamped after the dashboard layout change. `src/app/dashboard/page.tsx`
   now stores widget layouts per breakpoint through `src/lib/layout-storage.ts`
   and `Navbar.tsx` gets a "Reset layout" button; the cited `router.replace`
   lines (28-32, 36-38) and the Navbar imports (4-7) are unchanged, the
   navbar still mounts `AgentSwitcher`, `AddWidgetMenu`, `UserMenu` and
   `AddAgentModal`, and the `ActiveAgentProvider` citation was re-pointed
-  from line 159 to 142. Checked with `okf-kit check docs/okf`.
+  from line 159 to 142. `addWidgetToStorage` now also takes the shown default layout as fallback. Checked with `okf-kit check docs/okf`.
 - 2026-10-25T08:26:51Z, release cut 0.3.0 changed only the `version` field on line 3 of
   `package.json` (no line shift). auth-and-config-loading re-verified (the cited
   scripts block still names `node dist/server.js` as the start command) and
