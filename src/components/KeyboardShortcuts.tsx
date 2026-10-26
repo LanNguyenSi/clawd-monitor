@@ -20,6 +20,24 @@ const SHORTCUTS = [
   { key: 'Esc', description: 'Close this help' },
 ]
 
+/**
+ * Keys typed into a form control or an editable region, or pressed while
+ * focus is inside an open menu (the menu owns the keyboard there), are not
+ * global shortcuts.
+ */
+function ignoresShortcuts(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  ) {
+    return true
+  }
+  if (target.isContentEditable) return true
+  return target.closest('[role="menu"]') !== null
+}
+
 export function KeyboardShortcuts({ onRefresh, onToggleTheme, onToggleEditMode }: Props) {
   const [showHelp, setShowHelp] = useState(false)
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -39,8 +57,7 @@ export function KeyboardShortcuts({ onRefresh, onToggleTheme, onToggleEditMode }
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      // Don't fire when typing in inputs
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (ignoresShortcuts(e.target)) return
 
       switch (e.key) {
         case 'r':

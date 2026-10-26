@@ -57,8 +57,22 @@ export function AgentSwitcher() {
     close()
   }
 
-  async function removeAgent(e: React.MouseEvent, agentId: string) {
+  // The remove button unmounts together with its row. Hand focus to the
+  // nearest remaining menu item first (the one after the row, else the last
+  // one before it), so the menu keeps handling Arrow keys, Escape and Tab
+  // instead of focus dropping to <body>.
+  function focusNeighbour(removed: HTMLElement) {
+    const row = removed.parentElement
+    const items = Array.from(
+      menuProps.ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') ?? [],
+    ).filter((el) => !row?.contains(el))
+    const after = items.find((el) => row && row.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
+    ;(after ?? items[items.length - 1])?.focus()
+  }
+
+  async function removeAgent(e: React.MouseEvent<HTMLButtonElement>, agentId: string) {
     e.stopPropagation()
+    const button = e.currentTarget
     setRemoving(agentId)
     try {
       const res = await fetch(`/api/agents/${encodeURIComponent(agentId)}`, {
@@ -67,7 +81,10 @@ export function AgentSwitcher() {
       // 404: already gone from the registry; drop it locally too. Any other
       // failure (401, 409 agent came back online) keeps the entry listed.
       if (!res.ok && res.status !== 404) return
+      // Removing the selected agent selects "All agents", which closes the
+      // menu and refocuses the trigger; otherwise the menu stays open.
       if (activeAgentId === agentId) select(null)
+      else focusNeighbour(button)
       setAgents((prev) => prev.filter((a) => a.agentId !== agentId))
     } finally {
       setRemoving(null)

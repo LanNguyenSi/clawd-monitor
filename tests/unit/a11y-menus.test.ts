@@ -8,6 +8,7 @@ import { AgentSwitcher } from '@/components/Nav/AgentSwitcher'
 import { AddWidgetMenu } from '@/components/Nav/AddWidgetMenu'
 import { UserMenu } from '@/components/Nav/UserMenu'
 import { KeyboardShortcuts } from '@/components/KeyboardShortcuts'
+import { ActiveAgentProvider } from '@/lib/active-agent'
 import { mount, unmountAll, flush, click, key, createElement as h } from './dom-helpers'
 
 vi.mock('next/link', () => ({
@@ -227,5 +228,171 @@ describe('KeyboardShortcuts overlay', () => {
     const { container } = await open()
     await key(container.querySelector('[role="dialog"]')!, 'Tab')
     expect(document.activeElement).toBe(container.querySelector('button[aria-label="Close keyboard shortcuts"]'))
+  })
+})
+
+describe('AgentSwitcher removing an offline agent', () => {
+  async function openMenu(wrap = false) {
+    const m = await mount(wrap ? h(ActiveAgentProvider, null, h(AgentSwitcher)) : h(AgentSwitcher))
+    await flush()
+    const trigger = m.container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!
+    await click(trigger)
+    const remove = m.container.querySelector<HTMLElement>('button[aria-label="Remove offline agent beta"]')!
+    return { ...m, trigger, remove }
+  }
+
+  function expectFocusInsideMenu(container: HTMLElement) {
+    const menu = container.querySelector('[role="menu"]')!
+    expect(menu).not.toBeNull()
+    expect(menu.contains(document.activeElement)).toBe(true)
+    expect(document.activeElement?.getAttribute('role')).toBe('menuitem')
+  }
+
+  it('click: focus moves to a remaining menu item and Escape still closes the menu', async () => {
+    const { container, trigger, remove } = await openMenu()
+    remove.focus()
+    await click(remove)
+    await flush()
+    expect(container.textContent).not.toContain('beta')
+    expectFocusInsideMenu(container)
+    // the nearest remaining item (alpha's select button) takes over
+    expect(document.activeElement?.textContent).toContain('alpha')
+    await key(document.activeElement!, 'Escape')
+    expect(container.querySelector('[role="menu"]')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('keyboard: Enter on the remove button keeps the menu keyboard-operable', async () => {
+    const { container, trigger } = await openMenu()
+    // End jumps to the last item, which is the remove button of the offline agent
+    await key(document.activeElement!, 'End')
+    const remove = document.activeElement as HTMLElement
+    expect(remove.getAttribute('aria-label')).toBe('Remove offline agent beta')
+    await key(remove, 'Enter')
+    // a browser turns Enter on a button into a click
+    await click(remove)
+    await flush()
+    expect(container.textContent).not.toContain('beta')
+    expectFocusInsideMenu(container)
+    // arrow keys still work from the new position
+    await key(document.activeElement!, 'ArrowDown')
+    expectFocusInsideMenu(container)
+    await key(document.activeElement!, 'Escape')
+    expect(container.querySelector('[role="menu"]')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('removing the selected agent closes the menu and returns focus to the trigger', async () => {
+    localStorage.setItem('clawd-monitor:activeAgentId', 'a2')
+    try {
+      const { container, trigger, remove } = await openMenu(true)
+      await click(remove)
+      await flush()
+      expect(container.querySelector('[role="menu"]')).toBeNull()
+      expect(document.activeElement).toBe(trigger)
+    } finally {
+      localStorage.removeItem('clawd-monitor:activeAgentId')
+    }
+  })
+
+  it('a failed removal keeps the entry and the focus on its button', async () => {
+    const { container, remove } = await openMenu()
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 409, json: async () => ({}) })))
+    remove.focus()
+    await click(remove)
+    await flush()
+    expect(container.textContent).toContain('beta')
+    expect(document.activeElement).toBe(remove)
+  })
+})
+
+describe('menu and global shortcuts together', () => {
+  const spies = { onRefresh: vi.fn(), onToggleTheme: vi.fn(), onToggleEditMode: vi.fn() }
+
+  async function mountBoth() {
+    const m = await mount(
+      h('div', null, h(UserMenu), h(KeyboardShortcuts, spies)),
+    )
+    const trigger = m.container.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')!
+    await click(trigger)
+    return { ...m, trigger }
+  }
+
+  beforeEach(() => {
+    Object.values(spies).forEach((f) => f.mockClear())
+  })
+
+  it('Escape in an open menu closes only the menu and never reaches window listeners', async () => {
+    const { container, trigger } = await mountBoth()
+    const windowListener = vi.fn()
+    window.addEventListener('keydown', windowListener)
+    try {
+      await key(document.activeElement!, 'Escape')
+      expect(windowListener).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('keydown', windowListener)
+    }
+    expect(container.querySelector('[role="menu"]')).toBeNull()
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('? is ignored while focus is in an open menu: no overlay, menu stays open', async () => {
+    const { container } = await mountBoth()
+    await key(document.activeElement!, '?')
+    expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(container.querySelector('[role="menu"]')).not.toBeNull()
+    expect(container.querySelector('[role="menu"]')!.contains(document.activeElement)).toBe(true)
+  })
+
+  it('letter shortcuts are ignored inside an open menu and work again once it is closed', async () => {
+    const { container } = await mountBoth()
+    await key(document.activeElement!, 't')
+    expect(spies.onToggleTheme).not.toHaveBeenCalled()
+    await key(document.activeElement!, 'Escape')
+    expect(container.querySelector('[role="menu"]')).toBeNull()
+    await key(document.activeElement!, 't')
+    expect(spies.onToggleTheme).toHaveBeenCalledTimes(1)
+    await key(document.activeElement!, '?')
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+  })
+})
+
+describe('KeyboardShortcuts typing guard', () => {
+  const spies = { onRefresh: vi.fn(), onToggleTheme: vi.fn(), onToggleEditMode: vi.fn() }
+
+  beforeEach(async () => {
+    Object.values(spies).forEach((f) => f.mockClear())
+    await mount(h(KeyboardShortcuts, spies))
+  })
+
+  function editable(): HTMLElement {
+    const el = document.createElement('div')
+    // jsdom does not implement isContentEditable; browsers derive it from contenteditable
+    Object.defineProperty(el, 'isContentEditable', { value: true })
+    return el
+  }
+
+  it.each([
+    ['input', () => document.createElement('input')],
+    ['textarea', () => document.createElement('textarea')],
+    ['select', () => document.createElement('select')],
+    ['contenteditable element', editable],
+  ])('ignores shortcuts typed into a %s', async (_name, make) => {
+    const el = make()
+    document.body.appendChild(el)
+    await key(el, 't')
+    await key(el, '?')
+    expect(spies.onToggleTheme).not.toHaveBeenCalled()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('still handles shortcuts from other elements and from the window', async () => {
+    const btn = document.createElement('button')
+    document.body.appendChild(btn)
+    await key(btn, 't')
+    await key(window, 'r')
+    expect(spies.onToggleTheme).toHaveBeenCalledTimes(1)
+    expect(spies.onRefresh).toHaveBeenCalledTimes(1)
   })
 })
