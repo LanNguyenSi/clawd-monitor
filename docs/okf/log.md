@@ -2,6 +2,20 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-26T08:27:20Z, widget-data-modes, agent-registry-lifecycle and auth-and-config-loading
+  re-verified and re-stamped after an accessibility change to
+  `src/app/dashboard/page.tsx`, `src/components/Nav/AgentSwitcher.tsx` and the
+  scrollable widget lists (a `ScrollRegion` wrapper, an `aria-label` on the
+  selects, a `main` landmark with a hidden h1, menu roles and keyboard
+  handling). Checked against the code: which data each widget reads, the
+  agent selection held in `ActiveAgentProvider` and persisted by
+  `AgentSwitcher`, the offline-agent remove button sending `DELETE`, and the
+  auth check in `dashboard/page.tsx` are unchanged. The `file:line`
+  citations into the changed files moved by one to a dozen lines and were
+  re-pointed (the `<ActiveAgentProvider>` citation in widget-data-modes was
+  already off before this change). auth-and-config-loading cites only the
+  auth-check lines of the dashboard page, which still match. Checked with
+  `okf-kit check docs/okf`.
 - 2026-10-25T08:26:51Z, release cut 0.3.0 changed only the `version` field on line 3 of
   `package.json` (no line shift). auth-and-config-loading re-verified (the cited
   scripts block still names `node dist/server.js` as the start command) and
