@@ -2,6 +2,15 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-26T08:36:30Z, auth-and-config-loading, widget-data-modes and agent-registry-lifecycle
+  re-verified and re-stamped after merging the dashboard layout change into
+  the accessibility branch. In `src/app/dashboard/page.tsx` the `main`
+  landmark and the moved shortcut hint add one line before
+  `<ActiveAgentProvider>`, so that citation in widget-data-modes now reads
+  line 145; the `router.replace('/login')` citations (31-33, 37-39) and the
+  AgentSwitcher citations did not move. `Navbar.tsx` still mounts
+  `AgentSwitcher`, `AddWidgetMenu` and `UserMenu`. Checked with
+  `okf-kit check docs/okf`.
 - 2026-10-26T08:35:46Z, widget-data-modes, agent-registry-lifecycle and auth-and-config-loading
   re-verified and re-stamped after a follow-up to the accessibility change:
   `src/components/Nav/AgentSwitcher.tsx` now moves keyboard focus to the
