@@ -157,9 +157,52 @@ describe('secondary text contrast floor', () => {
     for (const file of walk(join(__dirname, '../../src'))) {
       readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
         if (!/\bdark:text-zinc-[67]00\b/.test(line)) return
-        // decorative divider slash, and the token revoke button (own task)
-        if (line.includes('>/</span>') || line.includes('border-zinc-200 dark:border-zinc-800 hover:border-red-300')) return
+        // decorative divider slash (aria-hidden, no information)
+        if (line.includes('>/</span>')) return
         offenders.push(`${file.replace(/.*src\//, 'src/')}:${i + 1}`)
+      })
+    }
+    expect(offenders).toEqual([])
+  })
+  /** Text of every className attribute value: a quoted string or a balanced {...} expression. */
+  function classNameValues(src: string): { value: string; line: number }[] {
+    const out: { value: string; line: number }[] = []
+    for (const m of src.matchAll(/className=/g)) {
+      const start = m.index! + m[0].length
+      let end = start
+      if (src[start] === '"') {
+        end = src.indexOf('"', start + 1) + 1
+      } else if (src[start] === '{') {
+        let depth = 0
+        for (end = start; end < src.length; end++) {
+          if (src[end] === '{') depth++
+          else if (src[end] === '}' && --depth === 0) { end++; break }
+        }
+      }
+      out.push({ value: src.slice(start, end), line: src.slice(0, start).split('\n').length })
+    }
+    return out
+  }
+
+  it('gives every plain text-zinc-400/500 a dark:text-zinc-100..400 pair on the same className', () => {
+    const offenders: string[] = []
+    for (const file of walk(join(__dirname, '../../src'))) {
+      for (const { value, line } of classNameValues(readFileSync(file, 'utf8'))) {
+        const plain = /(?<![\w:-])text-zinc-[45]00\b/.test(value)
+        const darkOk = /\bdark:text-zinc-[1-4]00\b/.test(value)
+        if (plain && !darkOk) offenders.push(`${file.replace(/.*src\//, 'src/')}:${line}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('does not let a dark hover colour equal the dark resting colour', () => {
+    const offenders: string[] = []
+    for (const file of walk(join(__dirname, '../../src'))) {
+      readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+        if (/\bdark:text-zinc-400\b/.test(line) && /\bdark:hover:text-zinc-400\b/.test(line)) {
+          offenders.push(`${file.replace(/.*src\//, 'src/')}:${i + 1}`)
+        }
       })
     }
     expect(offenders).toEqual([])

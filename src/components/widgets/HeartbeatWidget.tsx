@@ -65,7 +65,7 @@ export function HeartbeatWidget() {
           <div className={`w-3 h-3 rounded-full ${cfg.dot}`} />
           <span className={`text-sm font-bold ${cfg.text}`}>{cfg.label}</span>
         </div>
-        <div className="text-xs text-zinc-500 text-center">
+        <div className="text-xs text-zinc-500 dark:text-zinc-400 text-center">
           {uptimeStr}
           {lastSeen > 0 && <span className="block">{new Date(lastSeen).toLocaleTimeString()}</span>}
         </div>
@@ -85,7 +85,7 @@ export function HeartbeatWidget() {
 
       {data && (
         <>
-          <div className="text-xs text-zinc-500 text-center">
+          <div className="text-xs text-zinc-500 dark:text-zinc-400 text-center">
             {data.responseMs != null ? `${data.responseMs}ms` : '—'}
             {' · '}
             {new Date(data.checkedAt).toLocaleTimeString()}

@@ -139,7 +139,7 @@ export function LogTailWidget() {
         <button
           onClick={() => setAutoScroll((v) => !v)}
           className={`text-xs px-2 py-0.5 rounded-sm transition-colors ${
-            autoScroll ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-600/20 dark:text-indigo-400' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-400'
+            autoScroll ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-600/20 dark:text-indigo-400' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
           }`}
         >
           ↓ auto

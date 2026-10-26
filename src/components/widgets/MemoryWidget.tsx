@@ -127,7 +127,7 @@ export function MemoryWidget() {
 
         <button
           onClick={() => void mutate()}
-          className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 px-1"
+          className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 px-1"
           title="Refresh"
         >
           ↻
