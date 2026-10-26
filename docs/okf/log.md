@@ -2,6 +2,13 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-26T09:24:32Z, widget-data-modes re-verified and re-stamped after the light-scheme
+  contrast follow-up. `HeartbeatWidget.tsx`, `LogTailWidget.tsx`,
+  `MetricsWidget.tsx`, `ServiceHealthWidget.tsx` and `AgentListWidget.tsx`
+  only changed colour classes in place (`green-700`, `yellow-800`, `red-700`
+  text, a light colour pair for the log tail badge, `zinc-600` row text); no
+  line moved, the polling and data-mode claims of the doc are unchanged.
+  Checked with `git diff 43d9cec..HEAD` on those files.
 - 2026-10-26T09:05:52Z, widget-data-modes re-verified and re-stamped after the contrast sweep
   follow-up. `HeartbeatWidget.tsx`, `MemoryWidget.tsx`, `LogTailWidget.tsx`
   and `SessionLogWidget.tsx` only gained or changed colour classes in place
