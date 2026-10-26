@@ -2,6 +2,18 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-26T08:52:48Z, auth-and-config-loading, widget-data-modes and agent-registry-lifecycle
+  re-verified and re-stamped after the contrast and icon-button change.
+  The edits to `dashboard/page.tsx`, `AgentSwitcher.tsx`, `Navbar.tsx` and
+  the widget files swap colour classes, add `aria-*` attributes and wrap
+  glyphs in spans in place, and move the shortcut hint into the page flow;
+  no line count changed, the cited `router.replace` lines, the
+  `<ActiveAgentProvider>` line, the AgentSwitcher storage and `DELETE`
+  lines and the Navbar imports (4-7) are where the docs cite them, the
+  offline-only remove button still sends `DELETE`, and the navbar still
+  mounts `AgentSwitcher`, `AddWidgetMenu` and `UserMenu`. Checked with
+  `okf-kit check docs/okf`: clean.
+
 - 2026-10-26T08:36:30Z, auth-and-config-loading, widget-data-modes and agent-registry-lifecycle
   re-verified and re-stamped after merging the dashboard layout change into
   the accessibility branch. In `src/app/dashboard/page.tsx` the `main`
