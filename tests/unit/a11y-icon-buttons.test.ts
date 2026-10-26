@@ -164,46 +164,117 @@ describe('secondary text contrast floor', () => {
     }
     expect(offenders).toEqual([])
   })
-  /** Text of every className attribute value: a quoted string or a balanced {...} expression. */
-  function classNameValues(src: string): { value: string; line: number }[] {
-    const out: { value: string; line: number }[] = []
-    for (const m of src.matchAll(/className=/g)) {
-      const start = m.index! + m[0].length
-      let end = start
-      if (src[start] === '"') {
-        end = src.indexOf('"', start + 1) + 1
-      } else if (src[start] === '{') {
-        let depth = 0
-        for (end = start; end < src.length; end++) {
-          if (src[end] === '{') depth++
-          else if (src[end] === '}' && --depth === 0) { end++; break }
-        }
-      }
-      out.push({ value: src.slice(start, end), line: src.slice(0, start).split('\n').length })
+  /** Every string literal of a source file (quoted, or the static text of a template), with its line. */
+  function stringLiterals(src: string): { text: string; line: number }[] {
+    const out: { text: string; line: number }[] = []
+    const lineOf = (i: number) => src.slice(0, i).split('\n').length
+    for (const m of src.matchAll(/'(?:[^'\n\\]|\\.)*'|"(?:[^"\n\\]|\\.)*"/g)) {
+      out.push({ text: m[0].slice(1, -1), line: lineOf(m.index!) })
+    }
+    for (const m of src.matchAll(/`(?:[^`\\]|\\.)*`/g)) {
+      out.push({ text: m[0].slice(1, -1).replace(/\$\{[^}]*\}/g, ' '), line: lineOf(m.index!) })
     }
     return out
   }
 
-  it('gives every plain text-zinc-400/500 a dark:text-zinc-100..400 pair on the same className', () => {
+  /** True when the literal has a plain text-zinc-400/500 without a dark:text-zinc-100..400 partner in it. */
+  function unpairedZinc(text: string): boolean {
+    return /(?<![\w:-])text-zinc-[45]00\b/.test(text) && !/\bdark:text-zinc-[1-4]00\b/.test(text)
+  }
+
+  // Tailwind palette values used on light surfaces (WCAG relative luminance below).
+  const TEXT: Record<string, string> = {
+    'green-500': '22c55e', 'green-600': '16a34a', 'green-700': '15803d', 'green-800': '166534',
+    'yellow-500': 'eab308', 'yellow-600': 'ca8a04', 'yellow-700': 'a16207', 'yellow-800': '854d0e',
+    'amber-500': 'f59e0b', 'amber-600': 'd97706', 'amber-700': 'b45309', 'amber-800': '92400e', 'amber-900': '78350f',
+    'red-500': 'ef4444', 'red-600': 'dc2626', 'red-700': 'b91c1c', 'red-800': '991b1b',
+    'orange-500': 'f97316', 'orange-600': 'ea580c', 'orange-700': 'c2410c', 'orange-800': '9a3412',
+    'green-400': '4ade80', 'yellow-400': 'facc15', 'amber-400': 'fbbf24', 'red-400': 'f87171',
+    'orange-400': 'fb923c', 'indigo-400': '818cf8',
+    'indigo-500': '6366f1', 'indigo-600': '4f46e5', 'indigo-700': '4338ca', 'indigo-800': '3730a3', 'indigo-900': '312e81',
+  }
+  const SURFACE: Record<string, string> = {
+    white: 'ffffff', 'zinc-50': 'fafafa', 'zinc-100': 'f4f4f5', 'red-50': 'fef2f2',
+    'indigo-50': 'eef2ff', 'indigo-100': 'e0e7ff', 'amber-50': 'fffbeb',
+  }
+  const luminance = (hex: string) => {
+    const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+  const ratio = (fg: string, bg: string) => {
+    const [a, b] = [luminance(fg), luminance(bg)]
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+  }
+
+  /**
+   * Plain (non-variant) coloured text in the literal against its own plain bg-*-50/100
+   * surface, or against the page background (zinc-100, the darkest light surface) when
+   * the literal names none. Returns one message per pair below 4.5:1.
+   */
+  function lowContrast(text: string): string[] {
+    const tokens = text.split(/\s+/).filter((t) => !t.includes(':'))
+    const surfaceKey = tokens.map((t) => /^bg-(.+)$/.exec(t)?.[1]).find((k) => k && SURFACE[k]) ?? 'zinc-100'
+    const out: string[] = []
+    for (const t of tokens) {
+      const key = /^text-(.+)$/.exec(t)?.[1]
+      if (!key || !TEXT[key]) continue
+      const r = ratio(TEXT[key], SURFACE[surfaceKey])
+      if (r < 4.5) out.push(`${t} on ${surfaceKey} = ${r.toFixed(2)}:1`)
+    }
+    return out
+  }
+
+  it('gives every plain text-zinc-400/500 a dark:text-zinc-100..400 pair in the same string literal', () => {
     const offenders: string[] = []
     for (const file of walk(join(__dirname, '../../src'))) {
-      for (const { value, line } of classNameValues(readFileSync(file, 'utf8'))) {
-        const plain = /(?<![\w:-])text-zinc-[45]00\b/.test(value)
-        const darkOk = /\bdark:text-zinc-[1-4]00\b/.test(value)
-        if (plain && !darkOk) offenders.push(`${file.replace(/.*src\//, 'src/')}:${line}`)
+      for (const { text, line } of stringLiterals(readFileSync(file, 'utf8'))) {
+        if (unpairedZinc(text)) offenders.push(`${file.replace(/.*src\//, 'src/')}:${line}`)
       }
     }
     expect(offenders).toEqual([])
   })
 
-  it('uses text-red-600 or darker for plain red text, since red-500 is about 3.8:1 on white', () => {
+  it('keeps every plain coloured text at 4.5:1 on its light surface', () => {
     const offenders: string[] = []
     for (const file of walk(join(__dirname, '../../src'))) {
-      readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
-        if (/(?<![\w:-])text-red-500\b/.test(line)) offenders.push(`${file.replace(/.*src\//, 'src/')}:${i + 1}`)
-      })
+      for (const { text, line } of stringLiterals(readFileSync(file, 'utf8'))) {
+        for (const o of lowContrast(text)) offenders.push(`${file.replace(/.*src\//, 'src/')}:${line} ${o}`)
+      }
     }
     expect(offenders).toEqual([])
+  })
+
+  it('keeps white button text at 4.5:1 in the hover state (indigo-500 is 4.46:1)', () => {
+    const offenders: string[] = []
+    for (const file of walk(join(__dirname, '../../src'))) {
+      for (const { text, line } of stringLiterals(readFileSync(file, 'utf8'))) {
+        if (/(?<![\w:-])text-white\b/.test(text) && /\bhover:bg-(indigo|green|red|yellow|orange)-[1-5]00\b/.test(text)) {
+          offenders.push(`${file.replace(/.*src\//, 'src/')}:${line}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps the connected agents rows on zinc-600, since the active row sits on indigo-50 (zinc-500 is 4.3:1 there)', () => {
+    const src = readFileSync(join(__dirname, '../../src/components/widgets/AgentListWidget.tsx'), 'utf8')
+    const start = src.indexOf('const isActive')
+    expect(start).toBeGreaterThanOrEqual(0)
+    const rows = src.slice(start)
+    expect(rows).not.toMatch(/(?<![\w:-])text-zinc-500\b/)
+  })
+
+  it('checks every branch of a ternary on its own, not the whole expression', () => {
+    const src = "const c = `x ${ok ? 'text-zinc-500 dark:text-zinc-400' : 'text-zinc-500'}`"
+    expect(stringLiterals(src).filter((l) => unpairedZinc(l.text)).map((l) => l.text)).toEqual(['text-zinc-500'])
+  })
+
+  it('rejects green-600 on page backgrounds and red-600 on a red-50 surface, accepts the 700 shades', () => {
+    expect(lowContrast('text-green-600 dark:text-green-400')).toHaveLength(1)
+    expect(lowContrast('text-green-700 dark:text-green-400')).toEqual([])
+    expect(lowContrast('text-red-600 bg-red-50 dark:text-red-400')).toHaveLength(1)
+    expect(lowContrast('text-red-700 bg-red-50 dark:text-red-400')).toEqual([])
   })
 
   it('does not let a dark hover colour equal the dark resting colour', () => {

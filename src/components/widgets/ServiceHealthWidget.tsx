@@ -43,7 +43,7 @@ export function ServiceHealthWidget() {
                   {svc.status > 0 && ` · ${svc.status}`}
                 </div>
               </div>
-              <span className={`text-xs font-medium ${svc.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              <span className={`text-xs font-medium ${svc.ok ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
                 {svc.ok ? 'UP' : 'DOWN'}
               </span>
             </div>

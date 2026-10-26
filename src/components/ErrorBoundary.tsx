@@ -26,7 +26,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return this.props.fallback ?? (
         <div className="flex flex-col items-center justify-center h-full gap-2 p-4 text-center">
-          <span className="text-xs font-medium text-red-600 dark:text-red-400">Widget crashed</span>
+          <span className="text-xs font-medium text-red-700 dark:text-red-400">Widget crashed</span>
           <span className="text-[10px] text-zinc-500 dark:text-zinc-400 break-all max-w-full">
             {this.state.error.message}
           </span>

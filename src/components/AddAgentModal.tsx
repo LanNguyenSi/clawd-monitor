@@ -224,12 +224,12 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
               </p>
             </div>
             {!originValid && (
-              <p className="text-sm text-red-600 dark:text-red-400">
+              <p className="text-sm text-red-700 dark:text-red-400">
                 Cannot determine the dashboard origin (current: <code>{origin || '<empty>'}</code>). Reload the page and try again.
               </p>
             )}
             {error && (
-              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+              <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
             )}
             <div className="flex justify-end gap-2 pt-2">
               <button
@@ -242,7 +242,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
               <button
                 type="submit"
                 disabled={submitting || !originValid}
-                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm font-medium transition-colors"
+                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm font-medium transition-colors"
               >
                 {submitting ? 'Generating…' : 'Generate token'}
               </button>
@@ -256,7 +256,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
               <p className="text-sm text-zinc-600 dark:text-zinc-400">
                 Token created for <span className="font-medium text-zinc-800 dark:text-zinc-200">&ldquo;{tokenName}&rdquo;</span>.
               </p>
-              <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-1.5">
+              <p className="text-xs text-yellow-800 dark:text-yellow-500 mt-1.5">
                 ⚠ Copy now — this token won&apos;t be shown again. Click <strong>Done</strong> when finished.
               </p>
             </div>
@@ -300,7 +300,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
             <div className="flex justify-end pt-2">
               <button
                 onClick={onClose}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-sm text-sm font-medium transition-colors"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-sm text-sm font-medium transition-colors"
               >
                 Done
               </button>

@@ -26,8 +26,8 @@ function detectLevel(line: string): LogLine['level'] {
 }
 
 const LEVEL_CLASSES: Record<LogLine['level'], string> = {
-  error: 'text-red-600 dark:text-red-400',
-  warn:  'text-yellow-600 dark:text-yellow-400',
+  error: 'text-red-700 dark:text-red-400',
+  warn:  'text-yellow-800 dark:text-yellow-400',
   info:  'text-zinc-700 dark:text-zinc-300',
   debug: 'text-zinc-500 dark:text-zinc-400',
 }
@@ -130,7 +130,7 @@ export function LogTailWidget() {
         <div className="flex-1" />
 
         {activeAgentId && (
-          <span className="text-xs bg-indigo-900/30 text-indigo-400 px-1.5 rounded-sm border border-indigo-800/30">
+          <span className="text-xs bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 px-1.5 rounded-sm border border-indigo-200 dark:border-indigo-800/30">
             agent
           </span>
         )}
@@ -159,7 +159,7 @@ export function LogTailWidget() {
           <div className="text-zinc-500 dark:text-zinc-400 animate-pulse">Connecting…</div>
         )}
         {status === 'disconnected' && lines.length === 0 && (
-          <div className="text-red-600 dark:text-red-400">Disconnected — retrying…</div>
+          <div className="text-red-700 dark:text-red-400">Disconnected — retrying…</div>
         )}
         {lines.map((line) => (
           <div key={line.id} className={`${LEVEL_CLASSES[line.level]} whitespace-pre-wrap break-all`}>

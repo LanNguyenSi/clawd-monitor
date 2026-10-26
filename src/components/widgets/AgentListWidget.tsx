@@ -77,15 +77,15 @@ export function AgentListWidget() {
                   <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200 flex-1 truncate">
                     {agent.name}
                   </span>
-                  <span className="text-xs text-zinc-500 dark:text-zinc-400 shrink-0">
+                  <span className="text-xs text-zinc-600 dark:text-zinc-400 shrink-0">
                     {agent.online ? formatAge(agent.lastSnapshotAt) : 'offline'}
                   </span>
                 </div>
                 {agent.lastSnapshot && (
-                  <div className="flex gap-3 mt-0.5 text-xs text-zinc-500 dark:text-zinc-400 ml-4">
+                  <div className="flex gap-3 mt-0.5 text-xs text-zinc-600 dark:text-zinc-400 ml-4">
                     <span>{agent.lastSnapshot.sessions?.length ?? 0} sessions</span>
                     <span>{agent.lastSnapshot.cronJobs?.length ?? 0} crons</span>
-                    <span className="font-mono text-zinc-500 dark:text-zinc-400">v{agent.version}</span>
+                    <span className="font-mono text-zinc-600 dark:text-zinc-400">v{agent.version}</span>
                   </div>
                 )}
               </button>

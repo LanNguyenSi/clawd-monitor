@@ -60,7 +60,7 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <p role="alert" className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 rounded-sm px-3 py-2">
+            <p role="alert" className="text-sm text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 rounded-sm px-3 py-2">
               {error}
             </p>
           )}
@@ -68,7 +68,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg py-3 text-sm font-medium transition-colors"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg py-3 text-sm font-medium transition-colors"
           >
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
