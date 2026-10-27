@@ -197,7 +197,9 @@ could not read `/root` anyway.
 
 To use these two features in Docker, add a read-only bind mount of the
 workspace to the service in your compose file and point `CLAWD_DIR` at the
-container path. The directory and its files must be readable by UID 1001
+container path. Add the two entries to the service's existing `volumes:` and
+`environment:` lists (or put them in a compose override file) instead of
+pasting a second key. The directory and its files must be readable by UID 1001
 (world-readable, or owned by or group-readable for 1001):
 
 ```yaml
@@ -235,7 +237,8 @@ cleanup.
 
 The Docker volume name of the traefik stack is `<project>_clawd_monitor_data`,
 where the project is the compose project name (the directory name unless set
-with `-p` or `name:`; the production `.relay.yml` names it `clawd-monitor`).
+with `-p` or `name:`). Under agent-relay the project is the app directory
+name, `clawd-monitor`, so the volume is `clawd-monitor_clawd_monitor_data`.
 Look the exact name up with `docker volume ls | grep clawd_monitor_data`; the
 commands below use it as `$VOL` (`clawd_monitor_data` for `docker-compose.yml`).
 
@@ -246,10 +249,13 @@ VOL=clawd-monitor_clawd_monitor_data   # check with: docker volume ls
 docker run --rm -v "$VOL":/data:ro -v "$PWD":/backup alpine \
   tar czf /backup/clawd-monitor-data.tgz -C /data .
 
-# Restore into the same or a new volume (owner and mode 0600 of the files
-# are kept; the container user is UID 1001)
+# Restore: stop the app first so it does not write tokens.json or
+# password.json during the extract, then start it again. The restore
+# overwrites both files in the volume; owner (UID 1001) and mode 0600 are kept.
+docker compose -f docker-compose.traefik.yml stop
 docker run --rm -v "$VOL":/data -v "$PWD":/backup alpine \
   tar xzf /backup/clawd-monitor-data.tgz -C /data
+docker compose -f docker-compose.traefik.yml start
 ```
 
 The archive holds password and token hashes; store it like a secret. The
