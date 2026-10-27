@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, openSync, fsyncSync, closeSync, renameSync, unlinkSync } from 'fs'
 import { join } from 'path'
+import { randomBytes } from 'crypto'
 
 const DATA_DIR = process.env.CLAWD_MONITOR_DATA_DIR ?? '/data'
 
@@ -50,7 +51,8 @@ export function readDataFile<T>(filename: string, defaultValue: T): T {
   }
 }
 
-let tempCounter = 0
+/** How often a temp name that already exists is replaced by a fresh random one. */
+const TEMP_NAME_ATTEMPTS = 5
 
 /**
  * Replaces the file atomically: the data goes to a temp file in the same
@@ -59,18 +61,32 @@ let tempCounter = 0
  * complete file or the new complete file, plus at worst a stray temp file;
  * never a truncated target. The new file is always mode 0600 (the stores hold
  * bcrypt hashes), also when the replaced file had looser permissions. The
- * function is synchronous, so two writes of one process cannot interleave;
- * the temp name is unique per process and call, so a leftover from a crashed
- * process does not block the next write. Needs write permission on the data
- * directory, not only on the file.
+ * function is synchronous, so two writes of one process cannot interleave.
+ * The temp name carries random bytes, not a pid and counter: in a container
+ * node is pid 1 on every start, so a counter-based name would be the same
+ * after each restart and collide with the leftover of a crash. The temp is
+ * opened with `wx`, so an existing file of that name is never written to; it
+ * is skipped (new random name), and only a temp this call created is removed
+ * on failure. Needs write permission on the data directory, not only on the
+ * file.
  */
 export function writeDataFile(filename: string, data: unknown): void {
   const dir = getDataDir()
   const path = join(dir, filename)
-  const tmp = join(dir, `.${filename}.${process.pid}.${tempCounter++}.tmp`)
+  let tmp = ''
   let fd: number | null = null
+  for (let attempt = 1; fd === null; attempt++) {
+    tmp = join(dir, `.${filename}.${randomBytes(8).toString('hex')}.tmp`)
+    try {
+      fd = openSync(tmp, 'wx', 0o600)
+    } catch (err) {
+      const exists = err && typeof err === 'object' && 'code' in err && err.code === 'EEXIST'
+      // Nothing was created here, so there is nothing to clean up and the
+      // file that is in the way is not ours to delete.
+      if (!exists || attempt >= TEMP_NAME_ATTEMPTS) throw err
+    }
+  }
   try {
-    fd = openSync(tmp, 'wx', 0o600)
     writeFileSync(fd, JSON.stringify(data, null, 2))
     fsyncSync(fd)
     closeSync(fd)
@@ -78,6 +94,7 @@ export function writeDataFile(filename: string, data: unknown): void {
     renameSync(tmp, path)
   } catch (err) {
     if (fd !== null) { try { closeSync(fd) } catch {} }
+    // The temp exists here: this call created it with `wx`.
     try { unlinkSync(tmp) } catch {}
     throw err
   }
@@ -100,9 +117,19 @@ export interface TokenEntry {
 
 export function readTokens(): TokenEntry[] {
   const tokens = readDataFile<TokenEntry[]>('tokens.json', [])
-  // Valid JSON of the wrong shape (`null`, `{}`) is as unusable as a parse
-  // error: callers iterate the list and write it back.
+  // Valid JSON of the wrong shape (`null`, `{}`, `[null]`, an entry without a
+  // string tokenHash) is as unusable as a parse error: callers iterate the
+  // list, compare against each hash and write it back, and one bad entry
+  // would throw outside any try in the handshake.
   if (!Array.isArray(tokens)) throw new DataFileError('tokens.json', 'not a JSON array')
+  tokens.forEach((entry, i) => {
+    const bad = (field: string) => new DataFileError('tokens.json', `entry ${i} has no valid ${field}`)
+    if (entry === null || typeof entry !== 'object') throw new DataFileError('tokens.json', `entry ${i} is not an object`)
+    for (const field of ['id', 'name', 'tokenHash', 'createdAt'] as const) {
+      if (typeof entry[field] !== 'string') throw bad(field)
+    }
+    if (entry.lastUsedAt !== undefined && typeof entry.lastUsedAt !== 'string') throw bad('lastUsedAt')
+  })
   return tokens
 }
 
@@ -119,6 +146,12 @@ export function readPasswordConfig(): PasswordConfig {
   const config = readDataFile<PasswordConfig>('password.json', {})
   if (config === null || typeof config !== 'object' || Array.isArray(config)) {
     throw new DataFileError('password.json', 'not a JSON object')
+  }
+  // An emptied or non-string hash must not read as "no persisted password":
+  // the login would fall back to the env password (a changed password
+  // silently reverts), and a non-string reaches bcrypt and throws.
+  if (config.hash !== undefined && (typeof config.hash !== 'string' || config.hash === '')) {
+    throw new DataFileError('password.json', 'hash is not a non-empty string')
   }
   return config
 }

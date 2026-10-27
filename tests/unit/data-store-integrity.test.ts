@@ -49,6 +49,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.doUnmock('fs')
+  vi.doUnmock('crypto')
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
   vi.resetModules()
@@ -104,6 +105,27 @@ async function loadStoreWithFsHooks(): Promise<{ store: DataStore; hooks: FsHook
   })
   vi.resetModules()
   return { store: await import('@/lib/data-store'), hooks }
+}
+
+/**
+ * Re-imports data-store with `crypto.randomBytes` scripted: the scripted
+ * buffers are handed out first (a repeating one `times` times), then real
+ * random bytes. `calls` counts every randomBytes call the store made.
+ */
+async function loadStoreWithRandom(script: Array<{ hex: string; times: number }>): Promise<{ store: DataStore; calls: () => number }> {
+  let calls = 0
+  const queue = script.flatMap(({ hex, times }) => Array.from({ length: times }, () => hex))
+  vi.doMock('crypto', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('crypto')>()
+    const randomBytes = ((size: number) => {
+      calls++
+      const next = queue.shift()
+      return next === undefined ? actual.randomBytes(size) : Buffer.from(next, 'hex')
+    }) as typeof actual.randomBytes
+    return { ...actual, randomBytes, default: { ...actual, randomBytes } }
+  })
+  vi.resetModules()
+  return { store: await import('@/lib/data-store'), calls: () => calls }
 }
 
 // ── readDataFile: input matrix ────────────────────────────────────────────────
@@ -170,6 +192,48 @@ describe('readDataFile – missing, empty, invalid, valid and unreadable files',
     for (const body of ['null', '[]', '"x"']) {
       fs.writeFileSync(file('password.json'), body)
       expect(() => mod.readPasswordConfig(), body).toThrow(/password\.json.*not a JSON object/)
+    }
+  })
+
+  const VALID_TOKEN = { id: 't1', name: 'n', tokenHash: 'h', createdAt: 'c' }
+
+  it('tokens.json with an entry of the wrong shape throws, whatever else is in the list', () => {
+    const cases: Array<[string, unknown[]]> = [
+      ['null entry first', [null, VALID_TOKEN]],
+      ['null entry last', [VALID_TOKEN, null]],
+      ['number entry', [VALID_TOKEN, 1]],
+      ['string entry', ['x']],
+      ['array entry', [[]]],
+      ['id missing', [{ ...VALID_TOKEN, id: undefined }]],
+      ['id not a string', [{ ...VALID_TOKEN, id: 5 }]],
+      ['tokenHash missing', [{ ...VALID_TOKEN, tokenHash: undefined }]],
+      ['tokenHash not a string', [{ ...VALID_TOKEN, tokenHash: 5 }]],
+      ['tokenHash null', [{ ...VALID_TOKEN, tokenHash: null }]],
+      ['name missing', [{ ...VALID_TOKEN, name: undefined }]],
+      ['createdAt not a string', [{ ...VALID_TOKEN, createdAt: 1 }]],
+      ['lastUsedAt not a string', [{ ...VALID_TOKEN, lastUsedAt: 1 }]],
+    ]
+    for (const [label, body] of cases) {
+      fs.writeFileSync(file('tokens.json'), JSON.stringify(body))
+      expect(() => mod.readTokens(), label).toThrow(mod.DataFileError)
+      expect(() => mod.readTokens(), label).toThrow(/tokens\.json.*entry 0|tokens\.json.*entry 1/)
+    }
+  })
+
+  it('tokens.json entries of the right shape are returned, with or without lastUsedAt', () => {
+    const list = [VALID_TOKEN, { ...VALID_TOKEN, id: 't2', lastUsedAt: '2026-10-27T00:00:00.000Z' }]
+    fs.writeFileSync(file('tokens.json'), JSON.stringify(list))
+    expect(mod.readTokens()).toEqual(list)
+  })
+
+  it('password.json hash must be absent or a non-empty string: empty, number, null, boolean throw', () => {
+    for (const body of ['{"hash":""}', '{"hash":5}', '{"hash":null}', '{"hash":false}', '{"hash":{}}']) {
+      fs.writeFileSync(file('password.json'), body)
+      expect(() => mod.readPasswordConfig(), body).toThrow(/password\.json.*hash is not a non-empty string/)
+    }
+    for (const body of ['{}', '{"hash":"h"}']) {
+      fs.writeFileSync(file('password.json'), body)
+      expect(() => mod.readPasswordConfig(), body).not.toThrow()
     }
   })
 
@@ -251,11 +315,59 @@ describe('writeDataFile – atomic replace', () => {
     // the temp file already holds the complete new content (it was fsynced)
     expect(JSON.parse(fs.readFileSync(path.join(tmpDir, leftovers[0]), 'utf-8'))).toEqual({ fresh: true })
 
-    // a restarted process writes again without tripping over the leftover
-    hooks.rename = undefined
-    hooks.unlink = undefined
-    store.writeDataFile('w.json', { next: true })
-    expect(store.readDataFile('w.json', null)).toEqual({ next: true })
+    // a restarted process (fresh module instance, same pid as before as in a
+    // container) writes again without tripping over the leftover
+    vi.doUnmock('fs')
+    vi.spyOn(process, 'pid', 'get').mockReturnValue(1)
+    const restarted = await loadStore()
+    restarted.writeDataFile('w.json', { next: true })
+    expect(restarted.readDataFile('w.json', null)).toEqual({ next: true })
+    expect(dirEntries().filter((n) => n.endsWith('.tmp'))).toEqual(leftovers)
+    expect(JSON.parse(fs.readFileSync(path.join(tmpDir, leftovers[0]), 'utf-8'))).toEqual({ fresh: true })
+  })
+
+  it('restart in a container (pid 1, fresh module): a leftover named like the old pid.counter scheme neither blocks the first write nor is deleted', async () => {
+    vi.spyOn(process, 'pid', 'get').mockReturnValue(1)
+    fs.writeFileSync(file('w.json'), '{"orig":true}')
+    fs.writeFileSync(file('.w.json.1.0.tmp'), 'LEFTOVER')
+    const restarted = await loadStore()
+    restarted.writeDataFile('w.json', { fresh: true })
+    expect(restarted.readDataFile('w.json', null)).toEqual({ fresh: true })
+    expect(fs.readFileSync(file('.w.json.1.0.tmp'), 'utf-8')).toBe('LEFTOVER')
+    expect(dirEntries()).toEqual(['.w.json.1.0.tmp', 'w.json'])
+  })
+
+  it('a temp name that already exists is skipped with a new random name; the file in the way is not written to or deleted', async () => {
+    fs.writeFileSync(file('w.json'), '{"orig":true}')
+    const collide = '11'.repeat(8)
+    fs.writeFileSync(file(`.w.json.${collide}.tmp`), 'LEFTOVER')
+    const { store, calls } = await loadStoreWithRandom([{ hex: collide, times: 1 }])
+    store.writeDataFile('w.json', { fresh: true })
+    expect(calls()).toBe(2)
+    expect(store.readDataFile('w.json', null)).toEqual({ fresh: true })
+    expect(fs.readFileSync(file(`.w.json.${collide}.tmp`), 'utf-8')).toBe('LEFTOVER')
+    expect(dirEntries()).toEqual([`.w.json.${collide}.tmp`, 'w.json'])
+  })
+
+  it('when every attempt hits an existing name the write fails with EEXIST after a bounded number of tries; the original and the file in the way stay', async () => {
+    fs.writeFileSync(file('w.json'), '{"orig":true}')
+    const collide = '22'.repeat(8)
+    fs.writeFileSync(file(`.w.json.${collide}.tmp`), 'LEFTOVER')
+    // 20 identical names, then real ones: an unbounded retry would succeed instead of throwing
+    const { store, calls } = await loadStoreWithRandom([{ hex: collide, times: 20 }])
+    expect(() => store.writeDataFile('w.json', { fresh: true })).toThrow(/EEXIST/)
+    expect(calls()).toBe(5)
+    expect(fs.readFileSync(file('w.json'), 'utf-8')).toBe('{"orig":true}')
+    expect(fs.readFileSync(file(`.w.json.${collide}.tmp`), 'utf-8')).toBe('LEFTOVER')
+    expect(dirEntries()).toEqual([`.w.json.${collide}.tmp`, 'w.json'])
+  })
+
+  it('a failed open that is not EEXIST (data dir not writable) is thrown at once, without a retry', async () => {
+    const { store, calls } = await loadStoreWithRandom([])
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+    fs.writeFileSync(tmpDir, 'a file where the data dir should be')
+    expect(() => store.writeDataFile('w.json', { a: 1 })).toThrow()
+    expect(calls()).toBe(1)
   })
 
   it('writes of one process in a row never interleave: each result is the last complete document', () => {
@@ -300,6 +412,20 @@ describe('token routes with an unusable tokens.json', () => {
     for (const call of error.mock.calls) expect(String(call[0])).toContain('tokens.json')
     expect(fs.readFileSync(file('tokens.json'), 'utf-8')).toBe(CORRUPT)
     expect(dirEntries()).toEqual(['tokens.json'])
+  })
+
+  it('GET answers 500 for a list holding a non-object or incomplete entry, file untouched', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const list = await import('@/app/api/settings/tokens/route')
+    const valid = { id: 't1', name: 'vps', tokenHash: 'h', createdAt: 'c' }
+    for (const body of [JSON.stringify([null, valid]), JSON.stringify([valid, { id: 't2' }]), JSON.stringify([{ ...valid, tokenHash: 5 }])]) {
+      fs.writeFileSync(file('tokens.json'), body)
+      const res = await list.GET(req('/api/settings/tokens', 'GET'))
+      expect(res.status, body).toBe(500)
+      expect(fs.readFileSync(file('tokens.json'), 'utf-8')).toBe(body)
+    }
+    expect(error).toHaveBeenCalledTimes(3)
+    expect(String(error.mock.calls[0][0])).toContain('entry 0')
   })
 
   it('once the file is repaired the same routes work again and keep the tokens', async () => {
@@ -350,6 +476,19 @@ describe('password routes with an unusable password.json', () => {
     expect(fs.readFileSync(file('password.json'), 'utf-8')).toBe(CORRUPT)
   })
 
+  it('a password.json whose hash is empty or not a string does not fall back to the env password nor reach bcrypt', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { POST } = await import('@/app/api/auth/route')
+    for (const body of ['{"hash":""}', '{"hash":5}']) {
+      fs.writeFileSync(file('password.json'), body)
+      const res = await POST(req('/api/auth', 'POST', { password: 'env-password' }))
+      expect(res.status, body).toBe(500)
+      expect(res.headers.get('set-cookie'), body).toBeNull()
+      expect(fs.readFileSync(file('password.json'), 'utf-8')).toBe(body)
+    }
+    expect(error).toHaveBeenCalledTimes(2)
+  })
+
   it('an absent password.json still lets the env password log in (precedence unchanged: persisted > env)', async () => {
     fs.rmSync(file('password.json'))
     const { POST } = await import('@/app/api/auth/route')
@@ -389,6 +528,24 @@ describe('agent handshake with an unusable tokens.json (real store)', () => {
     expect(logged).toContain('not valid JSON')
     expect(logged).not.toContain('secret-agent-token-xyz')
     expect(fs.readFileSync(file('tokens.json'), 'utf-8')).toBe(CORRUPT)
+  })
+
+  it('a list holding a null entry rejects with 1008 and logs, instead of throwing out of the handler with the socket open', async () => {
+    vi.stubEnv('AGENT_TOKENS', '')
+    const hash = await bcrypt.hash('good-token', 4)
+    const BODY = JSON.stringify([null, { id: 't1', name: 'n', tokenHash: hash, createdAt: 'c' }])
+    fs.writeFileSync(file('tokens.json'), BODY)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { handleAgentConnection } = await import('@/lib/agent-ws-handler')
+    const ws = new MockWs()
+    handleAgentConnection(ws as unknown as WebSocket, {} as IncomingMessage)
+    ws.emit('message', Buffer.from(JSON.stringify({
+      type: 'auth', token: 'good-token', agentId: 'a1', name: 'A', version: '1',
+    })))
+    await vi.waitFor(() => expect(ws.close).toHaveBeenCalled(), { timeout: 5000 })
+    expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+    expect(String(warn.mock.calls[0][0])).toContain('entry 0')
+    expect(fs.readFileSync(file('tokens.json'), 'utf-8')).toBe(BODY)
   })
 
   it('a successful handshake stamps lastUsedAt through the atomic write and leaves no temp file', async () => {
