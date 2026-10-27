@@ -42,9 +42,10 @@ describe('data-store – readDataFile, writeDataFile, readTokens, writeTokens, r
     expect(mod.readDataFile('does-not-exist.json', 'DEFAULT')).toBe('DEFAULT')
   })
 
-  it('readDataFile – returns defaultValue on corrupt JSON', () => {
+  it('readDataFile – throws DataFileError on corrupt JSON instead of returning the default, and leaves the file as it is', () => {
     fs.writeFileSync(path.join(tmpDir, 'corrupt.json'), '{not json')
-    expect(mod.readDataFile('corrupt.json', 'DEFAULT')).toBe('DEFAULT')
+    expect(() => mod.readDataFile('corrupt.json', 'DEFAULT')).toThrow(mod.DataFileError)
+    expect(fs.readFileSync(path.join(tmpDir, 'corrupt.json'), 'utf-8')).toBe('{not json')
   })
 
   // ── writeDataFile ─────────────────────────────────────────────────────────────

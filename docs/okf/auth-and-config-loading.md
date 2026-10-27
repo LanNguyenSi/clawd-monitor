@@ -107,19 +107,33 @@ and both compose files pass the environment through `environment:` and
 ## Data files
 
 `data-store.ts` creates the data directory on first use
-(`src/lib/data-store.ts:6-10#"return DATA_DIR"`), creates each file with
-mode `0o600` (`src/lib/data-store.ts:25#"mode: 0o600"`; an existing file
-keeps its permissions), and returns the
-caller's default when a file is missing or not valid JSON
-(`src/lib/data-store.ts:18-20#"return defaultValue"`). A corrupt
-`password.json` therefore reads as "no persisted password", and a corrupt
-`tokens.json` as "no UI-created tokens".
+(`src/lib/data-store.ts:6-10#"return DATA_DIR"`). A write goes to a temp file
+in the same directory (mode `0o600`), is fsynced and renamed over the target
+(`src/lib/data-store.ts:73-78#"openSync(tmp, 'wx', 0o600)"`), so a kill in the
+middle of a write leaves the old complete file (plus at worst a stray
+`.<name>.<pid>.<n>.tmp`), never a truncated one; the file is always `0o600`
+afterwards, also when the replaced one had looser permissions, and the data
+directory (not only the file) must be writable. The caller's default is
+returned only when the file is missing
+(`src/lib/data-store.ts:43#"return defaultValue"`). A file that exists but is
+empty, not valid JSON, of the wrong shape (`tokens.json` not an array,
+`password.json` not an object) or unreadable (EACCES, EISDIR) throws a
+`DataFileError` and is left untouched
+(`src/lib/data-store.ts:44#"throw new DataFileError"`). Every caller that
+rewrites a file reads it first, so nothing is written over a damaged store:
+the settings token routes and the password routes answer 500 and log the
+error (`Token store unavailable`, `Password store unavailable`), and the login
+route does not fall back to the env password while `password.json` is
+unusable. The agent handshake treats a throwing read like an invalid token
+and logs the reason (see agent-registry-lifecycle). The operator repairs or
+removes the file; removing `password.json` restores the env password, removing
+`tokens.json` drops every UI-created token.
 
 - `password.json` holds `{hash}` once the password was changed in the UI
-  (`src/lib/data-store.ts:51-52#"'password.json'"`).
+  (`src/lib/data-store.ts:118-119#"'password.json'"`).
 - `tokens.json` holds the agent tokens created in the settings UI, each as
   a bcrypt hash with cost 10
-  (`src/app/api/settings/tokens/route.ts:35#"bcrypt.hash(rawToken, 10)"`);
+  (`src/app/api/settings/tokens/route.ts:46#"bcrypt.hash(rawToken, 10)"`);
   the raw token is returned once, in the `POST` response. A successful
   handshake with such a token stamps its `lastUsedAt`
   (`src/lib/agent-ws-handler.ts:93#"current.lastUsedAt"`), which the `GET`
@@ -130,7 +144,7 @@ caller's default when a file is missing or not valid JSON
 `POST /api/auth` checks, in order: the `password.json` hash, then
 `ADMIN_PASSWORD_HASH` (bcrypt), then `ADMIN_PASSWORD` (plain string
 comparison), then, with nothing configured, a 500 in production or the dev
-default `admin` (`src/app/api/auth/route.ts:28-40#"valid = password === 'admin'"`).
+default `admin` (`src/app/api/auth/route.ts:36-48#"valid = password === 'admin'"`).
 Once a password was changed in the UI, the environment passwords are no
 longer consulted.
 
@@ -139,17 +153,17 @@ of at least 8 characters and a matching confirmation
 (`src/app/api/auth/change-password/route.ts:22-23#"at least 8 characters"`).
 It verifies the current password with the same chain, except that it has no
 production branch: with nothing configured it compares against `admin`
-(`src/app/api/auth/change-password/route.ts:36-44#"currentPassword === 'admin'"`).
+(`src/app/api/auth/change-password/route.ts:42-50#"currentPassword === 'admin'"`).
 In production the startup check exits when neither `ADMIN_PASSWORD` nor
 `ADMIN_PASSWORD_HASH` is set (`server.ts:19-22#"process.exit(1)"`), so this
 fallback is reached only in development.
 It stores a bcrypt hash with cost 12
-(`src/app/api/auth/change-password/route.ts:52-53#"writePasswordConfig({ hash: newHash })"`).
+(`src/app/api/auth/change-password/route.ts:58-59#"writePasswordConfig({ hash: newHash })"`).
 
 ## Session JWT and cookie
 
 - The token is a JWT with `sub: 'admin'`
-  (`src/app/api/auth/route.ts:47#"generateToken({ sub: 'admin' })"`), signed
+  (`src/app/api/auth/route.ts:55#"generateToken({ sub: 'admin' })"`), signed
   with `JWT_SECRET` and valid for 24 hours
   (`src/lib/auth.ts:28-29#"expiresIn: JWT_EXPIRES"`).
 - The secret is read on first use and cached for the life of the process
@@ -159,9 +173,9 @@ It stores a bcrypt hash with cost 12
   hard-coded dev secret (`src/lib/auth.ts:14-16#"return _jwtSecret"`).
 - Login sets the cookie `token`: `httpOnly`, `secure` only when
   `NODE_ENV=production`, `sameSite: 'lax'`, `maxAge` 24 hours, `path: '/'`
-  (`src/app/api/auth/route.ts:50-55#"path: '/'"`). `DELETE /api/auth`
+  (`src/app/api/auth/route.ts:58-63#"path: '/'"`). `DELETE /api/auth`
   overwrites it with `maxAge: 0`
-  (`src/app/api/auth/route.ts:62-67#"maxAge: 0"`).
+  (`src/app/api/auth/route.ts:70-75#"maxAge: 0"`).
 - `extractToken()` takes an `Authorization: Bearer` header first, then the
   cookie (`src/lib/auth.ts:42-49#"if (cookie) return cookie.value"`).
 
@@ -172,7 +186,7 @@ and the `/api/auth` handlers: `GET` only reports whether the request is
 authenticated (`src/app/api/auth/route.ts:6-7#"isAuthenticated(req)"`),
 `POST` logs in
 (`src/app/api/auth/route.ts:10#"export async function POST"`), and `DELETE`
-clears the cookie (`src/app/api/auth/route.ts:61#"export async function DELETE"`).
+clears the cookie (`src/app/api/auth/route.ts:69#"export async function DELETE"`).
 The dashboard page calls `GET /api/auth` from the browser and redirects to
 `/login` when the response is not OK
 (`src/app/dashboard/page.tsx:31-33#"router.replace('/login')"`) or reports

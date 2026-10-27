@@ -187,6 +187,14 @@ seconds).
 - **Lost admin password:** delete `password.json` from the data directory
   (`CLAWD_MONITOR_DATA_DIR`, the data volume under Docker Compose); the env
   password applies again on the next login.
+- **Agents all report `Invalid token`, or Settings and login answer 500
+  (`Token store unavailable`, `Password store unavailable`):** `tokens.json` or
+  `password.json` in the data directory exists but is empty, not valid JSON or
+  unreadable, and the server log names the file and the reason. The file is
+  never overwritten or treated as empty; repair it from a backup or remove it
+  (removing `tokens.json` drops every UI-created token, removing `password.json`
+  restores the env password) and retry. The data directory must be writable by
+  the server user, because files are replaced by rename.
 - **Docker widget or docker log source empty without an agent:** only
   `docker-compose.traefik.yml` mounts the Docker socket; `docker-compose.yml`
   does not.

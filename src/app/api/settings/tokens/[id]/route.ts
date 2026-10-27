@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthenticated } from '@/lib/auth'
-import { readTokens, writeTokens } from '@/lib/data-store'
+import { readTokens, writeTokens, type TokenEntry } from '@/lib/data-store'
+
+function tokenStoreUnavailable(err: unknown) {
+  console.error(`[tokens] Could not read the token store: ${err instanceof Error ? err.message : 'unknown error'}`)
+  return NextResponse.json({ error: 'Token store unavailable' }, { status: 500 })
+}
 
 interface Props { params: Promise<{ id: string }> }
 
@@ -14,7 +19,12 @@ export async function PATCH(req: NextRequest, { params }: Props) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const tokens = readTokens()
+  let tokens: TokenEntry[]
+  try {
+    tokens = readTokens()
+  } catch (err) {
+    return tokenStoreUnavailable(err)
+  }
   const idx = tokens.findIndex((t) => t.id === id)
   if (idx === -1) return NextResponse.json({ error: 'Token not found' }, { status: 404 })
   // A whitespace-only name is truthy but trims to empty; reject it so a rename
@@ -32,7 +42,12 @@ export async function DELETE(req: NextRequest, { params }: Props) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   const { id } = await params
-  const tokens = readTokens()
+  let tokens: TokenEntry[]
+  try {
+    tokens = readTokens()
+  } catch (err) {
+    return tokenStoreUnavailable(err)
+  }
   const filtered = tokens.filter((t) => t.id !== id)
   if (filtered.length === tokens.length) {
     return NextResponse.json({ error: 'Token not found' }, { status: 404 })

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { generateToken, isAuthenticated } from '@/lib/auth'
-import { readPasswordConfig } from '@/lib/data-store'
+import { readPasswordConfig, type PasswordConfig } from '@/lib/data-store'
 
 export async function GET(req: NextRequest) {
   return NextResponse.json({ authenticated: isAuthenticated(req) })
@@ -21,7 +21,15 @@ export async function POST(req: NextRequest) {
   }
 
   // Check persisted password (UI change-password) first, then env vars, then dev default
-  const persisted = readPasswordConfig()
+  // An unreadable password.json must not fall through to the env password: the
+  // persisted one may be a password the operator changed away from it.
+  let persisted: PasswordConfig
+  try {
+    persisted = readPasswordConfig()
+  } catch (err) {
+    console.error(`[auth] Could not read the password store: ${err instanceof Error ? err.message : 'unknown error'}`)
+    return NextResponse.json({ error: 'Password store unavailable' }, { status: 500 })
+  }
   const envHash = process.env.ADMIN_PASSWORD_HASH
   const envPlain = process.env.ADMIN_PASSWORD
 
