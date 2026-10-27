@@ -23,8 +23,8 @@ agent, with a switcher to move between connected agents.
   server never polls the agent host.
 - Connected-agent list with online/offline status and per-agent switching.
 - Memory viewer, cron jobs, Docker containers, and log tail widgets.
-- GitHub PR widget for open pull requests, and service-health checks for a
-  URL list defined in code.
+- GitHub PR widget for open pull requests, and service-health checks for the
+  URLs in the `SERVICE_HEALTH_URLS` environment variable (empty means no checks).
 - Alert history (from the server's `CLAWD_DIR`) and heartbeat pulse.
 - Drag/resize/close widget layout, dark mode, and keyboard shortcuts.
 

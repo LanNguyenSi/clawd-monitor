@@ -13,8 +13,8 @@ AGENT_TOKENS=token1,token2  # static tokens (also manageable via Settings UI)
 AGENT_TTL_MS=300000         # offline-agent TTL in ms (default 5min)
 NEXT_PUBLIC_DEFAULT_GATEWAY_URL=http://localhost:9500
 DEFAULT_GATEWAY_TOKEN=      # default OpenClaw API token
-ALLOWED_GATEWAY_HOSTS=      # SSRF allowlist for per-instance gateway overrides (comma-separated hostnames, each optionally host:port)
-CLAWD_DIR=/root/.openclaw/workspace  # server-local OpenClaw workspace: Memory Viewer fallback (MEMORY.md / CURRENT.md / memory/*.md) and Alert History source (memory/smart-alert-state.json); code default when unset is /root/clawd
+ALLOWED_GATEWAY_HOSTS=      # SSRF allowlist for gateway URLs that are not the operator default: agent-reported gatewayUrl and the x-gateway-url header (comma-separated hostnames, each optionally host:port)
+CLAWD_DIR=/root/.openclaw/workspace  # path as seen by the server process, not mounted by the Docker compose files (see "CLAWD_DIR under Docker"); server-local OpenClaw workspace: Memory Viewer fallback (MEMORY.md / CURRENT.md / memory/*.md) and Alert History source (memory/smart-alert-state.json); code default when unset is /root/clawd
 CLAWD_MONITOR_DATA_DIR=/data   # persistent storage for tokens + password hash
 DOMAIN=monitor.yourdomain.com  # read by docker-compose.traefik.yml only, not by the server
 GITHUB_TOKEN=               # GitHub API token for the GitHub PRs widget (read-only; repo/PR and checks read scope)
@@ -52,9 +52,12 @@ Notes:
   password; that change is persisted in `CLAWD_MONITOR_DATA_DIR` and becomes
   the active login password (it takes precedence over the env var on
   subsequent logins).
-- `ALLOWED_GATEWAY_HOSTS` overrides must be `https` and may not point at
-  private or loopback IPs; leave it empty to forbid all per-instance
-  overrides and use only the default gateway. Rules for an override:
+- `ALLOWED_GATEWAY_HOSTS` entries cover gateway URLs other than the operator
+  default: the `gatewayUrl` a connected agent reports and the `x-gateway-url`
+  request header (the dashboard's browser code no longer sends it). Such URLs
+  must be `https` and may not point at private or loopback IPs; leave it empty
+  to forbid all of them and use only the default gateway. Rules for such a
+  URL:
   - **Port.** An entry is a host name, optionally followed by `:port`
     (`gw.example.com:8443`; IPv6 as `[2606:4700::1111]:8443`). An entry without
     a port allows port 443 only. An entry with a port allows only that port, so
@@ -177,6 +180,87 @@ docker compose -f docker-compose.traefik.yml up -d
 second command starts the new image. This is a manual maintenance step, not
 part of the relay flow, and it costs a full uncached build (minutes, not
 seconds).
+
+## CLAWD_DIR under Docker
+
+`CLAWD_DIR` is read by the Alert History route (`memory/smart-alert-state.json`,
+`src/app/api/proxy/alert-history/route.ts`) and by the Memory Viewer's
+filesystem fallback (`src/app/api/proxy/memory/route.ts`). It is a path as seen
+by the clawd-monitor process. Neither `docker-compose.yml` nor
+`docker-compose.traefik.yml` mounts any such directory, so inside the
+container the path does not exist: Alert History answers "No alert history
+yet" and the Memory Viewer fallback answers 404 (the viewer still works
+through a gateway or a connected agent). A host path such as
+`/root/.openclaw/workspace` in `.env` does not help under Docker: it names a
+path inside the container, and the container user (UID 1001, `Dockerfile`)
+could not read `/root` anyway.
+
+To use these two features in Docker, add a read-only bind mount of the
+workspace to the service in your compose file and point `CLAWD_DIR` at the
+container path. Add the two entries to the service's existing `volumes:` and
+`environment:` lists (or put them in a compose override file) instead of
+pasting a second key. The directory and its files must be readable by UID 1001
+(world-readable, or owned by or group-readable for 1001):
+
+```yaml
+    volumes:
+      - /srv/openclaw/workspace:/openclaw:ro   # host path is an example
+    environment:
+      - CLAWD_DIR=/openclaw
+```
+
+The shipped compose files are not changed for this; the mount is an
+operator-side addition.
+
+## Backup and restore of the data volume
+
+Everything the server persists lives in `CLAWD_MONITOR_DATA_DIR`
+(`/data` in both compose files, mounted from the volume `clawd_monitor_data`):
+
+- `tokens.json`: the bcrypt hashes of the agent tokens created in Settings.
+  The plaintext tokens are shown once at creation and are not stored, so a
+  lost file means issuing new tokens and reconfiguring every agent host.
+- `password.json`: the bcrypt hash of the admin password changed in Settings.
+  Without it the env password applies again (see Lost admin password under
+  Troubleshooting).
+
+`docker compose down -v` and `docker volume prune --all` (`-a`) delete the
+data. `down -v` removes the volumes the compose project owns:
+`docker-compose.traefik.yml` declares the volume without `external`, so it is
+created by and bound to the compose project and `down -v` removes it, while
+`docker-compose.yml` declares it `external: true` and `down -v` leaves it
+alone. `docker volume prune --all` removes every volume no container uses, a
+stopped stack's volume included, in both setups; a plain
+`docker volume prune` removes only anonymous volumes (`docker volume prune
+--help`) and spares this named one. Back it up before maintenance or host
+cleanup.
+
+The Docker volume name of the traefik stack is `<project>_clawd_monitor_data`,
+where the project is the compose project name (the directory name unless set
+with `-p` or `name:`). Under agent-relay the project is the app directory
+name, `clawd-monitor`, so the volume is `clawd-monitor_clawd_monitor_data`.
+Look the exact name up with `docker volume ls | grep clawd_monitor_data`; the
+commands below use it as `$VOL` (`clawd_monitor_data` for `docker-compose.yml`).
+
+```bash
+VOL=clawd-monitor_clawd_monitor_data   # check with: docker volume ls
+
+# Back up into ./clawd-monitor-data.tgz (read-only mount of the volume)
+docker run --rm -v "$VOL":/data:ro -v "$PWD":/backup alpine \
+  tar czf /backup/clawd-monitor-data.tgz -C /data .
+
+# Restore: stop the app first so it does not write tokens.json or
+# password.json during the extract, then start it again. The restore
+# overwrites both files in the volume; owner (UID 1001) and mode 0600 are kept.
+docker compose -f docker-compose.traefik.yml stop
+docker run --rm -v "$VOL":/data -v "$PWD":/backup alpine \
+  tar xzf /backup/clawd-monitor-data.tgz -C /data
+docker compose -f docker-compose.traefik.yml start
+```
+
+The archive holds password and token hashes; store it like a secret. The
+same two commands migrate data between the volumes of the two compose files
+(see Switching compose files). Run the backup from cron for regular copies.
 
 ## Troubleshooting
 
