@@ -315,8 +315,9 @@ describe('writeDataFile – atomic replace', () => {
     // the temp file already holds the complete new content (it was fsynced)
     expect(JSON.parse(fs.readFileSync(path.join(tmpDir, leftovers[0]), 'utf-8'))).toEqual({ fresh: true })
 
-    // a restarted process (fresh module instance, same pid as before as in a
-    // container) writes again without tripping over the leftover
+    // a restarted process (fresh module instance) writes again without
+    // tripping over the leftover; the same-pid collision of a container
+    // restart is pinned by the pid 1 test below
     vi.doUnmock('fs')
     vi.spyOn(process, 'pid', 'get').mockReturnValue(1)
     const restarted = await loadStore()
