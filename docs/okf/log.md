@@ -2,6 +2,13 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-27T07:12:31Z, /data ownership and Docker socket group: `auth-and-config-loading.md` re-verified and
+  re-stamped. The Dockerfile gained a `RUN mkdir -p /data && chown nextjs:nodejs /data` step before
+  `USER` (new sentence in the doc, citation `Dockerfile:40`; the `COPY --chown` citation moved to
+  `Dockerfile:43-48`), and `docker-compose.traefik.yml` gained `group_add` after `logging`, below the
+  cited `env_file:` range 6-15, which is unchanged. `docker-compose.yml` is unchanged in this change
+  (its newer commit time comes from the earlier healthcheck commit; cited ranges 11-19 and 13 still
+  hold). The claims about env loading and `CLAWD_MONITOR_DATA_DIR=/data` are unchanged.
 - 2026-10-27T06:48:42Z, compose healthcheck, memory limit and log rotation: `auth-and-config-loading.md`
   re-verified and re-stamped. Both compose files gained `healthcheck`, `mem_limit` and `logging`
   after `restart: unless-stopped`, below every line the doc cites; the cited ranges
