@@ -3,7 +3,7 @@ type: module
 title: Auth and config loading across the two module graphs
 description: Admin password precedence, the password.json and tokens.json data files, JWT cookie flags and lifetime, the production startup check, and how the custom server loads .env files before its modules read the environment, while the compiled route graph reads its own variables later.
 tags: [auth, config, env, jwt, startup]
-timestamp: 2026-10-27T06:44:23Z
+timestamp: 2026-10-27T06:55:27Z
 sources:
   - server.ts
   - tsconfig.server.json
@@ -74,7 +74,7 @@ expanded, not overridden). After that import:
   evaluates three more module-level reads: `AGENT_TOKENS`
   (`src/lib/agent-ws-handler.ts:9-12#".filter(Boolean)"`), `AGENT_TTL_MS`
   (`src/lib/agent-registry.ts:22#"AGENT_TTL_MS"`) and
-  `CLAWD_MONITOR_DATA_DIR` (`src/lib/data-store.ts:4#"CLAWD_MONITOR_DATA_DIR"`).
+  `CLAWD_MONITOR_DATA_DIR` (`src/lib/data-store.ts:5#"CLAWD_MONITOR_DATA_DIR"`).
 
 Because the bootstrap import is first, a variable set only in a `.env` or
 `.env.local` file reaches both graphs: the startup check, the handshake's
@@ -107,19 +107,23 @@ and both compose files pass the environment through `environment:` and
 ## Data files
 
 `data-store.ts` creates the data directory on first use
-(`src/lib/data-store.ts:6-10#"return DATA_DIR"`). A write goes to a temp file
+(`src/lib/data-store.ts:7-11#"return DATA_DIR"`). A write goes to a temp file
 in the same directory (mode `0o600`), is fsynced and renamed over the target
-(`src/lib/data-store.ts:73-78#"openSync(tmp, 'wx', 0o600)"`), so a kill in the
+(`src/lib/data-store.ts:81#"openSync(tmp, 'wx', 0o600)"`), so a kill in the
 middle of a write leaves the old complete file (plus at worst a stray
-`.<name>.<pid>.<n>.tmp`), never a truncated one; the file is always `0o600`
+`.<name>.<random>.tmp`, named with random bytes because node is pid 1 on every
+container start and a pid and counter name would collide with a crash
+leftover; a name that already exists is skipped, never written to or deleted),
+never a truncated one; the file is always `0o600`
 afterwards, also when the replaced one had looser permissions, and the data
 directory (not only the file) must be writable. The caller's default is
 returned only when the file is missing
-(`src/lib/data-store.ts:43#"return defaultValue"`). A file that exists but is
-empty, not valid JSON, of the wrong shape (`tokens.json` not an array,
-`password.json` not an object) or unreadable (EACCES, EISDIR) throws a
+(`src/lib/data-store.ts:44#"return defaultValue"`). A file that exists but is
+empty, not valid JSON, of the wrong shape (`tokens.json` not an array of objects with string `id`,
+`name`, `tokenHash` and `createdAt`; `password.json` not an object, or a `hash`
+that is empty or not a string) or unreadable (EACCES, EISDIR) throws a
 `DataFileError` and is left untouched
-(`src/lib/data-store.ts:44#"throw new DataFileError"`). Every caller that
+(`src/lib/data-store.ts:45#"throw new DataFileError"`). Every caller that
 rewrites a file reads it first, so nothing is written over a damaged store:
 the settings token routes and the password routes answer 500 and log the
 error (`Token store unavailable`, `Password store unavailable`), and the login
@@ -130,7 +134,7 @@ removes the file; removing `password.json` restores the env password, removing
 `tokens.json` drops every UI-created token.
 
 - `password.json` holds `{hash}` once the password was changed in the UI
-  (`src/lib/data-store.ts:118-119#"'password.json'"`).
+  (`src/lib/data-store.ts:146#"'password.json'"`).
 - `tokens.json` holds the agent tokens created in the settings UI, each as
   a bcrypt hash with cost 10
   (`src/app/api/settings/tokens/route.ts:46#"bcrypt.hash(rawToken, 10)"`);

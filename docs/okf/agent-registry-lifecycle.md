@@ -3,7 +3,7 @@ type: invariant
 title: Agent registry lifecycle, from WebSocket handshake to TTL eviction
 description: How a clawd-monitor-agent connection becomes an AgentRegistry entry (auth message first, static then persisted token check, newest connection wins), when an entry goes offline (only via its current socket), when it is evicted (lazily, only inside getAll), and what token revocation does and does not affect.
 tags: [agents, websocket, registry, tokens, ttl]
-timestamp: 2026-10-27T06:44:23Z
+timestamp: 2026-10-27T06:55:27Z
 sources:
   - server.ts
   - src/lib/ws-upgrade.ts
@@ -83,8 +83,9 @@ those constants are read (after the `.env` files were loaded).
    (`src/lib/agent-ws-handler.ts:66-68#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket with code 1008
    (`src/lib/agent-ws-handler.ts:105#"ws.close(1008"`). A `tokens.json` read
-   that throws (the file is corrupt, empty or unreadable; only a missing file
-   reads as no tokens) is handled the same way: `auth_error`, close 1008, and
+   that throws (the file is corrupt, empty, unreadable or holds an entry that is
+   not an object with string `id`, `name`, `tokenHash` and `createdAt`; only a
+   missing file reads as no tokens) is handled the same way: `auth_error`, close 1008, and
    a warning that carries only the error message, naming the file, so the
    client learns nothing about the store and the operator sees the cause
    (`src/lib/agent-ws-handler.ts:58-62#"ws.close(1008, 'Invalid token')"`).
@@ -110,7 +111,7 @@ snapshot payload
 
 Neither token source carries an `agentId`: a `TokenEntry` holds `id`,
 `name`, `tokenHash`, `createdAt` and an optional `lastUsedAt`
-(`src/lib/data-store.ts:93-98#"lastUsedAt?: string"`), and the handshake
+(`src/lib/data-store.ts:115#"lastUsedAt?: string"`), and the handshake
 only asks whether the token is valid. Any valid token can therefore register
 any `agentId`, including one another agent is using. A match against a
 persisted token stamps that entry's `lastUsedAt`: the handler re-reads

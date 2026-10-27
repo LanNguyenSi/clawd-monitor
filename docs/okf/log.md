@@ -2,6 +2,14 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-27T06:55:27Z, auth-and-config-loading and agent-registry-lifecycle re-verified and re-stamped after the data
+  store changed again. The temp file of a write is named with random bytes (not pid and counter)
+  and an existing name is skipped, never written to or deleted; `readTokens` requires every entry
+  to be an object with string `id`, `name`, `tokenHash` and `createdAt`, and
+  `readPasswordConfig` requires `hash` to be absent or a non-empty string, so the handshake
+  rejects a list with a `null` entry instead of throwing. The stray-temp name and the wrong-shape
+  claims were updated and the citations of the moved `data-store.ts` lines were re-pointed.
+  Checked with `git diff c813c356..HEAD` on those files.
 - 2026-10-27T06:44:23Z, auth-and-config-loading and agent-registry-lifecycle re-verified and re-stamped after
   the data store changed. `writeDataFile` replaces files through a same-directory temp file
   (fsync, rename, always mode 0600); `readDataFile` returns the default only for a missing file
