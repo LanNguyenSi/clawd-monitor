@@ -2,6 +2,7 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-27T07:04:28Z, `auth-and-config-loading.md` re-stamped after merging the compose healthcheck, memory limit and log rotation change into the data store branch: the compose claims and cited ranges were re-verified for that change in the entry below and are unchanged by the merge; the data store claims are as re-verified above.
 - 2026-10-27T06:55:27Z, auth-and-config-loading and agent-registry-lifecycle re-verified and re-stamped after the data
   store changed again. The temp file of a write is named with random bytes (not pid and counter)
   and an existing name is skipped, never written to or deleted; `readTokens` requires every entry
