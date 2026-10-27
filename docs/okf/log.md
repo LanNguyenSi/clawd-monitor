@@ -2,6 +2,14 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-27T06:44:23Z, auth-and-config-loading and agent-registry-lifecycle re-verified and re-stamped after
+  the data store changed. `writeDataFile` replaces files through a same-directory temp file
+  (fsync, rename, always mode 0600); `readDataFile` returns the default only for a missing file
+  and throws `DataFileError` for an empty, unparseable, wrong-shaped or unreadable one, which the
+  token and password routes turn into a logged 500 and the agent handshake into a rejection with
+  the reason in the log. The "existing file keeps its permissions" and "corrupt reads as empty"
+  claims were replaced, and the citations of the moved lines in `data-store.ts` and the three
+  routes were re-pointed. Checked with `git diff 23eedfae..HEAD` on those files.
 - 2026-10-26T13:17:53Z, agent logs `system` source never spawns: `widget-data-modes.md` and
   `agent-registry-lifecycle.md` re-verified and re-stamped. The agent route answers
   `system` with two info lines for every agent and imports no `child_process`; the
