@@ -15,7 +15,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). See
 [docs/development.md](docs/development.md#setup) for the data directory and
-the variables that must be set in the shell environment.
+how `.env.local` and shell values interact.
 
 ## Pull Requests
 

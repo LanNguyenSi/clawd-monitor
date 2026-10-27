@@ -102,8 +102,8 @@ Instances stored in localStorage as `{ name, gatewayUrl, token }[]`. Switcher in
 
 **No server-side instance state** — purely client-driven.
 
-**Update:** the instance switcher is no longer mounted (the navbar carries the
-agent switcher instead), and the browser fetcher sends no `x-gateway-url` /
+**Update:** the instance switcher and `src/lib/instance.ts` were removed in 0.3.0
+(the navbar carries the agent switcher instead), and the browser fetcher sends no `x-gateway-url` /
 `x-gateway-token` headers. The direct-proxy routes therefore use
 `NEXT_PUBLIC_DEFAULT_GATEWAY_URL` and `DEFAULT_GATEWAY_TOKEN` for requests from
 the dashboard. To monitor several hosts, connect one agent per host.
@@ -207,10 +207,14 @@ clawd-monitor/
 │   ├── lib/
 │   │   ├── auth.ts            → JWT sign/verify
 │   │   ├── gateway.ts         → Gateway API client (SSRF-guarded)
-│   │   ├── instance.ts        → Multi-instance store (localStorage), not used by the current UI
 │   │   ├── agent-registry.ts  → In-memory connected-agent registry
 │   │   ├── agent-ws-handler.ts → Agent WebSocket auth + snapshot handler
 │   │   ├── schemas.ts         → Zod schemas for agent messages/snapshots
+│   │   ├── env-bootstrap.ts   → Loads .env / .env.local before other modules read the environment
+│   │   ├── ws-upgrade.ts      → WebSocket upgrade handling for the custom server
+│   │   ├── data-store.ts      → tokens.json / password.json in CLAWD_MONITOR_DATA_DIR
+│   │   ├── fetcher.ts         → Browser fetch helper for the dashboard
+│   │   ├── ...                → further helpers (not every file is listed)
 │   │   └── widgets.ts         → Widget registry
 │   └── types/
 │       └── index.ts           → Shared types
