@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // npm-audit gate classifier with an ID-scoped, dated allowlist.
 //
-// Used by .github/workflows/audit.yml. Dependency-free Node 20 (the audit job
+// Used by .github/workflows/audit.yml. Dependency-free Node 22 (the audit job
 // runs no `npm ci`), so it can be copied verbatim into any tree that carries
 // the same workflow.
 //

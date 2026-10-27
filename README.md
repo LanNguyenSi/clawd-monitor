@@ -23,8 +23,8 @@ agent, with a switcher to move between connected agents.
   server never polls the agent host.
 - Connected-agent list with online/offline status and per-agent switching.
 - Memory viewer, cron jobs, Docker containers, and log tail widgets.
-- GitHub PR widget for open pull requests, and service-health checks for a
-  URL list defined in code.
+- GitHub PR widget for open pull requests, and service-health checks for the
+  URLs in the `SERVICE_HEALTH_URLS` environment variable (empty means no checks).
 - Alert history (from the server's `CLAWD_DIR`) and heartbeat pulse.
 - Drag/resize/close widget layout, dark mode, and keyboard shortcuts.
 
@@ -63,7 +63,7 @@ Secrets can go into `.env.runtime` instead; see
 [docs/configuration.md](docs/configuration.md#docker-compose-env-files) for the
 `$$` escaping rule.
 
-Without Traefik, `docker compose up -d` serves plain HTTP on port 3000
+Without Traefik, `make docker-up` (or `docker compose -p clawd-monitor-local -f docker-compose.yml up -d`) serves plain HTTP on port 3000
 (create the data volume first: `docker volume create clawd_monitor_data`).
 This mode is for local access: the session cookie is marked Secure in
 production, so browsers on other machines need HTTPS (for example the Traefik

@@ -11,10 +11,10 @@ import { resolve } from 'path'
 // shadows jsdom's real Storage implementation, and any
 // `window.localStorage` access in a jsdom test throws
 // "Cannot read properties of undefined (reading 'clear')"
-// (see tests/unit/instance.test.ts). Disabling the flag on the worker
+// (for example tests/unit/theme.test.ts). Disabling the flag on the worker
 // processes vitest spawns restores the jsdom-backed localStorage this
 // suite has always relied on. Guarded by allowedNodeEnvironmentFlags so
-// this is a no-op on Node versions without the flag (e.g. CI's Node 20).
+// this is a no-op on older Node releases without the flag.
 const execArgv = process.allowedNodeEnvironmentFlags.has('--no-experimental-webstorage')
   ? ['--no-experimental-webstorage']
   : []
@@ -44,8 +44,8 @@ export default defineConfig({
       ],
       // Ratchet floor ~3 points below the measured baseline (2026-07-14):
       //   statements 99.4% / branches 95.19% / functions 98.14% / lines 99.31%
-      // instance.ts and fetcher.ts are now covered under jsdom (see
-      // tests/unit/instance.test.ts and tests/unit/fetcher.test.ts).
+      // fetcher.ts and theme.tsx are covered under jsdom (see
+      // tests/unit/fetcher.test.ts and tests/unit/theme.test.ts).
       thresholds: {
         statements: 96,
         branches: 92,

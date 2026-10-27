@@ -18,6 +18,12 @@
   the reason in the log. The "existing file keeps its permissions" and "corrupt reads as empty"
   claims were replaced, and the citations of the moved lines in `data-store.ts` and the three
   routes were re-pointed. Checked with `git diff 23eedfae..HEAD` on those files.
+- 2026-10-27T06:48:42Z, compose healthcheck, memory limit and log rotation: `auth-and-config-loading.md`
+  re-verified and re-stamped. Both compose files gained `healthcheck`, `mem_limit` and `logging`
+  after `restart: unless-stopped`, below every line the doc cites; the cited ranges
+  (`docker-compose.yml:11-19`, `docker-compose.traefik.yml:6-15`, `docker-compose.yml:13`) and the
+  claims they carry (`environment:` and `env_file:` reach `process.env`, `CLAWD_MONITOR_DATA_DIR=/data`
+  set in both) are unchanged.
 - 2026-10-26T13:17:53Z, agent logs `system` source never spawns: `widget-data-modes.md` and
   `agent-registry-lifecycle.md` re-verified and re-stamped. The agent route answers
   `system` with two info lines for every agent and imports no `child_process`; the
