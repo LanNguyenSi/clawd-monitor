@@ -33,7 +33,7 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 # Data directory (CLAWD_MONITOR_DATA_DIR=/data in the compose files). It has to
 # exist in the image and belong to the app user BEFORE `USER`: Docker copies the
-# ownership of an image directory into an EMPTY named volume on its first mount,
+# ownership of an image directory into a named volume that is still EMPTY when mounted,
 # so a fresh volume is writable by the app. Without this line the volume starts
 # as root:root 0755 and every write (settings tokens, changed password) fails.
 # The directory itself must be writable by the app user, not only the files.

@@ -281,31 +281,28 @@ both need write access to the directory.
 
 - **Fresh volume: nothing to do.** The image contains `/data`, owned by
   `nextjs:nodejs` (UID 1001), created before `USER nextjs`. Docker copies the
-  ownership of an image directory into an empty named volume the first time it
-  is mounted, so a new volume (the one `docker compose up` creates for
+  ownership of an image directory into a named volume that is still empty when
+  it is mounted, so a new volume (the one `docker compose up` creates for
   `docker-compose.traefik.yml`, or one made with `docker volume create
-  clawd_monitor_data` for `docker-compose.yml`) starts as `1001`. Measured with
-  a build of this image on new volumes: `ls -ldn /data` showed `1001 1001` and
-  creating an agent token through `POST /api/settings/tokens` answered 201 and
-  wrote `tokens.json` as `1001`. The previous image on a new volume left `/data`
-  at `0 0` (root) and the same request answered 500.
-- **Existing volume: the image change does not help.** Docker copies the
-  ownership only into an empty volume. A volume that was first mounted by an
-  image without `/data` is still `root:root` (or whatever an operator set) and
-  stays so. Check it, and fix it once if the owner is not `1001`:
+  clawd_monitor_data` for `docker-compose.yml`) starts as `1001`, and so does an
+  empty volume left over from the previous image. The previous image did not
+  contain `/data`, so a new volume started as `root` and creating a token or
+  changing the password answered 500.
+- **Volume that already holds files: the image change does not help.** Docker
+  copies the ownership only into an empty volume; a volume with files in it
+  keeps its owner (`root:root`, or whatever an operator set). A bind mount on
+  `/data` is never adjusted: the host directory must belong to `1001`. Check
+  the owner, and fix it once if it is not `1001`:
 
 ```bash
 VOL=clawd-monitor_clawd_monitor_data   # check with: docker volume ls
 docker run --rm -v "$VOL":/data alpine ls -ldn /data
 # one-time fix for a volume owned by root: directory and files to the app user
-docker run --rm -v "$VOL":/data alpine chown -R 1001:65534 /data
+docker run --rm -v "$VOL":/data alpine chown -R 1001:1001 /data
 ```
 
-  `65534` is the group the app user's files get (`nogroup`, the primary group
-  `adduser --system` assigns). The `chown` changes only the owner and group,
-  and running it on a volume that already belongs to `1001` changes nothing.
-  Measured on a root-owned volume: before
-  the `chown` the token request answered 500, after it 201.
+  `1001:1001` is the owner and group the image gives `/data` (`nextjs:nodejs`);
+  only the owner matters for the app, files it writes carry group `65534`.
 - While the owner is wrong, creating a token or changing the password answers
   500; check the owner with the `ls -ldn` command above.
 
@@ -323,7 +320,8 @@ supplementary groups) could not open it: the widget stayed empty with the answer
 ```
 
 which makes the container process a member of the host's docker group. `988` is
-the group id on the production host; on any other host set `DOCKER_GID` to the
+only the default (the docker group id on the host this was written for); on
+any other host set `DOCKER_GID` to the
 group id of the socket in `.env` (compose reads `.env` from the project
 directory for the substitution, and a value in the shell wins over `.env`; an
 empty `DOCKER_GID=` also falls back to 988):
@@ -335,19 +333,22 @@ docker compose -f docker-compose.traefik.yml up -d   # recreates the container
 docker compose -f docker-compose.traefik.yml exec app id   # groups= lists it
 ```
 
-A wrong id changes nothing visible: the process holds a group that does not
-own the socket and `docker ps` inside the container still answers "permission
-denied". Measured on a Colima VM whose socket is `root:991`: with
-`DOCKER_GID=991`, `id` listed `991`, `docker ps` and `GET /api/containers`
-returned the containers; with the default 988 the container had group 988,
-`docker ps` was denied and `/api/containers` answered `{"containers":[],"error":"docker not available"}`.
+The value must be a numeric group id. A wrong number changes nothing visible:
+the process holds a group that does not own the socket, `docker ps` inside the
+container is denied and `/api/containers` answers
+`{"containers":[],"error":"docker not available"}`. A group name (for example
+`DOCKER_GID=docker`) or a value with a trailing space makes the container fail
+to start (`Unable to find group docker`), because the image has no such group.
 
 **Security: this is root-equivalent access to the host.** Anyone who can use
 the Docker API can start a privileged container with the host filesystem
 mounted. Membership in the socket's group gives the clawd-monitor process,
 and anything that compromises it, exactly that. The `:ro` on the mount only
 makes the socket file read-only; it does not restrict the API calls sent over
-it, so it is not a protection. The Docker widget and docker log source need
+it, so it is not a protection. The app itself only runs `docker ps`,
+`docker inspect` and `docker logs` (no start, stop or exec), but with the access
+anyone logged in to the dashboard can list every container on the host and read
+its logs, including secrets other containers print. The Docker widget and docker log source need
 the access, so the setting is shipped, and the operator decides: to run
 without it, remove the `group_add` entry (or the socket mount) from
 `docker-compose.traefik.yml`; the widget then stays empty, as the troubleshooting

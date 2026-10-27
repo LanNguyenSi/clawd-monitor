@@ -34,7 +34,7 @@ services:
     # The socket is root:<docker group> 0660 on the host; the app runs as UID 1001
     # without that group and could not open it (empty Docker widget). Set
     # DOCKER_GID in .env to the host's value (stat -c %g /var/run/docker.sock);
-    # 988 is the docker group on the production host. This is root-equivalent
+    # numeric only; 988 is the default. This is root-equivalent
     # control of the host's Docker daemon, see docs/configuration.md.
     group_add:
       - "${DOCKER_GID:-988}"
