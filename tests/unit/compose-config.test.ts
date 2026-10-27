@@ -29,6 +29,8 @@ interface Compose {
       mem_limit: string
       logging: unknown
       restart: string
+      volumes?: string[]
+      group_add?: unknown[]
     }
   }
 }
@@ -191,5 +193,64 @@ describe('Makefile docker targets', () => {
     }
     expect(recipe('docker-up')).toBe('\t$(COMPOSE_LOCAL) up -d')
     expect(recipe('docker-down')).toBe('\t$(COMPOSE_LOCAL) down')
+  })
+})
+
+describe('Docker socket access for the non-root app user', () => {
+  const traefik = loadCompose('docker-compose.traefik.yml').services.app
+  const plain = loadCompose('docker-compose.yml').services.app
+  const isSocketMount = (v: string) => v.startsWith('/var/run/docker.sock:')
+
+  it('traefik compose adds the socket group, configurable through DOCKER_GID', () => {
+    // Compose interpolates this to the string "988" unless DOCKER_GID is set
+    // (in the shell or in .env); an empty DOCKER_GID falls back to 988 as well.
+    expect(traefik.group_add).toEqual(['${DOCKER_GID:-988}'])
+  })
+
+  it('the group is never the literal root group', () => {
+    for (const g of traefik.group_add ?? []) {
+      expect(String(g)).not.toMatch(/^(0|root)$/)
+    }
+  })
+
+  it('keeps the socket mount read-only', () => {
+    const mounts = (traefik.volumes ?? []).filter(isSocketMount)
+    expect(mounts).toEqual(['/var/run/docker.sock:/var/run/docker.sock:ro'])
+  })
+
+  it('the plain compose file mounts no socket and so adds no group', () => {
+    expect((plain.volumes ?? []).filter(isSocketMount)).toEqual([])
+    expect(plain.group_add).toBeUndefined()
+  })
+
+  it('documents DOCKER_GID in .env.example', () => {
+    expect(readFileSync(resolve(ROOT, '.env.example'), 'utf8')).toMatch(/^# DOCKER_GID=988$/m)
+  })
+})
+
+describe('Dockerfile data directory', () => {
+  const lines = readFileSync(resolve(ROOT, 'Dockerfile'), 'utf8').split('\n')
+  const at = (re: RegExp) => lines.findIndex((l) => re.test(l))
+  const userIdx = at(/^USER nextjs$/)
+  const adduserIdx = at(/adduser .*--uid 1001 nextjs/)
+  const dataIdx = at(/^RUN mkdir -p \/data && chown nextjs:nodejs \/data$/)
+  const runner = lines.findIndex((l) => /^FROM .* AS runner$/.test(l))
+
+  it('creates /data and gives it to the app user in the runner stage', () => {
+    expect(dataIdx).toBeGreaterThan(runner)
+  })
+
+  it('does so after the user exists and before the switch to it', () => {
+    expect(adduserIdx).toBeGreaterThan(-1)
+    expect(dataIdx).toBeGreaterThan(adduserIdx)
+    expect(userIdx).toBeGreaterThan(dataIdx)
+  })
+
+  it('/data is the directory both compose files point the app at', () => {
+    for (const f of COMPOSE_FILES) {
+      const text = readFileSync(resolve(ROOT, f), 'utf8')
+      expect(text).toContain('CLAWD_MONITOR_DATA_DIR=/data')
+      expect(text).toMatch(/- clawd_monitor_data:\/data$/m)
+    }
   })
 })

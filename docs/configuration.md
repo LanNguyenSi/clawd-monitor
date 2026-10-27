@@ -271,6 +271,89 @@ pasting a second key. The directory and its files must be readable by UID 1001
 The shipped compose files are not changed for this; the mount is an
 operator-side addition.
 
+## Data volume ownership
+
+The app runs as UID 1001 (`nextjs`, `Dockerfile`), and the data directory
+`/data` must be writable by that user: the server writes `tokens.json` and
+`password.json` into it. The directory itself has to be writable, not only the
+files in it: creating a file and replacing one by renaming a temporary file
+both need write access to the directory.
+
+- **Fresh volume: nothing to do.** The image contains `/data`, owned by
+  `nextjs:nodejs` (UID 1001), created before `USER nextjs`. Docker copies the
+  ownership of an image directory into a named volume that is still empty when
+  it is mounted, so a new volume (the one `docker compose up` creates for
+  `docker-compose.traefik.yml`, or one made with `docker volume create
+  clawd_monitor_data` for `docker-compose.yml`) starts as `1001`, and so does an
+  empty volume left over from the previous image. The previous image did not
+  contain `/data`, so a new volume started as `root` and creating a token or
+  changing the password answered 500.
+- **Volume that already holds files: the image change does not help.** Docker
+  copies the ownership only into an empty volume; a volume with files in it
+  keeps its owner (`root:root`, or whatever an operator set). A bind mount on
+  `/data` is never adjusted: the host directory must belong to `1001`. Check
+  the owner, and fix it once if it is not `1001`:
+
+```bash
+VOL=clawd-monitor_clawd_monitor_data   # check with: docker volume ls
+docker run --rm -v "$VOL":/data alpine ls -ldn /data
+# one-time fix for a volume owned by root: directory and files to the app user
+docker run --rm -v "$VOL":/data alpine chown -R 1001:1001 /data
+```
+
+  `1001:1001` is the owner and group the image gives `/data` (`nextjs:nodejs`);
+  only the owner matters for the app, files it writes carry group `65534`.
+- While the owner is wrong, creating a token or changing the password answers
+  500; check the owner with the `ls -ldn` command above.
+
+## Docker socket access
+
+Only `docker-compose.traefik.yml` mounts `/var/run/docker.sock` (read-only), for
+the Docker widget (`/api/containers`) and the docker log source. On the host the
+socket is `root:<docker group>` with mode `0660`, and the app user (UID 1001, no
+supplementary groups) could not open it: the widget stayed empty with the answer
+`docker not available`. The service therefore has
+
+```yaml
+    group_add:
+      - "${DOCKER_GID:-988}"
+```
+
+which makes the container process a member of the host's docker group. `988` is
+only the default (the docker group id on the host this was written for); on
+any other host set `DOCKER_GID` to the
+group id of the socket in `.env` (compose reads `.env` from the project
+directory for the substitution, and a value in the shell wins over `.env`; an
+empty `DOCKER_GID=` also falls back to 988):
+
+```bash
+stat -c %g /var/run/docker.sock       # Linux: the group id, for example 988
+echo 'DOCKER_GID=988' >> .env         # only if it differs from 988
+docker compose -f docker-compose.traefik.yml up -d   # recreates the container
+docker compose -f docker-compose.traefik.yml exec app id   # groups= lists it
+```
+
+The value must be a numeric group id. A wrong number changes nothing visible:
+the process holds a group that does not own the socket, `docker ps` inside the
+container is denied and `/api/containers` answers
+`{"containers":[],"error":"docker not available"}`. A group name (for example
+`DOCKER_GID=docker`) or a value with a trailing space makes the container fail
+to start (`Unable to find group docker`), because the image has no such group.
+
+**Security: this is root-equivalent access to the host.** Anyone who can use
+the Docker API can start a privileged container with the host filesystem
+mounted. Membership in the socket's group gives the clawd-monitor process,
+and anything that compromises it, exactly that. The `:ro` on the mount only
+makes the socket file read-only; it does not restrict the API calls sent over
+it, so it is not a protection. The app itself only runs `docker ps`,
+`docker inspect` and `docker logs` (no start, stop or exec), but with the access
+anyone logged in to the dashboard can list every container on the host and read
+its logs, including secrets other containers print. The Docker widget and docker log source need
+the access, so the setting is shipped, and the operator decides: to run
+without it, remove the `group_add` entry (or the socket mount) from
+`docker-compose.traefik.yml`; the widget then stays empty, as the troubleshooting
+entry below describes.
+
 ## Backup and restore of the data volume
 
 Everything the server persists lives in `CLAWD_MONITOR_DATA_DIR`
@@ -311,6 +394,7 @@ docker run --rm -v "$VOL":/data:ro -v "$PWD":/backup alpine \
 # Restore: stop the app first so it does not write tokens.json or
 # password.json during the extract, then start it again. The restore
 # overwrites both files in the volume; owner (UID 1001) and mode 0600 are kept.
+# The data directory itself must belong to UID 1001 (see Data volume ownership).
 docker compose -f docker-compose.traefik.yml stop
 docker run --rm -v "$VOL":/data -v "$PWD":/backup alpine \
   tar xzf /backup/clawd-monitor-data.tgz -C /data
@@ -341,7 +425,13 @@ same two commands migrate data between the volumes of the two compose files
   the server user, because files are replaced by rename.
 - **Docker widget or docker log source empty without an agent:** only
   `docker-compose.traefik.yml` mounts the Docker socket; `docker-compose.yml`
-  does not.
+  does not. With the socket mounted, the app user must also be in the socket's
+  group: check `docker compose -f docker-compose.traefik.yml exec app docker ps`
+  and set `DOCKER_GID` (see "Docker socket access").
+- **Creating a token or changing the password answers 500:** `/data` is not
+  writable by UID 1001, typically a volume made by an earlier image that is
+  still owned by root (see "Data volume ownership" for the check and the
+  one-time `chown`).
 - **Switching compose files:** `docker-compose.yml` uses the external volume
   `clawd_monitor_data`, while `docker-compose.traefik.yml` creates a
   project-scoped volume, so tokens and the stored password do not carry over.

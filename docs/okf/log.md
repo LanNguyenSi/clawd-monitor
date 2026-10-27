@@ -2,6 +2,14 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-27T07:19:54Z, `auth-and-config-loading.md` re-stamped after merging the atomic data store change into the /data ownership branch: the data store paragraph is the one re-verified below, prefixed by the /data ownership sentence, now worded for Docker's copy-into-empty-volume rule (a volume with files and a bind mount keep their owner); the `Dockerfile:40` and `Dockerfile:43-48` citations still hold.
+- 2026-10-27T07:12:31Z, /data ownership and Docker socket group: `auth-and-config-loading.md` re-verified and
+  re-stamped. The Dockerfile gained a `RUN mkdir -p /data && chown nextjs:nodejs /data` step before
+  `USER` (new sentence in the doc, citation `Dockerfile:40`; the `COPY --chown` citation moved to
+  `Dockerfile:43-48`), and `docker-compose.traefik.yml` gained `group_add` after `logging`, below the
+  cited `env_file:` range 6-15, which is unchanged. `docker-compose.yml` is unchanged in this change
+  (its newer commit time comes from the earlier healthcheck commit; cited ranges 11-19 and 13 still
+  hold). The claims about env loading and `CLAWD_MONITOR_DATA_DIR=/data` are unchanged.
 - 2026-10-27T07:04:28Z, `auth-and-config-loading.md` re-stamped after merging the compose healthcheck, memory limit and log rotation change into the data store branch: the compose claims and cited ranges were re-verified for that change in the entry below and are unchanged by the merge; the data store claims are as re-verified above.
 - 2026-10-27T06:55:27Z, auth-and-config-loading and agent-registry-lifecycle re-verified and re-stamped after the data
   store changed again. The temp file of a write is named with random bytes (not pid and counter)
