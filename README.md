@@ -61,7 +61,9 @@ docker compose -f docker-compose.traefik.yml up -d
 
 Secrets can go into `.env.runtime` instead; see
 [docs/configuration.md](docs/configuration.md#docker-compose-env-files) for the
-`$$` escaping rule.
+`$$` escaping rule. The Docker widget needs the app user in the host's docker
+group: set `DOCKER_GID` in `.env` when it is not 988 (root-equivalent access to
+the host's Docker daemon, see [docs/configuration.md](docs/configuration.md#docker-socket-access)).
 
 Without Traefik, `make docker-up` (or `docker compose -p clawd-monitor-local -f docker-compose.yml up -d`) serves plain HTTP on port 3000
 (create the data volume first: `docker volume create clawd_monitor_data`).
