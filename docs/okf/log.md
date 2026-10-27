@@ -2,6 +2,7 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-27T07:19:54Z, `auth-and-config-loading.md` re-stamped after merging the atomic data store change into the /data ownership branch: the data store paragraph is the one re-verified below, prefixed by the /data ownership sentence, now worded for Docker's copy-into-empty-volume rule (a volume with files and a bind mount keep their owner); the `Dockerfile:40` and `Dockerfile:43-48` citations still hold.
 - 2026-10-27T07:12:31Z, /data ownership and Docker socket group: `auth-and-config-loading.md` re-verified and
   re-stamped. The Dockerfile gained a `RUN mkdir -p /data && chown nextjs:nodejs /data` step before
   `USER` (new sentence in the doc, citation `Dockerfile:40`; the `COPY --chown` citation moved to
