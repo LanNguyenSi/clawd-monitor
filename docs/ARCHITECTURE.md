@@ -241,4 +241,4 @@ Docker + Traefik; see the README Quick Start for the Compose and Traefik
 prerequisites (including the `nohttp2` TLS options set) and
 [configuration.md](configuration.md) (`DOMAIN`, Docker Compose env files).
 
-Dockerfile: multi-stage (deps → builder → runner), `node:20-slim`.
+Dockerfile: multi-stage (deps → builder → runner), `node:22-slim`.
