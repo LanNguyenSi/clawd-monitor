@@ -63,7 +63,7 @@ Secrets can go into `.env.runtime` instead; see
 [docs/configuration.md](docs/configuration.md#docker-compose-env-files) for the
 `$$` escaping rule.
 
-Without Traefik, `docker compose up -d` serves plain HTTP on port 3000
+Without Traefik, `make docker-up` (or `docker compose -p clawd-monitor-local -f docker-compose.yml up -d`) serves plain HTTP on port 3000
 (create the data volume first: `docker volume create clawd_monitor_data`).
 This mode is for local access: the session cookie is marked Secure in
 production, so browsers on other machines need HTTPS (for example the Traefik

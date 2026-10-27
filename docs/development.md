@@ -48,10 +48,14 @@ make build         # Production build
 make test          # Run the test suite
 make typecheck     # TypeScript type check
 make docker-build  # Build Docker image
-make docker-up     # Start via Docker Compose
-make docker-down   # Stop Docker Compose
+make docker-up     # Start the local plain-HTTP stack (project clawd-monitor-local)
+make docker-down   # Stop that stack
 make clean         # Remove node_modules, dist and .next
 ```
+
+A stack started earlier with a bare `docker compose up -d` runs under the
+directory's project name; stop it once with `docker compose down` before the
+first `make docker-up`, or the two compete for port 3000.
 
 ## Pull requests
 

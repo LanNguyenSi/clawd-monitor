@@ -158,6 +158,65 @@ flowchart TD
 - `NODE_ENV` and `CLAWD_MONITOR_DATA_DIR` are fixed in the compose files
   (`production`, `/data`) and cannot be changed from the env files.
 
+## Container health, memory limit and logs
+
+Both compose files give the `app` service the same three settings.
+
+**Healthcheck.** Every 30 s Docker runs a `node -e` fetch of
+`http://127.0.0.1:$PORT/api/health` inside the container (`PORT` is 3000 from
+the Dockerfile). The check passes on a 2xx answer and fails on any other
+status, a refused connection, or no answer within 4 s (the fetch aborts itself
+before Docker's 5 s timeout). `GET /api/health` needs no login and returns
+`{"status":"ok","uptime":...,"agents":{...}}`. The check uses `node` because the
+image always has it; it does not depend on `curl` being in the image. Three
+failed checks in a row mark the container `unhealthy`; failures during the 20 s
+`start_period` do not count. A cold start measured 0.3 to 0.8 s from container
+start to the "ready" log line and the first healthy status came 6 s after
+`up -d` on a development machine, so 20 s leaves room for a slow host.
+
+- **Nothing restarts an unhealthy container.** `restart: unless-stopped` acts
+  on process exit only, and neither Docker nor Compose restarts a container
+  because its healthcheck fails. Measured with the process frozen
+  (`SIGSTOP`): `unhealthy` after about 100 s (three failed checks, 30 s apart),
+  `RestartCount` stayed 0 and `docker ps` showed `Up ... (unhealthy)`. Find it
+  with `docker ps --filter health=unhealthy` and restart it with
+  `docker restart <container>`.
+- **Traefik stops routing to it.** Traefik's Docker provider skips a container
+  whose health status is not `healthy` (and one that is still `starting`),
+  unless the provider is configured with `allowEmptyServices`: the log message
+  is "Filtering unhealthy or starting container" in `pkg/provider/docker/config.go`
+  of [traefik/traefik](https://github.com/traefik/traefik) (read on `master`;
+  check it against the Traefik version on the server). The router then
+  disappears, so requests for the host get Traefik's 404 instead of hanging,
+  and after a deploy the app receives traffic only once its first check has
+  passed.
+
+**Memory limit.** `mem_limit: 512m`. In the limited container Node 20 sizes its
+heap from the cgroup limit: `v8.getHeapStatistics().heap_size_limit` was
+259 MiB, so a runaway JavaScript heap should end in Node's own out-of-memory abort (and
+the restart policy) before the kernel kills the container; memory outside the
+heap (buffers, native code) is not covered by that margin. An idle container used
+about 58 MiB. Before the first deploy with this limit, compare `docker stats` of
+the running production container with 512m: a container that already sits near
+the limit under real agent load needs a higher `mem_limit` first. Swap is not
+capped: without `memswap_limit` Docker allows as much swap as the memory limit
+on a host that has swap, so the container can use about 512m of RAM plus 512m
+of swap before the kernel kills it.
+
+**Logs.** The `json-file` driver keeps at most 3 files of 10 MB per container
+(30 MB). Compose recreates the container on the first `up -d` after this
+setting arrived, which discards the old unrotated log of the previous
+container.
+
+**Make targets.** `make docker-up` and `make docker-down` run
+`docker compose -p clawd-monitor-local -f docker-compose.yml ...`: the plain
+HTTP stack under its own project name. A bare `docker compose down` (what the
+targets used to run) selects containers by project name (default: the
+directory name) and service name, and the production `app` service in
+`docker-compose.traefik.yml` has the same service name, so on the server it
+would stop the production container. The targets are for local use and never
+touch the Traefik stack.
+
 ## Hard rebuild (base image or dependency updates)
 
 A normal deploy builds the image of the pulled commit with the Docker build
