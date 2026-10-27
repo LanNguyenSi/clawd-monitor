@@ -14,7 +14,7 @@ import { resolve } from 'path'
 // (see tests/unit/instance.test.ts). Disabling the flag on the worker
 // processes vitest spawns restores the jsdom-backed localStorage this
 // suite has always relied on. Guarded by allowedNodeEnvironmentFlags so
-// this is a no-op on Node versions without the flag (e.g. CI's Node 20).
+// this is a no-op on older Node releases without the flag.
 const execArgv = process.allowedNodeEnvironmentFlags.has('--no-experimental-webstorage')
   ? ['--no-experimental-webstorage']
   : []
