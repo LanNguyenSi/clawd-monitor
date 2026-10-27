@@ -346,7 +346,8 @@ describe('handleAgentConnection – valid bcrypt persisted token', () => {
     expect(mockRegistry.register).not.toHaveBeenCalled()
   })
 
-  it('fails closed when the fresh token re-read throws', async () => {
+  it('fails closed when the fresh token re-read throws, and logs the error message', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     mockReadTokens
       .mockReturnValueOnce([{ id: 'tok-1', name: 'test-token', tokenHash: bcryptHash, createdAt: new Date().toISOString() }])
       .mockImplementationOnce(() => { throw new Error('EIO') })
@@ -360,6 +361,10 @@ describe('handleAgentConnection – valid bcrypt persisted token', () => {
     expect(ws.close).toHaveBeenCalledWith(1008, expect.any(String))
     expect(mockWriteTokens).not.toHaveBeenCalled()
     expect(mockRegistry.register).not.toHaveBeenCalled()
+    const logged = warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
+    warn.mockRestore()
+    expect(logged).toContain('Could not re-read tokens')
+    expect(logged).toContain('EIO')
   })
 
   it('does not write tokens when the token does not match', async () => {

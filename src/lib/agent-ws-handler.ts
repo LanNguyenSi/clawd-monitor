@@ -83,8 +83,8 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
         let fresh: TokenEntry[] = []
         try {
           fresh = readTokens()
-        } catch {
-          console.warn('[agent-ws] Could not re-read tokens; rejecting handshake')
+        } catch (err) {
+          console.warn(`[agent-ws] Could not re-read tokens; rejecting handshake: ${err instanceof Error ? err.message : 'unknown error'}`)
         }
         const current = fresh.find((t) => t.id === matched!.id)
         if (!current) {

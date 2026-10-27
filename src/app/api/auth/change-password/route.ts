@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { isAuthenticated } from '@/lib/auth'
-import { readPasswordConfig, writePasswordConfig } from '@/lib/data-store'
+import { readPasswordConfig, writePasswordConfig, type PasswordConfig } from '@/lib/data-store'
 
 export async function POST(req: NextRequest) {
   if (!isAuthenticated(req)) {
@@ -28,7 +28,13 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify current password
-  const config = readPasswordConfig()
+  let config: PasswordConfig
+  try {
+    config = readPasswordConfig()
+  } catch (err) {
+    console.error(`[auth] Could not read the password store: ${err instanceof Error ? err.message : 'unknown error'}`)
+    return NextResponse.json({ error: 'Password store unavailable' }, { status: 500 })
+  }
   const envHash = process.env.ADMIN_PASSWORD_HASH
   const envPlain = process.env.ADMIN_PASSWORD
 

@@ -262,6 +262,7 @@ const REACHABLE_ALLOWED_MODULES: Record<string, string> = {
   jsonwebtoken: 'signs and verifies the dashboard session cookie (auth.ts)',
   fs: 'reads and writes the local JSON stores (data-store.ts)',
   path: 'joins paths inside the local data directory (data-store.ts)',
+  crypto: 'random bytes for the unique temp file name of an atomic write (data-store.ts)',
 }
 
 /**

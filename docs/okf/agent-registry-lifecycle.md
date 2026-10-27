@@ -3,7 +3,7 @@ type: invariant
 title: Agent registry lifecycle, from WebSocket handshake to TTL eviction
 description: How a clawd-monitor-agent connection becomes an AgentRegistry entry (auth message first, static then persisted token check, newest connection wins), when an entry goes offline (only via its current socket), when it is evicted (lazily, only inside getAll), and what token revocation does and does not affect.
 tags: [agents, websocket, registry, tokens, ttl]
-timestamp: 2026-10-26T13:17:53Z
+timestamp: 2026-10-27T06:55:27Z
 sources:
   - server.ts
   - src/lib/ws-upgrade.ts
@@ -83,9 +83,11 @@ those constants are read (after the `.env` files were loaded).
    (`src/lib/agent-ws-handler.ts:66-68#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket with code 1008
    (`src/lib/agent-ws-handler.ts:105#"ws.close(1008"`). A `tokens.json` read
-   that throws is handled the same way: `auth_error`, close 1008, and a
-   warning that carries only the error message, so the client learns
-   nothing about the store
+   that throws (the file is corrupt, empty, unreadable or holds an entry that is
+   not an object with string `id`, `name`, `tokenHash` and `createdAt`; only a
+   missing file reads as no tokens) is handled the same way: `auth_error`, close 1008, and
+   a warning that carries only the error message, naming the file, so the
+   client learns nothing about the store and the operator sees the cause
    (`src/lib/agent-ws-handler.ts:58-62#"ws.close(1008, 'Invalid token')"`).
 5. On success the handler calls `registry.register()` with the agent's
    self-reported `agentId`, `name`, `version`, `gatewayUrl` and
@@ -109,7 +111,7 @@ snapshot payload
 
 Neither token source carries an `agentId`: a `TokenEntry` holds `id`,
 `name`, `tokenHash`, `createdAt` and an optional `lastUsedAt`
-(`src/lib/data-store.ts:29-34#"lastUsedAt?: string"`), and the handshake
+(`src/lib/data-store.ts:115#"lastUsedAt?: string"`), and the handshake
 only asks whether the token is valid. Any valid token can therefore register
 any `agentId`, including one another agent is using. A match against a
 persisted token stamps that entry's `lastUsedAt`: the handler re-reads
@@ -123,7 +125,7 @@ handshake
 `src/lib/agent-ws-handler.ts:97#"best effort"`). A static
 `AGENT_TOKENS` match has no entry and stamps nothing. The settings API passes
 the stored value through
-(`src/app/api/settings/tokens/route.ts:14#"id, name, createdAt, lastUsedAt"`).
+(`src/app/api/settings/tokens/route.ts:24#"id, name, createdAt, lastUsedAt"`).
 
 ## Newest connection wins
 
@@ -188,7 +190,7 @@ does not reappear on the next 5-second poll unless it reconnects.
 ## Token revocation affects new connections only
 
 `DELETE /api/settings/tokens/<id>` rewrites `tokens.json` without the entry
-(`src/app/api/settings/tokens/[id]/route.ts:36-40#"writeTokens(filtered)"`)
+(`src/app/api/settings/tokens/[id]/route.ts:51-55#"writeTokens(filtered)"`)
 and does not touch the registry. A token is checked only during the
 handshake, so a connected agent keeps its socket and keeps sending
 snapshots after its token is deleted; the deletion takes effect on its next

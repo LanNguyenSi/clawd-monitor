@@ -163,3 +163,24 @@ describe('POST /api/settings/tokens', () => {
     expect(stored.map((t) => t.name)).toEqual(['first', 'second'])
   })
 })
+
+describe('token store error that is not an Error instance', () => {
+  it('GET answers 500 and logs "unknown error"', async () => {
+    authMock.mockReturnValue(true)
+    vi.resetModules()
+    vi.doMock('@/lib/data-store', async (orig) => ({
+      ...(await orig<typeof import('@/lib/data-store')>()),
+      readTokens: () => { throw 'not an Error' },
+    }))
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { GET: get } = await import('@/app/api/settings/tokens/route')
+      const res = await get(makeGetRequest())
+      expect(res.status).toBe(500)
+      expect(errSpy).toHaveBeenCalledWith('[tokens] Could not read the token store: unknown error')
+    } finally {
+      errSpy.mockRestore()
+      vi.doUnmock('@/lib/data-store')
+    }
+  })
+})
