@@ -198,7 +198,10 @@ the restart policy) before the kernel kills the container; memory outside the
 heap (buffers, native code) is not covered by that margin. An idle container used
 about 58 MiB. Before the first deploy with this limit, compare `docker stats` of
 the running production container with 512m: a container that already sits near
-the limit under real agent load needs a higher `mem_limit` first.
+the limit under real agent load needs a higher `mem_limit` first. Swap is not
+capped: without `memswap_limit` Docker allows as much swap as the memory limit
+on a host that has swap, so the container can use about 512m of RAM plus 512m
+of swap before the kernel kills it.
 
 **Logs.** The `json-file` driver keeps at most 3 files of 10 MB per container
 (30 MB). Compose recreates the container on the first `up -d` after this
@@ -211,7 +214,7 @@ HTTP stack under its own project name. A bare `docker compose down` (what the
 targets used to run) selects containers by project name (default: the
 directory name) and service name, and the production `app` service in
 `docker-compose.traefik.yml` has the same service name, so on the server it
-stopped the production container. The targets are for local use and never
+would stop the production container. The targets are for local use and never
 touch the Traefik stack.
 
 ## Hard rebuild (base image or dependency updates)

@@ -83,6 +83,7 @@ describe('healthcheck command behaviour', () => {
   const script: string = loadCompose('docker-compose.traefik.yml').services.app.healthcheck.test[3]
   let ok: Server
   let bad: Server
+  let missing: Server
   let hang: Server
   let closed: Server
   const port = (s: Server) => (s.address() as AddressInfo).port
@@ -104,6 +105,11 @@ describe('healthcheck command behaviour', () => {
       res.statusCode = 503
       res.end('down')
     })
+    // A server without the route (a 4xx is not healthy either).
+    missing = await listen((_req, res) => {
+      res.statusCode = 404
+      res.end('not found')
+    })
     // Accepts the connection and never answers: a hung event loop.
     hang = await listen(() => {})
     closed = await listen(() => {})
@@ -112,7 +118,7 @@ describe('healthcheck command behaviour', () => {
   })
 
   afterAll(async () => {
-    for (const s of [ok, bad, hang]) {
+    for (const s of [ok, bad, missing, hang]) {
       s.closeAllConnections()
       await new Promise<void>((r) => s.close(() => r()))
     }
@@ -138,6 +144,10 @@ describe('healthcheck command behaviour', () => {
 
   it('exits 1 on a non-2xx answer', async () => {
     expect((await run(port(bad))).code).toBe(1)
+  })
+
+  it('exits 1 on a 404 (a 4xx is not healthy)', async () => {
+    expect((await run(port(missing))).code).toBe(1)
   })
 
   it('exits 1 when nothing listens', async () => {
