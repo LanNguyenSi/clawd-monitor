@@ -167,3 +167,24 @@ describe('DELETE /api/settings/tokens/[id]', () => {
     expect(readTokens()).toEqual([])
   })
 })
+
+describe('token store error that is not an Error instance', () => {
+  it('PATCH answers 500 and logs "unknown error"', async () => {
+    authMock.mockReturnValue(true)
+    vi.resetModules()
+    vi.doMock('@/lib/data-store', async (orig) => ({
+      ...(await orig<typeof import('@/lib/data-store')>()),
+      readTokens: () => { throw 'not an Error' },
+    }))
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { PATCH: patch } = await import('@/app/api/settings/tokens/[id]/route')
+      const res = await patch(makeRequest('PATCH', { name: 'x' }), params('tok-1'))
+      expect(res.status).toBe(500)
+      expect(errSpy).toHaveBeenCalledWith('[tokens] Could not read the token store: unknown error')
+    } finally {
+      errSpy.mockRestore()
+      vi.doUnmock('@/lib/data-store')
+    }
+  })
+})
