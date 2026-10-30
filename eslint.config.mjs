@@ -13,17 +13,16 @@ export default defineConfig([
   {
     // These effects set state on purpose: they hydrate client-only state
     // (localStorage layout and theme, which cannot be read during SSR without a
-    // hydration mismatch), reset a modal on open, restart a stream on source
-    // change, or mirror an SWR snapshot into an accumulating history. Moving
-    // them out of the effect would change when the first paint and the focus
-    // handling happen, so the rule stays visible as a warning instead of
+    // hydration mismatch), reset a modal on open (AddAgentModal: the reset is
+    // deliberate and its cleanup also drops the in-memory token and restores
+    // focus), restart a stream on source change, or mirror an SWR snapshot into
+    // an accumulating history. They stay visible as warnings instead of
     // failing the lint.
     files: [
       'src/components/AddAgentModal.tsx',
       'src/components/Grid/WidgetGrid.tsx',
       'src/components/widgets/LogTailWidget.tsx',
       'src/components/widgets/MetricsWidget.tsx',
-      'src/components/widgets/SessionLogWidget.tsx',
       'src/lib/theme.tsx',
     ],
     rules: {
@@ -48,10 +47,12 @@ export default defineConfig([
   },
   {
     // Full page loads after a session change (login success, logout, 401
-    // expiry) are deliberate: they drop all client state and re-run the auth
-    // check in the server components. The rule's remedy (redirect() or the
-    // router during render) does not apply to these event-driven navigations.
-    // The test file asserts the href that fetcher.ts sets.
+    // expiry) are deliberate: window.location drops all client state and the
+    // SWR cache and re-runs the auth check on the server, which
+    // router.push() would not do. fetcher.ts is not a component, so the
+    // rule's remedies (redirect() during render, useRouter().push() in an
+    // event handler) do not fit. The test file asserts the href that
+    // fetcher.ts sets. Kept as warnings, like the other blocks.
     files: [
       'src/app/(auth)/login/page.tsx',
       'src/app/dashboard/page.tsx',
@@ -61,7 +62,7 @@ export default defineConfig([
       'tests/unit/fetcher.test.ts',
     ],
     rules: {
-      '@next/next/no-location-assign-relative-destination': 'off',
+      '@next/next/no-location-assign-relative-destination': 'warn',
     },
   },
 ])

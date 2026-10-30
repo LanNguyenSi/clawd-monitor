@@ -55,10 +55,11 @@ export function SessionLogWidget() {
 
   const sessions = (snapshotData?.snapshot?.sessions ?? []).filter((s) => s.sessionKey)
 
-  useEffect(() => {
-    const first = sessions.find((s) => s.sessionKey)
-    if (first?.sessionKey && !selectedSession) setSelectedSession(first.sessionKey)
-  }, [sessions, selectedSession])
+  // Default to the first session. Adjusting state during render (guarded by
+  // !selectedSession, so it runs once) avoids an extra effect pass; a choice the
+  // user made is never replaced because selectedSession is then non-empty.
+  const firstSessionKey = sessions.find((s) => s.sessionKey)?.sessionKey
+  if (firstSessionKey && !selectedSession) setSelectedSession(firstSessionKey)
 
   const activeSession = sessions.find((s) => s.sessionKey === selectedSession)
   const messages = activeSession?.recentMessages ?? []
