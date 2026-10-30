@@ -149,7 +149,7 @@ Evidence for the switch in each component, agent URL first:
   `src/app/api/stream/metrics/route.ts:38#"/proc/meminfo"`, sampled every
   2 s (`src/app/api/stream/metrics/route.ts:85-89#"}, 2000)"`).
 - `session-log`: `src/components/widgets/SessionLogWidget.tsx:65#"recentMessages"`
-  and `src/components/widgets/SessionLogWidget.tsx:71-74#"Select an agent to view session logs"`.
+  and `src/components/widgets/SessionLogWidget.tsx:72-75#"Select an agent to view session logs"`.
   The widget reads snapshot data only; there is no session-log route.
 - `agent-list`: `src/components/widgets/AgentListWidget.tsx:37#"'/api/agents/list'"`.
 - `service-health`: `src/components/widgets/ServiceHealthWidget.tsx:23#"'/api/proxy/health'"`;
