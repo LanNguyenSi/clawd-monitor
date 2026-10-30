@@ -3,7 +3,7 @@ type: module
 title: Widget data modes, agent snapshot vs default gateway vs dashboard host
 description: For each dashboard widget, where its data comes from when an agent is selected (the agent's last WebSocket snapshot) and when none is (the default gateway or the dashboard host itself), which widgets ignore the selection, and how the selection is held.
 tags: [widgets, dashboard, agents, data-sources]
-timestamp: 2026-10-26T13:17:53Z
+timestamp: 2026-10-30T21:43:40Z
 sources:
   - src/lib/widgets.ts
   - src/lib/active-agent.tsx
@@ -148,7 +148,7 @@ Evidence for the switch in each component, agent URL first:
   route `src/app/api/stream/metrics/route.ts:19#"/proc/stat"` and
   `src/app/api/stream/metrics/route.ts:38#"/proc/meminfo"`, sampled every
   2 s (`src/app/api/stream/metrics/route.ts:85-89#"}, 2000)"`).
-- `session-log`: `src/components/widgets/SessionLogWidget.tsx:64#"recentMessages"`
+- `session-log`: `src/components/widgets/SessionLogWidget.tsx:65#"recentMessages"`
   and `src/components/widgets/SessionLogWidget.tsx:71-74#"Select an agent to view session logs"`.
   The widget reads snapshot data only; there is no session-log route.
 - `agent-list`: `src/components/widgets/AgentListWidget.tsx:37#"'/api/agents/list'"`.
