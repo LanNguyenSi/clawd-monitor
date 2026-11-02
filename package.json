@@ -49,7 +49,7 @@
     "vitest": "^4.1.11"
   },
   "overrides": {
-    "postcss": "^8.5.18",
+    "postcss": "$postcss",
     "sharp": "^0.35.3"
   }
 }
