@@ -215,9 +215,12 @@ describe('secondary text contrast floor', () => {
    * A text colour token with an opacity suffix (`text-red-700/80`). The colour that
    * reaches the eye is the blend of the token with the surface under it, which is not
    * the palette value TEXT holds, so its ratio cannot be looked up: such a token is
-   * reported, not skipped, until the blend is computed or the token is dropped.
+   * reported, not skipped, until the blend is computed or the token is dropped. Only
+   * a colour key is matched: `red-700/80`, `white/50`. A size/line-height shorthand
+   * (`text-sm/6`, key `sm/6`) has no colour and is not an opacity suffix, so it stays
+   * out of this rule.
    */
-  const OPAQUE_SUFFIX = /^[\w-]+\/\d+$/
+  const OPAQUE_SUFFIX = /^(?:[a-z]+-\d{2,3}|white|black)\/\d+$/
 
   /**
    * Plain (non-variant) coloured text in the literal against its own plain bg-*-50/100
@@ -306,6 +309,12 @@ describe('secondary text contrast floor', () => {
     expect(lowContrast('text-red-700 bg-red-50 dark:text-red-400')).toEqual([])
     // Only the plain token is judged, as for every other colour in this table.
     expect(lowContrast('dark:text-red-700/80')).toEqual([])
+    // A size/line-height shorthand is not a colour, so its slash is not an opacity
+    // suffix and it is not reported.
+    expect(lowContrast('text-sm/6')).toEqual([])
+    expect(lowContrast('text-sm/6 leading-none')).toEqual([])
+    // A colour with an opacity suffix (white/black too) is still reported.
+    expect(lowContrast('text-white/50')).toHaveLength(1)
   })
 
   it('does not let a dark hover colour equal the dark resting colour', () => {

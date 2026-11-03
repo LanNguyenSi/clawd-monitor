@@ -49,8 +49,15 @@
  *   argument is only read where a real type-argument list can be: `<` directly
  *   after an identifier, type tokens between it and the name and up to the
  *   closing `>`, no `&&` or `||` in the list, and after the `>` a token that can
- *   follow a type-argument list, so a comparison cannot fake one
- *   (`0<1 && WebSocket || 1>2`, `f(0<1, WebSocket, 1>0)`, `[a<b, WebSocket, c>d]`).
+ *   follow a type-argument list. These rules reject the comparison shapes that try
+ *   to fake a list: `0<1 && WebSocket || 1>2` and `f(0<1, WebSocket, 1>0)` (a digit
+ *   after `>`), `[a<b, WebSocket, c>d]`, and `a<WebSocket>=b` / `a<WebSocket >= b`
+ *   (the `>=` operator) and `a<WebSocket>[0]` (a digit after `[`, `{` or `.`).
+ * - A name is a type position only when BOTH the raw source and the string-blanked
+ *   source say so (isTypePosition on each). The blanked source lets a bracket that
+ *   sits inside a string stop counting, but a name the raw source reads as a value
+ *   is never excused by a bracket the blanking drops: blanking can only turn a type
+ *   into a value, never a value into a type.
  * - The files that are the guarded transport layer, or that legitimately name a
  *   client type, are in TRUSTED_REACHABLE_LIBS, mapped to the offence KINDS they
  *   may have (`gateway.ts`: the operator default fetch only; `pinned-fetch.ts`:
@@ -70,8 +77,9 @@
  *   bracket in a string written to fake an interface body nor one written to fake
  *   a parameter list (`{ a: '(', c: WebSocket }`, whose `(` sits inside a string)
  *   excuses a client name. An apostrophe that opens no string (prose in JSX text)
- *   is read as text, and a bracket the blanking drops only turns a type into a
- *   value, never a value into a type. A bracket inside a regular expression
+ *   is read as text, and because a name is a type only when the raw source says so
+ *   too, a bracket the blanking drops only turns a type into a value, never a value
+ *   into a type. A bracket inside a regular expression
  *   literal is still read as code, so a regex written to fake a body or a
  *   parameter list is out of scope. The runtime guard in src/lib/gateway.ts and
  *   src/lib/pinned-fetch.ts stays the boundary.
@@ -344,12 +352,16 @@ const STRING_QUOTES = `'"` + '`'
 
 /**
  * `code` with the content of every string and template literal replaced by spaces
- * (the quotes stay, so every index is the index it has in `code`). The bracket scan
- * of isTypePosition runs on this, so a bracket written inside a string is not a
+ * (the quotes stay, so every index is the index it has in `code`). isTypePosition is
+ * run on this as well as on `code`, so a bracket written inside a string is not a
  * bracket of the code: it cannot fake the `(` of a parameter list or the `{` of an
- * interface body. A `'` with no closing `'` on its line opens no string (prose in
- * JSX text) and is left alone; a template runs to its closing backtick. Dropping a
- * bracket only turns a type into a value, never a value into a type.
+ * interface body, yet a name only counts as a type when the raw `code` says so too.
+ * A `\` inside a string escapes the next character (both are blanked and the escaped
+ * character is skipped, so an escaped quote does not close the string). A `'` with no
+ * closing `'` on its line opens no string (prose in JSX text) and is left alone; a
+ * template runs to its closing backtick (its `${...}` is blanked with it). A bracket
+ * this drops can only turn a type into a value, never the reverse: the raw view still
+ * reports it, so globalClientUse fails closed.
  */
 function blankStrings(code: string): string {
   const out = code.split('')
@@ -361,7 +373,10 @@ function blankStrings(code: string): string {
     for (; j < code.length; j++) {
       if (code[j] === '\\') {
         out[j] = ' '
-        if (j + 1 < code.length) out[j + 1] = ' '
+        if (j + 1 < code.length) {
+          out[j + 1] = ' '
+          j++
+        }
         continue
       }
       if (code[j] === quote) {
@@ -414,7 +429,13 @@ const TYPE_BODY_HEAD =
  * (`class C extends Foo<WebSocket> {`), `[` of an array or indexed type
  * (`Array<WebSocket>[]`, `Foo<Bar>['baz']`) and `.` of a member. A digit, a letter
  * or a quote there (`f(0<1, WebSocket, 1>0)`, `[a<b, WebSocket, c>d]`) means the
- * `<` did not open a type-argument list.
+ * `<` did not open a type-argument list. Two more followers are read as a
+ * comparison, not a list, and rejected in isTypePosition before this set is tested:
+ * `>` directly followed by `=` (`a<WebSocket>=b`, i.e. the `>=` operator, whereas a
+ * type list followed by an assignment has whitespace before the `=`:
+ * `const all: Array<WebSocket> = []`), and `[`, `{` or `.` directly followed by a
+ * digit (`a<WebSocket>[0]`, `a<WebSocket>.5`), where a real indexed access, member
+ * or object type is followed by an identifier or a quote, not a digit.
  */
 const AFTER_TYPE_ARGS = /^[ \t]*(?:[(),>;={[.]|(?=\r?\n|$))/
 
@@ -426,13 +447,15 @@ const AFTER_TYPE_ARGS = /^[ \t]*(?:[(),>;={[.]|(?=\r?\n|$))/
  * body or of a `type Name = {` object type (a member); and a generic argument,
  * `Name<..., X, ...>`, whose `<` directly follows an identifier, whose type
  * tokens run to a closing `>` with no `&&` or `||` anywhere in the list, and
- * which is followed by a token that can follow a type-argument list. Every other
- * colon is a value: an object-literal property (`{ c: X }`), a ternary branch
+ * which is followed by a token that can follow a type-argument list (not `>=` and
+ * not `[`, `{` or `.` then a digit, which are comparisons). Every other colon is a
+ * value: an object-literal property (`{ c: X }`), a ternary branch
  * (`cond ? a : X`), a class property, a nested object type in an annotation; so is
- * every `<...>` that is a comparison (`0<1 && WebSocket || 1>2`) or a comparison
- * in a list (`f(0<1, WebSocket, 1>0)`, `[a<b, WebSocket, c>d]`). `code` is the
- * blankStrings form of the file, so a bracket inside a string is not a bracket
- * here either.
+ * every `<...>` that is a comparison (`0<1 && WebSocket || 1>2`, `a<WebSocket>=b`)
+ * or a comparison in a list (`f(0<1, WebSocket, 1>0)`, `[a<b, WebSocket, c>d]`).
+ * globalClientUse calls this on both the raw source and blankStrings(code) and a
+ * name is a type only if both agree, so a bracket the blanking drops can never make
+ * a raw value use read as a type.
  */
 function isTypePosition(code: string, start: number, end: number): boolean {
   const colon = /[\w$]+\s*\??\s*:\s*$/.exec(code.slice(0, start))
@@ -449,7 +472,10 @@ function isTypePosition(code: string, start: number, end: number): boolean {
   const args = /^[\w$.\s|&,[\]]*>/.exec(code.slice(end))
   if (args === null) return false
   if (/&&|\|\|/.test(before) || /&&|\|\|/.test(args[0])) return false
-  return AFTER_TYPE_ARGS.test(code.slice(end + args[0].length))
+  const after = code.slice(end + args[0].length)
+  if (/^=/.test(after)) return false
+  if (/^[{[.]\d/.test(after)) return false
+  return AFTER_TYPE_ARGS.test(after)
 }
 
 /**
@@ -461,12 +487,14 @@ function isTypePosition(code: string, start: number, end: number): boolean {
  * `global-client`, a real client: `new WebSocket(...)`, `const w = WebSocket`,
  * an object-literal value `{ c: WebSocket }`, a ternary branch
  * `cond ? a : WebSocket`. A shape the scan does not recognise counts as a
- * value, so a misread fails closed. The bracket scan runs on blankStrings(code),
- * so a bracket inside a string is not a bracket of the code: neither a string
- * written to fake an interface body nor one written to fake a parameter list
- * (`{ a: '(', c: WebSocket }`) excuses a client name. A bracket inside a regular
- * expression literal is still read as code, which stays deliberate obfuscation and
- * out of scope as in the header.
+ * value, so a misread fails closed. isTypePosition is run on both the raw source
+ * and blankStrings(code), and a name is a type only when both agree: a bracket
+ * inside a string is not a bracket of the code (so neither a string written to fake
+ * an interface body nor one written to fake a parameter list,
+ * `{ a: '(', c: WebSocket }`, excuses a client name), and because the raw view is
+ * required too, blanking can only ever report fewer types, never a value as one. A
+ * bracket inside a regular expression literal is still read as code, which stays
+ * deliberate obfuscation and out of scope as in the header.
  */
 function globalClientUse(code: string): 'global-client' | 'global-client-type' | null {
   const brackets = blankStrings(code)
@@ -475,7 +503,8 @@ function globalClientUse(code: string): 'global-client' | 'global-client-type' |
   let seen = false
   while ((m = re.exec(code)) !== null) {
     seen = true
-    if (!isTypePosition(brackets, m.index, m.index + m[0].length)) return 'global-client'
+    const end = m.index + m[0].length
+    if (!isTypePosition(code, m.index, end) || !isTypePosition(brackets, m.index, end)) return 'global-client'
   }
   return seen ? 'global-client-type' : null
 }
@@ -953,9 +982,43 @@ describe('gateway consumers, scan rules on sample sources', () => {
       'export const r = [a<b, WebSocket, c>d]',
       // A string that fakes a parameter list: the ( inside the string is not a bracket.
       "export const x = { a: '(', c: WebSocket }",
+      // A string whose escape or a regex quote made the old blanking blank too much:
+      // the closing brace got dropped, the scan fell back to the outer call's `(` and
+      // read `c: WebSocket` as a parameter. Each is an ordinary object-literal value.
+      "export const v = g(x, '\\'', { a: '', c: WebSocket })",
+      'export const v = g("\\"", { a: "", c: WebSocket })',
+      "export const v = g(/'/, { a: '', c: WebSocket })",
+      // The `>` of a comparison followed by `=` (`>=`) or by `[`, `{` or `.` and a
+      // digit is not a type-argument list: a real assignment after a type list has
+      // whitespace before `=`, and a real indexed access/member is followed by a name.
+      'export const W = a<WebSocket >= b',
+      'export const W = a<WebSocket>=b',
+      'export const W = a<WebSocket>[0]',
     ]
     for (const text of failClosed) expect(globalClientUse(text), text).toBe('global-client')
     expect(globalClientUse('export const WebSocketLike = 1')).toBeNull()
+  })
+
+  it('blanks string content without letting an escape or a template close a string early', () => {
+    // Length and index are preserved; only the content between the quotes goes to
+    // spaces, so isTypePosition can still be run at the same indices on both views.
+    // An escape blanks the backslash and the escaped character and skips past it, so
+    // an escaped quote does NOT close the string: '\'', "\"" and '\\' each close on
+    // their real closing quote and blank exactly their content.
+    expect(blankStrings("'\\''")).toBe("'  '")
+    expect(blankStrings('"\\""')).toBe('"  "')
+    expect(blankStrings("'\\\\'")).toBe("'  '")
+    // A template literal is blanked whole (its ${...} expression with it): a bracket
+    // inside ${...} is string content, and globalClientUse still reads the raw view.
+    const t1 = 'a ${b} c'
+    expect(blankStrings('`' + t1 + '`')).toBe('`' + ' '.repeat(t1.length) + '`')
+    const t2 = "${x}('(', WebSocket)"
+    expect(blankStrings('f`' + t2 + '`')).toBe('f`' + ' '.repeat(t2.length) + '`')
+    // An apostrophe that opens no string (prose in JSX text) is left alone.
+    expect(blankStrings("don't (WebSocket) here")).toBe("don't (WebSocket) here")
+    // And it is still read as code where there is a real closing quote on the line:
+    // the apostrophe of a real string starts one and its bracket is blanked.
+    expect(blankStrings("g('(', WebSocket)")).toBe("g(' ', WebSocket)")
   })
 
   it('flags a lib module that loads a module by a computed name, or uses a native binding, a global client or a raw fetch', () => {
