@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **A plain text colour token with an opacity suffix (`text-red-700/80`) now fails the contrast test instead of being skipped.** The colour that reaches the eye is its blend with the surface under it, which the palette table does not hold; only colour keys are matched, so a size/line-height shorthand such as `text-sm/6` is not reported, and no source literal uses an opacity-suffixed colour today. `tests/unit/a11y-icon-buttons.test.ts`.
 
+- **The Dockerfile derives the Debian codename of the Docker apt source from the base image instead of naming one.** `node:22-slim` follows the current Debian release, so the hard-coded `bookworm` in the runner stage would point apt at a release the image no longer runs the day the base moves on (a mismatched `docker-ce-cli`, or `apt-get update` failing on the key and suite). The step now sets `CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")` and `test -n "$CODENAME"`, so the source matches whatever the base is and an image whose `/etc/os-release` carries no codename fails that build step rather than writing a broken source. The three `node:22-slim` tags are unchanged: Renovate moves the base, and the codename follows it. `tests/unit/compose-config.test.ts` asserts the apt source line uses the derived variable, that no Debian codename appears anywhere in the Dockerfile, and runs the step's own derivation prefix against `tests/fixtures/os-release` (a release the base has moved to, `VERSION_CODENAME` set but empty, and absent; only the first one builds).
+
 ## [0.4.0] - 2026-11-01
 
 ### Changed

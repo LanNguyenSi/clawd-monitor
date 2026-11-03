@@ -18,13 +18,17 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Install docker CLI for LogTail docker source
-# Install Docker CLI (official repo for current version compatible with Docker 29.x)
+# Install Docker CLI (official repo for current version compatible with Docker 29.x).
+# The apt source uses the codename of the base image itself: node:22-slim follows the
+# current Debian release, so a hard-coded codename mismatches once the base moves on.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl gnupg && \
     install -m 0755 -d /etc/apt/keyrings && \
     curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
     chmod a+r /etc/apt/keyrings/docker.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list && \
+    CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME") && \
+    test -n "$CODENAME" && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $CODENAME stable" > /etc/apt/sources.list.d/docker.list && \
     apt-get update && apt-get install -y --no-install-recommends docker-ce-cli && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
