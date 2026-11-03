@@ -193,6 +193,10 @@ describe('secondary text contrast floor', () => {
     'orange-400': 'fb923c', 'indigo-400': '818cf8',
     'indigo-500': '6366f1', 'indigo-600': '4f46e5', 'indigo-700': '4338ca', 'indigo-800': '3730a3', 'indigo-900': '312e81',
   }
+  // No zinc text colour is listed yet: against the zinc-100 page surface (the default
+  // below) text-zinc-500 is 4.40:1 and secondary text uses it throughout the app, so the
+  // pair zinc-500 and zinc-600 goes in once that source sits at 4.5:1 or above (zinc-600
+  // is 7.03:1 on the same surface).
   const SURFACE: Record<string, string> = {
     white: 'ffffff', 'zinc-50': 'fafafa', 'zinc-100': 'f4f4f5', 'red-50': 'fef2f2',
     'indigo-50': 'eef2ff', 'indigo-100': 'e0e7ff', 'amber-50': 'fffbeb',
@@ -208,9 +212,18 @@ describe('secondary text contrast floor', () => {
   }
 
   /**
+   * A text colour token with an opacity suffix (`text-red-700/80`). The colour that
+   * reaches the eye is the blend of the token with the surface under it, which is not
+   * the palette value TEXT holds, so its ratio cannot be looked up: such a token is
+   * reported, not skipped, until the blend is computed or the token is dropped.
+   */
+  const OPAQUE_SUFFIX = /^[\w-]+\/\d+$/
+
+  /**
    * Plain (non-variant) coloured text in the literal against its own plain bg-*-50/100
    * surface, or against the page background (zinc-100, the darkest light surface) when
-   * the literal names none. Returns one message per pair below 4.5:1.
+   * the literal names none. Returns one message per pair below 4.5:1, plus one per
+   * opacity-suffixed text token.
    */
   function lowContrast(text: string): string[] {
     const tokens = text.split(/\s+/).filter((t) => !t.includes(':'))
@@ -218,7 +231,12 @@ describe('secondary text contrast floor', () => {
     const out: string[] = []
     for (const t of tokens) {
       const key = /^text-(.+)$/.exec(t)?.[1]
-      if (!key || !TEXT[key]) continue
+      if (!key) continue
+      if (OPAQUE_SUFFIX.test(key)) {
+        out.push(`${t} has an opacity suffix: its blend with ${surfaceKey} is not in the TEXT table, so its contrast is unchecked`)
+        continue
+      }
+      if (!TEXT[key]) continue
       const r = ratio(TEXT[key], SURFACE[surfaceKey])
       if (r < 4.5) out.push(`${t} on ${surfaceKey} = ${r.toFixed(2)}:1`)
     }
@@ -275,6 +293,19 @@ describe('secondary text contrast floor', () => {
     expect(lowContrast('text-green-700 dark:text-green-400')).toEqual([])
     expect(lowContrast('text-red-600 bg-red-50 dark:text-red-400')).toHaveLength(1)
     expect(lowContrast('text-red-700 bg-red-50 dark:text-red-400')).toEqual([])
+  })
+
+  it('refuses an opacity-suffixed text token, whose blended colour the table cannot rate', () => {
+    const offenders = lowContrast('text-red-700/80')
+    expect(offenders).toHaveLength(1)
+    expect(offenders[0]).toContain('text-red-700/80')
+    expect(offenders[0]).toContain('opacity')
+    // The suffix is the offence, so no surface excuses it, and the token without it
+    // is judged as it always was (red-700 is 5.89:1 on zinc-100).
+    expect(lowContrast('text-red-700/80 bg-red-50')).toHaveLength(1)
+    expect(lowContrast('text-red-700 bg-red-50 dark:text-red-400')).toEqual([])
+    // Only the plain token is judged, as for every other colour in this table.
+    expect(lowContrast('dark:text-red-700/80')).toEqual([])
   })
 
   it('does not let a dark hover colour equal the dark resting colour', () => {
