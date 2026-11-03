@@ -1,9 +1,3 @@
 {
-  "entries": [
-    {
-      "id": "GHSA-vfj7-8cjw-p6xm",
-      "reason": "braces 3.0.3 reaches the tree only as a dev dependency (micromatch via fast-glob under eslint-config-next; the tailwindcss path is gone since the Tailwind CSS 4 migration); npm audit offers no fix except an eslint-config-next major downgrade. No fixed release exists (braces 3.0.3 and micromatch 4.0.8 are the latest); the dev-only path was re-checked against the committed lockfile. Drop the entry once braces or micromatch ships a fix.",
-      "reviewBy": "2027-01-08"
-    }
-  ]
+  "entries": []
 }
