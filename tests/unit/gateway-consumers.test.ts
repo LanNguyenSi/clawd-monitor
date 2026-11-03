@@ -431,11 +431,11 @@ const TYPE_BODY_HEAD =
  * or a quote there (`f(0<1, WebSocket, 1>0)`, `[a<b, WebSocket, c>d]`) means the
  * `<` did not open a type-argument list. Two more followers are read as a
  * comparison, not a list, and rejected in isTypePosition before this set is tested:
- * `>` directly followed by `=` (`a<WebSocket>=b`, i.e. the `>=` operator, whereas a
- * type list followed by an assignment has whitespace before the `=`:
- * `const all: Array<WebSocket> = []`), and `[`, `{` or `.` directly followed by a
- * digit (`a<WebSocket>[0]`, `a<WebSocket>.5`), where a real indexed access, member
- * or object type is followed by an identifier or a quote, not a digit.
+ * `>` directly followed by `=` (`a<WebSocket>=b`) is treated as the `>=` operator,
+ * so a type list followed by an UNSPACED `=` fails closed and must be written with
+ * a space (`const all: Array<WebSocket> = []`); and `[`, `{` or `.` directly followed
+ * by a digit (`a<WebSocket>[0]`, `a<WebSocket>.5`). Not caught (text-scan residue):
+ * whitespace before that digit, `>>`, `[ident]`, `['x']`, `{ident}` after the name.
  */
 const AFTER_TYPE_ARGS = /^[ \t]*(?:[(),>;={[.]|(?=\r?\n|$))/
 
@@ -994,6 +994,8 @@ describe('gateway consumers, scan rules on sample sources', () => {
       'export const W = a<WebSocket >= b',
       'export const W = a<WebSocket>=b',
       'export const W = a<WebSocket>[0]',
+      'export const W = a<WebSocket>.5',
+      'export const W = a<WebSocket>{0}',
     ]
     for (const text of failClosed) expect(globalClientUse(text), text).toBe('global-client')
     expect(globalClientUse('export const WebSocketLike = 1')).toBeNull()
