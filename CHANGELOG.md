@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Dependency updates: `renovate.json` extends the shared `github>LanNguyenSi/renovate-config` preset (weekly grouped patch/minor pull requests, 7-day minimum release age, no automerge, majors only through the Dependency Dashboard). The `overrides` entries that equal a direct dependency now reference it (`"postcss": "$postcss"` in `package.json`), so updating that dependency no longer fails with `EOVERRIDE`.
 - Removed the `GHSA-vfj7-8cjw-p6xm` (braces) entry from `.github/audit-allowlist.json`: GitHub withdrew the advisory on 2026-10-23, and `npm audit` no longer reports it in this repo's lockfile tree(s), so the gate stays CLEAN with an empty `entries` list. `scripts/audit-gate.mjs` is unchanged.
 
+### Fixed
+
+- **The route import guard's global-client scan no longer reads a comparison or a string-faked parameter list as a client type.** The generic-argument branch rejects a closing `>` that opens a `>=` operator or is followed by a digit after `[`, `{` or `.`, and a name now counts as a type only when the raw source and the string-blanked source agree; an escaped quote or a quote inside a regular-expression literal can no longer drop a closing brace and excuse an ordinary value use, and no file under `src/` is classified differently. Rule detail is in the test comments. `tests/unit/gateway-consumers.test.ts`.
+
+- **The scanned route set is no longer only `.ts` and `.tsx`.** Next serves a route from `.js`, `.jsx`, `.mjs` and `.cjs` too, and that is what a `.js` import resolves to, so the route walk now lists every one of them; a test walks a fixture directory listing and asserts each extension is picked up. `tests/unit/gateway-consumers.test.ts`.
+
+- **A plain text colour token with an opacity suffix (`text-red-700/80`) now fails the contrast test instead of being skipped.** The colour that reaches the eye is its blend with the surface under it, which the palette table does not hold; only colour keys are matched, so a size/line-height shorthand such as `text-sm/6` is not reported, and no source literal uses an opacity-suffixed colour today. `tests/unit/a11y-icon-buttons.test.ts`.
+
 ## [0.4.0] - 2026-11-01
 
 ### Changed
