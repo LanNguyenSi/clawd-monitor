@@ -96,7 +96,7 @@ value does not replace it.
 
 Under Docker the environment is already complete at process start: the runtime stage copies only `.next`,
 `public`, `node_modules`, `package.json` and `dist`
-(`Dockerfile:43-48#"COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist"`),
+(`Dockerfile:47-52#"COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist"`),
 and both compose files pass the environment through `environment:` and
 `env_file:` so it is in `process.env` when the process starts
 (`docker-compose.yml:11-19#"path: .env.runtime"`,
@@ -107,7 +107,7 @@ and both compose files pass the environment through `environment:` and
 ## Data files
 
 The image ships `/data` owned by the app user, created before `USER`
-(`Dockerfile:40#"RUN mkdir -p /data && chown nextjs:nodejs /data"`), so a named
+(`Dockerfile:44#"RUN mkdir -p /data && chown nextjs:nodejs /data"`), so a named
 volume that is still empty when it is mounted there takes over that owner and is
 writable by UID 1001; a volume that already holds files keeps its owner, and a
 bind mount is never adjusted. `data-store.ts` creates the data directory on first use

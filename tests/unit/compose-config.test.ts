@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { spawn } from 'child_process'
+import { spawn, spawnSync } from 'child_process'
 import { createRequire } from 'module'
 import { readFileSync } from 'fs'
 import { createServer, type Server } from 'http'
@@ -252,5 +252,74 @@ describe('Dockerfile data directory', () => {
       expect(text).toContain('CLAWD_MONITOR_DATA_DIR=/data')
       expect(text).toMatch(/- clawd_monitor_data:\/data$/m)
     }
+  })
+})
+
+describe('Dockerfile Docker CLI apt source', () => {
+  const text = readFileSync(resolve(ROOT, 'Dockerfile'), 'utf8')
+  const lines = text.split('\n')
+  const runner = lines.findIndex((l) => /^FROM node:22-slim AS runner$/.test(l))
+  const aptStart = lines.findIndex((l, i) => i > runner && /^RUN apt-get update/.test(l))
+
+  // The whole RUN instruction the apt source is written in: its first line plus
+  // every continuation line, with the trailing backslashes removed and the lines
+  // joined, so a guard can be looked for across the step and not just one line.
+  const step: string[] = []
+  for (let i = aptStart; i >= 0 && i < lines.length; i += 1) {
+    const more = /\\\s*$/.test(lines[i])
+    step.push(lines[i].replace(/\\\s*$/, ''))
+    if (!more) break
+  }
+  const stepText = step.join(' ')
+
+  // Everything the step runs to get its codename: verbatim from `CODENAME=` up to
+  // the `echo` that writes the apt source, so any guard (or anything else) written
+  // between them is part of the prefix and is executed below, not just looked for.
+  // Which codename reaches apt, and what an unusable one does, is decided by
+  // /etc/os-release, so the prefix is run against a stand-in file (that is what
+  // tests/fixtures/os-release is for) instead of only being read.
+  const deriveStart = stepText.indexOf('CODENAME=$(')
+  const echoStart = stepText.search(/&&\s*echo "deb \[arch=/)
+  const prefix = deriveStart < 0 || echoStart <= deriveStart ? '' : stepText.slice(deriveStart, echoStart).trim()
+
+  // Returns the codename the step would use, or the exit status it would fail with.
+  function deriveFrom(fixture: string): { code: number | null; out: string } {
+    const script = `${prefix.replace('/etc/os-release', resolve(ROOT, 'tests/fixtures/os-release', fixture))} && printf %s "$CODENAME"`
+    const r = spawnSync('/bin/sh', ['-c', script], { encoding: 'utf8' })
+    return { code: r.status, out: r.stdout }
+  }
+
+  it('keeps the floating base tags of all three stages', () => {
+    expect(lines.filter((l) => /^FROM node:22-slim AS (deps|builder|runner)$/.test(l))).toHaveLength(3)
+  })
+
+  it('names no Debian release anywhere in the Dockerfile', () => {
+    expect(text).not.toMatch(/\b(buster|bullseye|bookworm|trixie|forky|sid)\b/)
+  })
+
+  it('writes docker.list in the runner stage from the derived codename', () => {
+    expect(aptStart).toBeGreaterThan(runner)
+    expect(stepText).toContain('/etc/apt/sources.list.d/docker.list')
+    expect(step.find((l) => l.includes('docker.list')) ?? '').toMatch(/linux\/debian \$CODENAME stable/)
+  })
+
+  it('derives the codename from /etc/os-release and guards it as the last thing before apt', () => {
+    expect(prefix).toContain('. /etc/os-release && echo "$VERSION_CODENAME"')
+    // The non-empty test is the tail of the prefix: nothing (a `|| true`, a `;`)
+    // may sit between it and the apt source, or the build would continue on an
+    // empty codename.
+    expect(prefix).toMatch(/test -n "\$CODENAME"$/)
+  })
+
+  it('follows the base image into the next Debian release', () => {
+    expect(deriveFrom('trixie.conf')).toEqual({ code: 0, out: 'trixie' })
+  })
+
+  it('fails the build when VERSION_CODENAME is set but empty', () => {
+    expect(deriveFrom('codename-empty.conf')).toEqual({ code: 1, out: '' })
+  })
+
+  it('fails the build when VERSION_CODENAME is absent', () => {
+    expect(deriveFrom('codename-absent.conf')).toEqual({ code: 1, out: '' })
   })
 })
