@@ -299,12 +299,20 @@ container.
 
 **Make targets.** `make docker-up` and `make docker-down` run
 `docker compose -p clawd-monitor-local -f docker-compose.yml ...`: the plain
-HTTP stack under its own project name. A bare `docker compose down` (what the
-targets used to run) selects containers by project name (default: the
-directory name) and service name, and the production `app` service in
-`docker-compose.traefik.yml` has the same service name, so on the server it
-would stop the production container. The targets are for local use and never
-touch the Traefik stack.
+HTTP stack under its own project name, which `docker-compose.yml` now also
+carries itself with `name: clawd-monitor-local` (the `-p` flag just matches it).
+A bare `docker compose up -d` or `down` in this directory therefore acts on the
+plain local stack, not on production: production (docker-compose.traefik.yml,
+run under the directory name `clawd-monitor`) shares the service name `app` but
+no longer shares a project with whatever a bare command selects here. The plain
+stack also publishes on `127.0.0.1:3000` only, so it is reachable from the host
+it runs on, not from other machines. A local plain stack started earlier with a
+bare `docker compose up -d` (before the file carried `name:`) runs under the
+directory name `clawd-monitor`; stop it once with
+`docker compose -p clawd-monitor down` before the first `make docker-up`, or the
+two compete for port 3000. Only on a developer machine: on the production server `clawd-monitor` is the production project, so never run `docker compose -p clawd-monitor down` there. On the server always pass
+`-f docker-compose.traefik.yml`. The targets are for local use and never touch
+the Traefik stack.
 
 ## Hard rebuild (base image or dependency updates)
 
@@ -529,6 +537,9 @@ same two commands migrate data between the volumes of the two compose files
 - **Switching compose files:** `docker-compose.yml` uses the external volume
   `clawd_monitor_data`, while `docker-compose.traefik.yml` creates a
   project-scoped volume, so tokens and the stored password do not carry over.
+  `docker-compose.yml` also carries its own project name `clawd-monitor-local`,
+  so the plain stack is separated from the `clawd-monitor` production project as
+  well as by volume.
   The two declarations differ on purpose and are not aligned: changing the
   volume of an existing deployment points the container at an empty volume,
   so it needs a data migration (copy the contents of the old volume into the
