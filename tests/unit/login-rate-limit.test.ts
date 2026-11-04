@@ -135,6 +135,9 @@ describe('memory bound', () => {
     hit(l, 'one')
     hit(l, 'new') // evicts 'one'
     expect(l.size).toBe(3)
+    // the newcomer is tracked, not let in free: 4 more attempts, then refused
+    for (let i = 0; i < 4; i++) expect(l.acquire('new').allowed).toBe(true)
+    expect(l.acquire('new').allowed).toBe(false)
     expect(l.acquire('three').allowed).toBe(true)
     expect(l.acquire('three').allowed).toBe(true)
     expect(l.acquire('three').allowed).toBe(false)

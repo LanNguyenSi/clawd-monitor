@@ -187,8 +187,8 @@ request time in the route graph: `0`, unset or empty uses that peer address and
 ignores `X-Forwarded-For`; `N >= 1` uses the N-th entry from the right of
 `X-Forwarded-For`, falling back to the peer when there are fewer entries or the
 entry is not an IP; an invalid value behaves like `0` and is logged once
-(`src/lib/client-ip.ts:85-93#"getTrustedProxyHops"`,
-`src/lib/client-ip.ts:107-113#"getClientKey"`). Without a peer header all clients
+(`src/lib/client-ip.ts:96-103#"getTrustedProxyHops"`,
+`src/lib/client-ip.ts:117-127#"getClientKey"`). Without a peer header all clients
 share the key `unknown`. `docker-compose.traefik.yml` sets `TRUSTED_PROXY_HOPS=1`
 (`docker-compose.traefik.yml:9-13#"TRUSTED_PROXY_HOPS=1"`); the plain compose
 file does not. The variable is also fixed by the compose `environment:` there,

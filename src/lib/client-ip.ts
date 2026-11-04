@@ -116,8 +116,12 @@ export function getTrustedProxyHops(env: Record<string, string | undefined> = pr
  */
 export function getClientKey(headers: Headers, hops: number): string {
   const peer = normalizeIp(headers.get(PEER_ADDR_HEADER)) ?? UNKNOWN_CLIENT_KEY
-  if (hops < 1) return peer
   const entries = (headers.get('x-forwarded-for') ?? '').split(',')
-  if (entries.length < hops) return peer
-  return normalizeIp(entries[entries.length - hops]) ?? peer
+  // The last `hops` entries; its first element is the trusted one. A shorter
+  // list does not describe the configured chain. With hops 0 this slice is the
+  // whole list, which is never empty, so the length test is what makes 0 mean
+  // "ignore the header".
+  const chain = entries.slice(-hops)
+  const trusted = chain.length === hops ? chain[0] : undefined
+  return normalizeIp(trusted) ?? peer
 }

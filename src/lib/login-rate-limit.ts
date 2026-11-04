@@ -33,7 +33,7 @@ export type LoginGate = { allowed: true } | { allowed: false; retryAfterSeconds:
  */
 export class LoginRateLimiter {
   private readonly entries = new Map<string, Entry>()
-  private lastSaturationWarn = 0
+  private lastSaturationWarn = -Infinity
 
   constructor(
     private readonly max: number = LOGIN_MAX_ATTEMPTS,
