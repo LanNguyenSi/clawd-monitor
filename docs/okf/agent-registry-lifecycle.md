@@ -3,7 +3,7 @@ type: invariant
 title: Agent registry lifecycle, from WebSocket handshake to TTL eviction
 description: How a clawd-monitor-agent connection becomes an AgentRegistry entry (auth message first, static then persisted token check, newest connection wins), when an entry goes offline (only via its current socket), when it is evicted (lazily, only inside getAll), and what token revocation does and does not affect.
 tags: [agents, websocket, registry, tokens, ttl]
-timestamp: 2026-10-27T06:55:27Z
+timestamp: 2026-11-04T05:44:46Z
 sources:
   - server.ts
   - src/lib/ws-upgrade.ts
@@ -59,7 +59,7 @@ those constants are read (after the `.env` files were loaded).
    `src/lib/ws-upgrade.ts`, which upgrades the path `/api/agents/ws`
    (`src/lib/ws-upgrade.ts:28#"AGENT_WS_PATH"`). Next is handed a second,
    never-listening server through its `httpServer` option
-   (`server.ts:35#"httpServer: nextServer"`), because Next attaches its own
+   (`server.ts:36#"httpServer: nextServer"`), because Next attaches its own
    `upgrade` listener to the server of the first request it serves, and
    that listener ends `/api/agents/ws` (it matches the dynamic route
    `/api/agents/[agentId]`); with it on the real server, agent upgrades
@@ -67,7 +67,7 @@ those constants are read (after the `.env` files were loaded).
    destroyed in production
    (`src/lib/ws-upgrade.ts:35#"socket.destroy()"`); in development it is
    replayed on Next's server so HMR keeps its socket
-   (`server.ts:56#"nextServer.emit"`).
+   (`server.ts:62#"nextServer.emit"`).
 2. Every frame is JSON-parsed and validated against `wsMessageSchema`
    (`auth`, `snapshot` or `ping`). A frame that is not JSON is dropped
    without a reply

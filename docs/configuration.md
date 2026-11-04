@@ -20,6 +20,7 @@ DOMAIN=monitor.yourdomain.com  # read by docker-compose.traefik.yml only, not by
 GITHUB_TOKEN=               # GitHub API token for the GitHub PRs widget (read-only; repo/PR and checks read scope)
 GITHUB_REPOS=owner/repo,owner/other  # repositories the GitHub PRs widget lists; empty means the widget shows a hint
 SERVICE_HEALTH_URLS=api=https://api.example.com/health,https://example.com  # Service Health widget targets, comma-separated `[name=]url`; empty means no checks
+TRUSTED_PROXY_HOPS=0        # reverse proxies in front of the app whose X-Forwarded-For entry is trusted for the login rate limit (default 0 = header ignored; docker-compose.traefik.yml sets 1; see "Login rate limit")
 PORT=3000                   # listen port (server.ts default)
 HOSTNAME=0.0.0.0            # listen address (server.ts default)
 ```
@@ -41,7 +42,8 @@ and accepts the development fallbacks.
 
 Notes:
 
-- `ADMIN_PASSWORD` is compared as plaintext. Set `ADMIN_PASSWORD_HASH` instead
+- `ADMIN_PASSWORD` is held as plaintext in the environment (the comparison at
+  login is constant-time). Set `ADMIN_PASSWORD_HASH` instead
   (a bcrypt hash) if you prefer not to store the plaintext password in the
   environment; use the matching plaintext password to log in. Generate the
   hash in the repository after `npm install`:
@@ -120,13 +122,17 @@ one that is set:
    when the password is changed in Settings (bcrypt cost 12).
 2. `ADMIN_PASSWORD_HASH` (bcrypt compare). If both env vars are set, the hash
    wins.
-3. `ADMIN_PASSWORD` (plaintext compare).
+3. `ADMIN_PASSWORD` (plaintext compare, constant-time: both sides are hashed
+   with SHA-256 and the digests compared with `crypto.timingSafeEqual`, so a
+   different length neither throws nor shows in the timing). The bcrypt compare
+   of `bcryptjs` already compares the hashes without an early exit. The current
+   password check of `POST /api/auth/change-password` uses the same compare.
 4. None set: login returns HTTP 500 when `NODE_ENV=production`; in development
    the password `admin` is accepted.
 
 A successful login sets a session cookie holding a JWT that is valid for 24
 hours. The flowchart shows the same order and where a Settings change is
-stored.
+stored. Every attempt first passes the [login rate limit](#login-rate-limit).
 
 ```mermaid
 flowchart TD
@@ -147,6 +153,87 @@ flowchart TD
   PJ -.->|read at login| P
 ```
 
+## Login rate limit
+
+`POST /api/auth` allows **5 login attempts per client in a 15-minute window**.
+The window starts at the client's first attempt. A client that has used its 5
+attempts gets `429 Too Many Requests` with a `Retry-After` header (seconds until
+the window ends) for every further attempt until the window has passed, and
+**the password is not checked at all** while it is locked out, so the right
+password is refused too. A successful login clears the client's count. Requests
+that never reach the password check do not count: an unparsable body or a
+missing password (400), and a server-side error such as an unreadable
+`password.json` or no configured password in production (500). The limits are
+constants (`src/lib/login-rate-limit.ts`), not settings.
+
+The current-password check of `POST /api/auth/change-password` (needs a
+session) is limited the same way, in a separate set of counters: wrong current
+passwords there do not use up login attempts and the other way round, and a
+successful password change clears only the change-password count.
+
+Attempts are counted when they are admitted, not when they fail, so a burst of
+parallel requests cannot all pass before the first answer is back. The
+counters live in the memory of the one server process: a restart clears them
+(a lockout ends with a restart), and a second instance behind a load balancer
+would keep separate counters.
+
+Which client a request belongs to depends on `TRUSTED_PROXY_HOPS`:
+
+| `TRUSTED_PROXY_HOPS` | Client key |
+| --- | --- |
+| unset, empty, `0` | The TCP peer address. `X-Forwarded-For` is ignored entirely. |
+| `N` (1 or more) | The N-th address from the right of `X-Forwarded-For`, i.e. the address the outermost of N trusted proxies saw. The header needs at least N entries; entries to the left of that one are supplied by the client and never used. |
+| anything else (negative, fractional, text, too large to be exact) | Behaves like `0`; one warning is logged. |
+
+With `N` set, the peer address is used instead when the header has fewer than N
+entries or the chosen entry is not an IP address. Several `X-Forwarded-For`
+header lines count as one comma-joined list. An IPv4-mapped IPv6 address is
+keyed as its IPv4 address. Any other IPv6 address is keyed by its /64 prefix
+(one subscriber routinely holds a whole /64) and also counts against its /48,
+which has a larger budget of **50 attempts per window** shared by all its /64s;
+a request is refused if either budget is used up, and then it is charged to
+neither. Without the /48 budget a single site (65,536 /64s) could fill the
+counter table below at will. The price: whoever shares a /48 with you (an
+operator that hands out single /64s from one /48) can use up that /48's 50
+attempts and lock you out from it until the window ends.
+
+Next.js does not hand the TCP peer to a route handler, so `server.ts` wraps its
+request listener (`withPeerAddress`) to copy the peer into the request header
+`x-clawd-peer-addr` before Next.js sees the request, replacing any value a
+client sent (in any letter case, or repeated). If that header is ever missing, all such
+requests share one bucket named `unknown`; a bucket is never named after a
+client-supplied header value.
+
+Set `TRUSTED_PROXY_HOPS` to the number of proxies that really sit in front of
+the app and append to `X-Forwarded-For`, and only if the app cannot be reached
+except through them (otherwise a client could send its own header). With a proxy
+in front and the value left at `0`, every client shares the proxy's address and
+five failed logins by anyone lock the admin out. `docker-compose.traefik.yml`
+sets `TRUSTED_PROXY_HOPS=1`: with Traefik's default of not trusting
+forwarded headers a client sends, the last entry is the address Traefik saw. If
+another proxy or CDN sits in front of Traefik and Traefik trusts it, raise the
+number accordingly. The plain
+`docker-compose.yml` leaves it unset because the app is reached directly. For
+the plain stack or `npm start` behind another proxy, set it in `.env`.
+
+Memory is bounded: at most 10,000 client keys are tracked. When new clients
+arrive with the table full, expired entries are dropped first, then the entries
+with the fewest attempts (oldest first) that are not locked out. A locked-out
+client is never evicted, so filling the table with other addresses does not
+unlock it. If every entry is locked out (that takes 10,000 keys that each used
+up their attempts in one window: about 10,000 IPv4 addresses, or about 900
+distinct IPv6 /48s, since one /48 can hold at most 11 locked entries, ten /64s
+and its parent), nobody new can be tracked, and the limiter does not fail open: all such
+untracked clients share one overflow bucket that allows **one attempt per
+second** in total. An attempt without a token is answered `429` with
+`Retry-After: 1`, so guessing by untracked clients is capped at about 3,600 per
+hour altogether and the real admin gets in after a short retry. The cost is
+that someone who keeps that bucket empty (one request a second) makes the
+admin's retries succeed only occasionally, until the locked entries expire at
+the end of their windows. A warning is logged at most once per window while
+this lasts. At that scale an attacker has a botnet, and a strong password or
+`ADMIN_PASSWORD_HASH` is the defence, not this limit.
+
 ## Docker Compose env files
 
 - Both compose files read `.env` and then `.env.runtime`; both are optional.
@@ -156,7 +243,9 @@ flowchart TD
 - In these files, write every `$` in a value as `$$`. A bcrypt hash contains
   `$` characters (example in `.env.runtime.example`).
 - `NODE_ENV` and `CLAWD_MONITOR_DATA_DIR` are fixed in the compose files
-  (`production`, `/data`) and cannot be changed from the env files.
+  (`production`, `/data`) and cannot be changed from the env files. So is
+  `TRUSTED_PROXY_HOPS` in `docker-compose.traefik.yml` (`1`); a value in `.env`
+  is ignored there and only counts for the plain `docker-compose.yml`.
 
 ## Container health, memory limit and logs
 
@@ -419,6 +508,11 @@ same two commands migrate data between the volumes of the two compose files
   `NODE_ENV=production`, so over plain HTTP it works only on `localhost`. Use
   HTTPS (for example the Traefik setup in the README) for access from other
   machines.
+- **Login answers 429 (`Too many failed login attempts`):** the client used its 5
+  attempts in the current 15-minute window; wait for `Retry-After` seconds, or
+  restart the server to clear every lockout. If a lockout hits you after one or
+  two typos behind a reverse proxy, the proxy's address is probably the client
+  key (all users share it): set `TRUSTED_PROXY_HOPS` (see "Login rate limit").
 - **Lost admin password:** delete `password.json` from the data directory
   (`CLAWD_MONITOR_DATA_DIR`, the data volume under Docker Compose); the env
   password applies again on the next login.

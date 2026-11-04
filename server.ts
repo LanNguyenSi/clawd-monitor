@@ -7,6 +7,7 @@ import next from 'next'
 import { WebSocketServer } from 'ws'
 import { handleAgentConnection } from './src/lib/agent-ws-handler.js'
 import { attachUpgradeRouter } from './src/lib/ws-upgrade.js'
+import { withPeerAddress } from './src/lib/client-ip.js'
 
 const dev = process.env.NODE_ENV !== 'production'
 const port = parseInt(process.env.PORT ?? '3000')
@@ -36,10 +37,15 @@ const app = next({ dev, hostname, port, httpServer: nextServer })
 const handle = app.getRequestHandler()
 
 app.prepare().then(() => {
-  const server = createServer((req, res) => {
-    const parsedUrl = parse(req.url ?? '/', true)
-    void handle(req, res, parsedUrl)
-  })
+  // Routes cannot see the TCP peer, so the listener is wrapped to hand it over
+  // in a header the client cannot set (see src/lib/client-ip.ts); the login
+  // limiters key on it.
+  const server = createServer(
+    withPeerAddress((req, res) => {
+      const parsedUrl = parse(req.url ?? '/', true)
+      void handle(req, res, parsedUrl)
+    }),
+  )
 
   const wss = new WebSocketServer({ noServer: true })
   wss.on('connection', handleAgentConnection)
