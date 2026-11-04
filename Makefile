@@ -8,7 +8,9 @@
 # here with a bare `docker compose up -d` before the file got its name runs
 # under that directory name too. Stop such a stack once with
 # `docker compose -p clawd-monitor down` before the first `make docker-up`, or
-# the two compete for port 3000. The -p below matches the file's own name. On
+# the two compete for port 3000. Only on a developer machine: on the production
+# server clawd-monitor is the production project, so never run that command
+# there. The -p below matches the file's own name. On
 # the server always pass `-f docker-compose.traefik.yml`: a bare command there
 # now manages the plain HTTP stack, not production.
 COMPOSE_LOCAL := docker compose -p clawd-monitor-local -f docker-compose.yml

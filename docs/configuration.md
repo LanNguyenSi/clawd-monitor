@@ -221,7 +221,7 @@ it runs on, not from other machines. A local plain stack started earlier with a
 bare `docker compose up -d` (before the file carried `name:`) runs under the
 directory name `clawd-monitor`; stop it once with
 `docker compose -p clawd-monitor down` before the first `make docker-up`, or the
-two compete for port 3000. On the server always pass
+two compete for port 3000. Only on a developer machine: on the production server `clawd-monitor` is the production project, so never run `docker compose -p clawd-monitor down` there. On the server always pass
 `-f docker-compose.traefik.yml`. The targets are for local use and never touch
 the Traefik stack.
 

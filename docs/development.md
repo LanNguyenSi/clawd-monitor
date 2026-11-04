@@ -57,7 +57,7 @@ A stack started earlier with a bare `docker compose up -d` (before
 `docker-compose.yml` carried `name: clawd-monitor-local`) runs under the
 directory's project name `clawd-monitor`; stop it once with
 `docker compose -p clawd-monitor down` before the first `make docker-up`, or the
-two compete for port 3000. Now that the file has its own project name, a bare
+two compete for port 3000. Only on a developer machine: on the production server `clawd-monitor` is the production project, so never run `docker compose -p clawd-monitor down` there. Now that the file has its own project name, a bare
 `docker compose` here follows that name and no longer reaches the production
 containers, which run under `clawd-monitor` from `docker-compose.traefik.yml`.
 The plain stack publishes `127.0.0.1:3000` only, so it serves the host it runs

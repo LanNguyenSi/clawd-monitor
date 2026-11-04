@@ -69,7 +69,8 @@ Without Traefik, `make docker-up` (or `docker compose -p clawd-monitor-local -f 
 (create the data volume first: `docker volume create clawd_monitor_data`).
 The port is bound to `127.0.0.1` and `docker-compose.yml` sets its own project
 name `clawd-monitor-local`, so a bare `docker compose` in this directory acts on
-the local stack and never on the production containers. This mode is local-only:
+the local stack, whose project name does not match the production project
+`clawd-monitor`. This mode is local-only:
 the port listens on `127.0.0.1` only, and the session cookie is marked Secure in
 production, so browsers on other machines need HTTPS (for example the Traefik
 setup above). See
