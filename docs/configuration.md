@@ -277,9 +277,8 @@ Neither shipped compose file sets this mount because the host path is specific
 to your server, so only you can write it, and the place to write it is the
 repository. A hand edit of the compose file on the server blocks the next relay
 deploy: the relay runs a `git status --porcelain` preflight before `git pull`
-and a modified tracked file fails it, and `--force` only skips that check, so
-the following pull either stops on the conflict or keeps the local edit and the
-server tree drifts from the repo. A compose override file does not work either:
+and a modified tracked file fails it. `--force` only skips that check: the pull
+then runs against a dirty tree and the server drifts from the repo. A compose override file does not work either:
 the relay passes an explicit `-f docker-compose.traefik.yml`, and Compose loads
 `docker-compose.override.yml` only when it picks the file names itself, so the
 override is never read for this stack, and as an untracked file it fails the
