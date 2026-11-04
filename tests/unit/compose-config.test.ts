@@ -81,6 +81,59 @@ describe('the two compose files carry the same healthcheck command', () => {
   })
 })
 
+describe('the plain compose file is its own host-only project', () => {
+  interface ComposeDoc {
+    name?: string
+    services?: Record<string, { ports?: unknown } | undefined>
+  }
+  const loadDoc = (file: string): ComposeDoc =>
+    yaml.load(readFileSync(resolve(ROOT, file), 'utf8')) as ComposeDoc
+
+  it('sets the top-level project name to the value the Makefile passes with -p', () => {
+    // Without it a bare `docker compose up -d` or `down` in the server
+    // directory takes the directory name clawd-monitor, which is what
+    // production runs under, and so addresses the production containers.
+    expect(loadDoc('docker-compose.yml').name).toBe('clawd-monitor-local')
+  })
+
+  it('does not name the traefik project (that would rename production and its volume)', () => {
+    // Production runs docker-compose.traefik.yml with no project name, so it
+    // is the directory name clawd-monitor and owns clawd-monitor_clawd_monitor_data.
+    expect(loadDoc('docker-compose.traefik.yml').name).toBeUndefined()
+  })
+
+  it('binds every published port of the plain file to 127.0.0.1', () => {
+    const ports = loadDoc('docker-compose.yml').services?.app?.ports
+    expect(Array.isArray(ports)).toBe(true)
+    expect((ports as unknown[]).length).toBeGreaterThan(0)
+    // host:container is only two parts, so an unbound "3000:3000" fails here.
+    for (const p of ports as unknown[]) {
+      expect(typeof p).toBe('string')
+      const parts = (p as string).split(':')
+      expect(parts).toHaveLength(3)
+      expect(parts[0]).toBe('127.0.0.1')
+    }
+  })
+})
+
+describe('.dockerignore keeps the tracked env templates', () => {
+  // Read the way dockerignore does: blank lines and whole-line comments
+  // dropped, the rest are directives in order, last match wins. A negation
+  // written inside a comment is dropped here, so this is not a substring match.
+  const rules = readFileSync(resolve(ROOT, '.dockerignore'), 'utf8')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l !== '' && !l.startsWith('#'))
+
+  it('re-includes .env.runtime.example after the .env.* exclusion', () => {
+    const exclude = rules.indexOf('.env.*')
+    const include = rules.indexOf('!.env.runtime.example')
+    expect(exclude).toBeGreaterThanOrEqual(0)
+    expect(include).toBeGreaterThanOrEqual(0)
+    expect(include).toBeGreaterThan(exclude)
+  })
+})
+
 describe('healthcheck command behaviour', () => {
   const script: string = loadCompose('docker-compose.traefik.yml').services.app.healthcheck.test[3]
   let ok: Server

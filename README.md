@@ -67,7 +67,11 @@ the host's Docker daemon, see [docs/configuration.md](docs/configuration.md#dock
 
 Without Traefik, `make docker-up` (or `docker compose -p clawd-monitor-local -f docker-compose.yml up -d`) serves plain HTTP on port 3000
 (create the data volume first: `docker volume create clawd_monitor_data`).
-This mode is for local access: the session cookie is marked Secure in
+The port is bound to `127.0.0.1` and `docker-compose.yml` sets its own project
+name `clawd-monitor-local`, so a bare `docker compose` in this directory acts on
+the local stack, whose project name does not match the production project
+`clawd-monitor`. This mode is local-only:
+the port listens on `127.0.0.1` only, and the session cookie is marked Secure in
 production, so browsers on other machines need HTTPS (for example the Traefik
 setup above). See
 [Troubleshooting](docs/configuration.md#troubleshooting) for this and other

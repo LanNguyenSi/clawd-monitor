@@ -2,6 +2,7 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-11-04T05:27:27Z, `docker-compose.yml` gained a top-level `name: clawd-monitor-local` and binds port 3000 on 127.0.0.1. `auth-and-config-loading.md` re-verified: the env_file block is now cited as `docker-compose.yml:16-24` and `CLAWD_MONITOR_DATA_DIR=/data` as line 18 (both claims unchanged); the Dockerfile citations (44, 47-52) still hold; re-stamped.
 - 2026-11-03T14:53:38Z, Dockerfile runner stage now derives the Docker apt codename from `/etc/os-release` (four added lines before `USER`). `auth-and-config-loading.md` re-verified: the /data ownership step is now cited as `Dockerfile:44` and the runtime-stage COPY list as `Dockerfile:47-52`, both claims unchanged; re-stamped. The earlier `package.json` overrides change touches no claim either.
 - 2026-11-02T09:01:41Z, `package.json` has its `overrides` entry for a direct dependency switched to the `"$pkg"` reference. Re-verified `auth-and-config-loading.md`: no claim depends on the changed lines.
 - 2026-11-01T17:01:48Z, release cut 0.4.0 changed only the `version` field on line 3 of `package.json` (no line shift). `auth-and-config-loading.md` re-verified (the cited scripts block still names `node dist/server.js` as the start command on line 9, inside the cited range 7-9) and re-stamped. Checked with `okf-kit check docs/okf`.

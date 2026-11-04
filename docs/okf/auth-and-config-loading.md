@@ -3,7 +3,7 @@ type: module
 title: Auth and config loading across the two module graphs
 description: Admin password precedence, the password.json and tokens.json data files, JWT cookie flags and lifetime, the production startup check, and how the custom server loads .env files before its modules read the environment, while the compiled route graph reads its own variables later.
 tags: [auth, config, env, jwt, startup]
-timestamp: 2026-11-03T14:53:38Z
+timestamp: 2026-11-04T05:27:27Z
 sources:
   - server.ts
   - tsconfig.server.json
@@ -99,10 +99,10 @@ Under Docker the environment is already complete at process start: the runtime s
 (`Dockerfile:47-52#"COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist"`),
 and both compose files pass the environment through `environment:` and
 `env_file:` so it is in `process.env` when the process starts
-(`docker-compose.yml:11-19#"path: .env.runtime"`,
+(`docker-compose.yml:16-24#"path: .env.runtime"`,
 `docker-compose.traefik.yml:6-15#"path: .env.runtime"`). Both set
 `CLAWD_MONITOR_DATA_DIR=/data` explicitly
-(`docker-compose.yml:13#"CLAWD_MONITOR_DATA_DIR=/data"`).
+(`docker-compose.yml:18#"CLAWD_MONITOR_DATA_DIR=/data"`).
 
 ## Data files
 
