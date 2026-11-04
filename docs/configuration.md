@@ -221,8 +221,9 @@ arrive with the table full, expired entries are dropped first, then the entries
 with the fewest attempts (oldest first) that are not locked out. A locked-out
 client is never evicted, so filling the table with other addresses does not
 unlock it. If every entry is locked out (that takes 10,000 keys that each used
-up their attempts in one window, so about 200 distinct /48s at 50 attempts
-each), nobody new can be tracked, and the limiter does not fail open: all such
+up their attempts in one window: about 10,000 IPv4 addresses, or about 900
+distinct IPv6 /48s, since one /48 can hold at most 11 locked entries, ten /64s
+and its parent), nobody new can be tracked, and the limiter does not fail open: all such
 untracked clients share one overflow bucket that allows **one attempt per
 second** in total. An attempt without a token is answered `429` with
 `Retry-After: 1`, so guessing by untracked clients is capped at about 3,600 per
