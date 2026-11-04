@@ -331,3 +331,29 @@ describe('client key: TRUSTED_PROXY_HOPS and X-Forwarded-For', () => {
     expect(await statusOf(login('correct-horse', { peer: null, xff: '198.51.100.51' }))).toBe(200)
   })
 })
+
+describe('IPv6 clients', () => {
+  it('addresses of one /64 share an attempt budget', async () => {
+    for (let i = 1; i <= 5; i++) expect(await statusOf(login('wrong', { peer: `2001:db8:1:2::${i}` }))).toBe(401)
+    expect(await statusOf(login('wrong', { peer: '2001:db8:1:2:aaaa:bbbb:cccc:dddd' }))).toBe(429)
+    expect(await statusOf(login('correct-horse', { peer: '2001:db8:1:3::1' }))).toBe(200)
+  })
+
+  it('the /64s of one /48 share a larger budget of 50, so rotating through them does not get unlimited guesses', async () => {
+    for (let i = 0; i < 50; i++) {
+      expect(await statusOf(login('wrong', { peer: `2001:db8:1:${i.toString(16)}::1` }))).toBe(401)
+    }
+    expect(await statusOf(login('wrong', { peer: '2001:db8:1:ffff::1' }))).toBe(429)
+    expect(await statusOf(login('correct-horse', { peer: '2001:db8:1:fffe::1' }))).toBe(429)
+    // another /48 and an IPv4 client are not affected
+    expect(await statusOf(login('correct-horse', { peer: '2001:db8:2::1' }))).toBe(200)
+    expect(await statusOf(login('correct-horse', { peer: '203.0.113.5' }))).toBe(200)
+  })
+
+  it('a success resets the /48 as well', async () => {
+    for (let i = 0; i < 49; i++) await POST(login('wrong', { peer: `2001:db8:1:${i.toString(16)}::1` }))
+    expect(await statusOf(login('correct-horse', { peer: '2001:db8:1:ff::1' }))).toBe(200)
+    for (let i = 0; i < 49; i++) expect(await statusOf(login('wrong', { peer: `2001:db8:1:${(i + 100).toString(16)}::1` }))).toBe(401)
+  })
+})
+

@@ -125,7 +125,8 @@ one that is set:
 3. `ADMIN_PASSWORD` (plaintext compare, constant-time: both sides are hashed
    with SHA-256 and the digests compared with `crypto.timingSafeEqual`, so a
    different length neither throws nor shows in the timing). The bcrypt compare
-   of `bcryptjs` already compares the hashes without an early exit.
+   of `bcryptjs` already compares the hashes without an early exit. The current
+   password check of `POST /api/auth/change-password` uses the same compare.
 4. None set: login returns HTTP 500 when `NODE_ENV=production`; in development
    the password `admin` is accepted.
 
@@ -165,6 +166,11 @@ missing password (400), and a server-side error such as an unreadable
 `password.json` or no configured password in production (500). The limits are
 constants (`src/lib/login-rate-limit.ts`), not settings.
 
+The current-password check of `POST /api/auth/change-password` (needs a
+session) is limited the same way, in a separate set of counters: wrong current
+passwords there do not use up login attempts and the other way round, and a
+successful password change clears only the change-password count.
+
 Attempts are counted when they are admitted, not when they fail, so a burst of
 parallel requests cannot all pass before the first answer is back. The
 counters live in the memory of the one server process: a restart clears them
@@ -176,17 +182,25 @@ Which client a request belongs to depends on `TRUSTED_PROXY_HOPS`:
 | `TRUSTED_PROXY_HOPS` | Client key |
 | --- | --- |
 | unset, empty, `0` | The TCP peer address. `X-Forwarded-For` is ignored entirely. |
-| `N` (1 or more) | The N-th address from the right of `X-Forwarded-For`, i.e. the address the outermost of N trusted proxies saw. Entries to the left are supplied by the client and never used. |
+| `N` (1 or more) | The N-th address from the right of `X-Forwarded-For`, i.e. the address the outermost of N trusted proxies saw. The header needs at least N entries; entries to the left of that one are supplied by the client and never used. |
 | anything else (negative, fractional, text, too large to be exact) | Behaves like `0`; one warning is logged. |
 
 With `N` set, the peer address is used instead when the header has fewer than N
 entries or the chosen entry is not an IP address. Several `X-Forwarded-For`
 header lines count as one comma-joined list. An IPv4-mapped IPv6 address is
-keyed as its IPv4 address and any other IPv6 address by its /64 prefix.
+keyed as its IPv4 address. Any other IPv6 address is keyed by its /64 prefix
+(one subscriber routinely holds a whole /64) and also counts against its /48,
+which has a larger budget of **50 attempts per window** shared by all its /64s;
+a request is refused if either budget is used up, and then it is charged to
+neither. Without the /48 budget a single site (65,536 /64s) could fill the
+counter table below at will. The price: whoever shares a /48 with you (an
+operator that hands out single /64s from one /48) can use up that /48's 50
+attempts and lock you out from it until the window ends.
 
-Next.js does not hand the TCP peer to a route handler, so `server.ts` copies it
-into the request header `x-clawd-peer-addr` before Next.js sees the request and
-overwrites any value a client sent. If that header is ever missing, all such
+Next.js does not hand the TCP peer to a route handler, so `server.ts` wraps its
+request listener (`withPeerAddress`) to copy the peer into the request header
+`x-clawd-peer-addr` before Next.js sees the request, replacing any value a
+client sent (in any letter case, or repeated). If that header is ever missing, all such
 requests share one bucket named `unknown`; a bucket is never named after a
 client-supplied header value.
 
@@ -202,15 +216,22 @@ number accordingly. The plain
 `docker-compose.yml` leaves it unset because the app is reached directly. For
 the plain stack or `npm start` behind another proxy, set it in `.env`.
 
-Memory is bounded: at most 10,000 client keys are tracked. When a new client
-arrives with the table full, expired entries are dropped first, then the entry
-with the fewest attempts (oldest first) that is not locked out. A locked-out
+Memory is bounded: at most 10,000 client keys are tracked. When new clients
+arrive with the table full, expired entries are dropped first, then the entries
+with the fewest attempts (oldest first) that are not locked out. A locked-out
 client is never evicted, so filling the table with other addresses does not
-unlock it. If all 10,000 entries are locked out (that takes 10,000 distinct
-clients that each failed 5 times in one window), a new client is let in without
-being tracked and a warning is logged at most once per window, rather than
-locking everyone out; at that point the limit is no longer the defence, and a
-strong password or `ADMIN_PASSWORD_HASH` is.
+unlock it. If every entry is locked out (that takes 10,000 keys that each used
+up their attempts in one window, so about 200 distinct /48s at 50 attempts
+each), nobody new can be tracked, and the limiter does not fail open: all such
+untracked clients share one overflow bucket that allows **one attempt per
+second** in total. An attempt without a token is answered `429` with
+`Retry-After: 1`, so guessing by untracked clients is capped at about 3,600 per
+hour altogether and the real admin gets in after a short retry. The cost is
+that someone who keeps that bucket empty (one request a second) makes the
+admin's retries succeed only occasionally, until the locked entries expire at
+the end of their windows. A warning is logged at most once per window while
+this lasts. At that scale an attacker has a botnet, and a strong password or
+`ADMIN_PASSWORD_HASH` is the defence, not this limit.
 
 ## Docker Compose env files
 

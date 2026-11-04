@@ -67,7 +67,7 @@ those constants are read (after the `.env` files were loaded).
    destroyed in production
    (`src/lib/ws-upgrade.ts:35#"socket.destroy()"`); in development it is
    replayed on Next's server so HMR keeps its socket
-   (`server.ts:60#"nextServer.emit"`).
+   (`server.ts:62#"nextServer.emit"`).
 2. Every frame is JSON-parsed and validated against `wsMessageSchema`
    (`auth`, `snapshot` or `ping`). A frame that is not JSON is dropped
    without a reply

@@ -21,6 +21,21 @@ export function stampPeerAddress(req: IncomingMessage): void {
   else delete req.headers[PEER_ADDR_HEADER]
 }
 
+/**
+ * Wrap a request listener so every request is stamped with its socket peer
+ * (replacing whatever the client sent under that name, in any letter case or
+ * repeated) before the listener, and so Next.js, sees it. server.ts uses this
+ * for its one request listener.
+ */
+export function withPeerAddress<Res>(
+  listener: (req: IncomingMessage, res: Res) => void,
+): (req: IncomingMessage, res: Res) => void {
+  return (req, res) => {
+    stampPeerAddress(req)
+    listener(req, res)
+  }
+}
+
 function parseIpv4(s: string): number[] | null {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s)
   if (!m) return null
@@ -48,14 +63,22 @@ function parseIpv6(s: string): number[] | null {
   return [...head, ...Array<string>(fill).fill('0'), ...rest].map((g) => parseInt(g, 16))
 }
 
+/** Rate-limit keys of one client: its own, and for IPv6 the coarser /48 around it. */
+export interface ClientKeys {
+  key: string
+  parent?: string
+}
+
 /**
- * Canonical bucket key for an address, or null when it is not an IP literal.
+ * Canonical keys for an address, or null when it is not an IP literal.
  * - IPv4 stays as is; an IPv4-mapped IPv6 address (::ffff:a.b.c.d) becomes the IPv4.
  * - Any other IPv6 address maps to its /64 prefix, because one subscriber
- *   routinely holds a whole /64 and could otherwise rotate through addresses.
+ *   routinely holds a whole /64 and could otherwise rotate through addresses,
+ *   and carries its /48 as `parent`: one site holds 65,536 /64s, so a single
+ *   /64 key alone would let it fill the limiter's table (see login-rate-limit.ts).
  * - A bracketed IPv6, an address with a port, and an IPv6 zone id are accepted.
  */
-export function normalizeIp(raw: string | null | undefined): string | null {
+export function parseClient(raw: string | null | undefined): ClientKeys | null {
   if (!raw) return null
   let s = raw.trim()
   const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(s)
@@ -65,13 +88,19 @@ export function normalizeIp(raw: string | null | undefined): string | null {
   } else if (/^\d{1,3}(\.\d{1,3}){3}:\d+$/.test(s)) s = s.slice(0, s.lastIndexOf(':'))
   if (s.includes(':')) s = s.split('%')[0]
   const v4 = parseIpv4(s)
-  if (v4) return v4.join('.')
+  if (v4) return { key: v4.join('.') }
   const g = parseIpv6(s)
   if (!g) return null
   if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) {
-    return `${g[6] >> 8}.${g[6] & 255}.${g[7] >> 8}.${g[7] & 255}`
+    return { key: `${g[6] >> 8}.${g[6] & 255}.${g[7] >> 8}.${g[7] & 255}` }
   }
-  return `${g.slice(0, 4).map((x) => x.toString(16)).join(':')}::/64`
+  const hex = (n: number) => g.slice(0, n).map((x) => x.toString(16)).join(':')
+  return { key: `${hex(4)}::/64`, parent: `${hex(3)}::/48` }
+}
+
+/** The bucket key of an address (see parseClient), or null when it is not an IP literal. */
+export function normalizeIp(raw: string | null | undefined): string | null {
+  return parseClient(raw)?.key ?? null
 }
 
 /**
@@ -103,19 +132,20 @@ export function getTrustedProxyHops(env: Record<string, string | undefined> = pr
 }
 
 /**
- * Rate-limit bucket for the client of a request.
+ * Rate-limit keys for the client of a request.
  * - hops 0: the peer address the server stamped; X-Forwarded-For is ignored.
  * - hops N >= 1: the N-th address from the right of X-Forwarded-For, i.e. what
- *   the outermost of N trusted proxies saw. Entries to its left are client
- *   controlled and never used. When the header has fewer than N entries, or
- *   the chosen entry is not an IP literal, the request did not come through
- *   the configured chain as expected and the peer address is used instead.
- * - No usable peer address: one shared bucket, never one named by a header.
+ *   the outermost of N trusted proxies saw. The list needs at least N entries;
+ *   entries to the left of that one are client controlled and never used.
+ *   When the header has fewer than N entries, or the chosen entry is not an IP
+ *   literal, the request did not come through the configured chain as expected
+ *   and the peer address is used instead.
+ * - No usable peer address: one shared key, never one named by a header.
  * Several X-Forwarded-For header lines arrive joined by commas, which is the
  * same list a single line would carry.
  */
-export function getClientKey(headers: Headers, hops: number): string {
-  const peer = normalizeIp(headers.get(PEER_ADDR_HEADER)) ?? UNKNOWN_CLIENT_KEY
+export function getClientKeys(headers: Headers, hops: number): ClientKeys {
+  const peer = parseClient(headers.get(PEER_ADDR_HEADER)) ?? { key: UNKNOWN_CLIENT_KEY }
   const entries = (headers.get('x-forwarded-for') ?? '').split(',')
   // The last `hops` entries; its first element is the trusted one. A shorter
   // list does not describe the configured chain. With hops 0 this slice is the
@@ -123,5 +153,10 @@ export function getClientKey(headers: Headers, hops: number): string {
   // "ignore the header".
   const chain = entries.slice(-hops)
   const trusted = chain.length === hops ? chain[0] : undefined
-  return normalizeIp(trusted) ?? peer
+  return parseClient(trusted) ?? peer
+}
+
+/** The bucket key alone (see getClientKeys). */
+export function getClientKey(headers: Headers, hops: number): string {
+  return getClientKeys(headers, hops).key
 }

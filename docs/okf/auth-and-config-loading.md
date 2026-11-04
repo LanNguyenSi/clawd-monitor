@@ -163,48 +163,61 @@ longer consulted. The source is chosen before the login limiter below is
 asked, so a 500 for a broken store or a missing password does not use up an
 attempt.
 
+`POST /api/auth/change-password` requires a valid session, a new password
+of at least 8 characters and a matching confirmation
+(`src/app/api/auth/change-password/route.ts:25-26#"at least 8 characters"`).
+It verifies the current password with the same chain, except that it has no
+production branch: with nothing configured it compares against `admin`
+(`src/app/api/auth/change-password/route.ts:57-58#"safeEqual(candidate, 'admin')"`),
+and the plain and dev-default comparisons also go through `safeEqual`. In
+production the startup check exits when neither `ADMIN_PASSWORD` nor
+`ADMIN_PASSWORD_HASH` is set (`server.ts:20-23#"process.exit(1)"`), so this
+fallback is reached only in development. The check sits behind its own limiter
+instance, described below. It stores a bcrypt hash with cost 12
+(`src/app/api/auth/change-password/route.ts:77#"writePasswordConfig({ hash: newHash })"`).
+
 ## Login rate limit
 
 After the 400 checks and the choice of password source, the login route asks
-`loginRateLimiter.acquire(key)`; when it refuses, the route answers 429 with
-`Retry-After` and never calls the password check
-(`src/app/api/auth/route.ts:59-68#"status: 429"`). A correct password resets
-the key (`src/app/api/auth/route.ts:73#"loginRateLimiter.reset(clientKey)"`).
-The limiter allows 5 attempts per key in a fixed 15-minute window, counted when
-admitted (before the password is checked), holds at most 10,000 keys in memory
-and, at the cap, drops expired entries, then the entry with the fewest attempts
-that is not locked out; if every entry is locked out, a new key is admitted
-untracked (`src/lib/login-rate-limit.ts:2-6#"LOGIN_MAX_TRACKED_KEYS"`,
-`src/lib/login-rate-limit.ts:49-77#"entries.set(key"`).
+`loginRateLimiter.acquire(key, parent)`; when it refuses, the route answers 429
+with `Retry-After` and never calls the password check
+(`src/app/api/auth/route.ts:63-68#"status: 429"`). A correct password resets
+the client's keys (`src/app/api/auth/route.ts:73#"loginRateLimiter.reset"`).
+The change-password route does the same with a second limiter instance,
+`passwordChangeRateLimiter`, so the two key spaces do not share counts
+(`src/app/api/auth/change-password/route.ts:62-68#"passwordChangeRateLimiter.acquire"`).
 
-The key comes from `getClientKey()` in `src/lib/client-ip.ts`. A route handler
+The limiter (`src/lib/login-rate-limit.ts`) allows 5 attempts per key in a fixed
+15-minute window, counted when admitted (before the password is checked). An
+IPv6 client also carries its /48 as a parent key with a budget of 50; a request
+is refused if either budget is used up and is then charged to neither. It holds
+at most 10,000 keys: at the cap it drops expired entries, then the entries with
+the fewest attempts that are not locked out (a locked-out key, and the keys of
+the current request, are never evicted). If no room can be made, the request is
+not tracked and is not let in for free either: untracked requests share an
+overflow bucket of one attempt per second and otherwise get 429 with
+`Retry-After: 1`
+(`src/lib/login-rate-limit.ts:2-12#"OVERFLOW_BURST"`,
+`src/lib/login-rate-limit.ts:75-105#"takeOverflowToken(t)"`).
+
+The key comes from `getClientKeys()` in `src/lib/client-ip.ts`. A route handler
 cannot see the TCP peer (Next 15 gives `NextRequest` no `ip`, and its own
 `x-forwarded-for` fill-in applies only when the client sent none), so the
-custom server writes the socket's remote address into `x-clawd-peer-addr` for
-every request before handing it to Next.js, replacing a client-sent value
-(`server.ts:43#"stampPeerAddress(req)"`). `TRUSTED_PROXY_HOPS` is read at
-request time in the route graph: `0`, unset or empty uses that peer address and
-ignores `X-Forwarded-For`; `N >= 1` uses the N-th entry from the right of
-`X-Forwarded-For`, falling back to the peer when there are fewer entries or the
-entry is not an IP; an invalid value behaves like `0` and is logged once
-(`src/lib/client-ip.ts:96-103#"getTrustedProxyHops"`,
-`src/lib/client-ip.ts:117-127#"getClientKey"`). Without a peer header all clients
+custom server wraps its request listener in `withPeerAddress`, which writes the
+socket's remote address into `x-clawd-peer-addr` for every request before
+Next.js sees it, replacing a client-sent value
+(`server.ts:44-47#"withPeerAddress"`). `TRUSTED_PROXY_HOPS` is read at request
+time in the route graph: `0`, unset or empty uses that peer address and ignores
+`X-Forwarded-For`; `N >= 1` uses the N-th entry from the right of
+`X-Forwarded-For` (the list needs at least N entries; only the last N count),
+falling back to the peer when there are fewer entries or the entry is not an
+IP; an invalid value behaves like `0` and is logged once
+(`src/lib/client-ip.ts:125-132#"getTrustedProxyHops"`,
+`src/lib/client-ip.ts:147-157#"getClientKeys"`). Without a peer header all clients
 share the key `unknown`. `docker-compose.traefik.yml` sets `TRUSTED_PROXY_HOPS=1`
 (`docker-compose.traefik.yml:9-13#"TRUSTED_PROXY_HOPS=1"`); the plain compose
 file does not. The variable is also fixed by the compose `environment:` there,
 which wins over `.env` and `.env.runtime`.
-
-`POST /api/auth/change-password` requires a valid session, a new password
-of at least 8 characters and a matching confirmation
-(`src/app/api/auth/change-password/route.ts:22-23#"at least 8 characters"`).
-It verifies the current password with the same chain, except that it has no
-production branch: with nothing configured it compares against `admin`
-(`src/app/api/auth/change-password/route.ts:42-50#"currentPassword === 'admin'"`).
-In production the startup check exits when neither `ADMIN_PASSWORD` nor
-`ADMIN_PASSWORD_HASH` is set (`server.ts:20-23#"process.exit(1)"`), so this
-fallback is reached only in development.
-It stores a bcrypt hash with cost 12
-(`src/app/api/auth/change-password/route.ts:58-59#"writePasswordConfig({ hash: newHash })"`).
 
 ## Session JWT and cookie
 

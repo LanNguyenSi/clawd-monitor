@@ -1,14 +1,19 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest'
 import type { IncomingMessage } from 'http'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
+import { createServer, type ServerResponse } from 'http'
+import { connect, type AddressInfo } from 'net'
 import {
   PEER_ADDR_HEADER,
   UNKNOWN_CLIENT_KEY,
   getClientKey,
+  getClientKeys,
   normalizeIp,
+  parseClient,
   parseTrustedProxyHops,
   stampPeerAddress,
+  withPeerAddress,
 } from '@/lib/client-ip'
 
 afterEach(() => {
@@ -255,17 +260,135 @@ describe('getClientKey', () => {
   })
 })
 
+describe('parseClient', () => {
+  it('IPv4 has no parent', () => {
+    expect(parseClient('203.0.113.7')).toEqual({ key: '203.0.113.7' })
+  })
+
+  it('IPv4-mapped IPv6 has no parent', () => {
+    expect(parseClient('::ffff:203.0.113.7')).toEqual({ key: '203.0.113.7' })
+  })
+
+  it('IPv6 has its /64 as key and its /48 as parent', () => {
+    expect(parseClient('2001:db8:1:2:3:4:5:6')).toEqual({ key: '2001:db8:1:2::/64', parent: '2001:db8:1::/48' })
+  })
+
+  it('two /64s of one /48 share the parent', () => {
+    expect(parseClient('2001:db8:1:2::1')?.parent).toBe(parseClient('2001:db8:1:ffff::1')?.parent)
+    expect(parseClient('2001:db8:1:2::1')?.key).not.toBe(parseClient('2001:db8:1:ffff::1')?.key)
+  })
+
+  it('different /48s have different parents', () => {
+    expect(parseClient('2001:db8:1::1')?.parent).not.toBe(parseClient('2001:db8:2::1')?.parent)
+  })
+
+  it('is null for something that is not an address', () => {
+    expect(parseClient('nope')).toBeNull()
+    expect(parseClient(null)).toBeNull()
+  })
+})
+
+describe('getClientKeys', () => {
+  const h = (peer: string | null, xff?: string) => {
+    const headers = new Headers()
+    if (peer !== null) headers.set(PEER_ADDR_HEADER, peer)
+    if (xff !== undefined) headers.set('x-forwarded-for', xff)
+    return headers
+  }
+
+  it('hops 0: the peer, with its parent for IPv6', () => {
+    expect(getClientKeys(h('2001:db8:1:2::9', '1.2.3.4'), 0)).toEqual({ key: '2001:db8:1:2::/64', parent: '2001:db8:1::/48' })
+  })
+
+  it('hops 1: the trusted entry, with its parent for IPv6', () => {
+    expect(getClientKeys(h('10.0.0.9', '9.9.9.9, 2001:db8:5:6::1'), 1)).toEqual({ key: '2001:db8:5:6::/64', parent: '2001:db8:5::/48' })
+  })
+
+  it('hops 1 with a bad entry: the peer, with its own parent', () => {
+    expect(getClientKeys(h('2001:db8:1:2::9', 'evil'), 1)).toEqual({ key: '2001:db8:1:2::/64', parent: '2001:db8:1::/48' })
+  })
+
+  it('no peer: the shared key without parent', () => {
+    expect(getClientKeys(h(null), 0)).toEqual({ key: UNKNOWN_CLIENT_KEY })
+  })
+
+  it('the list needs at least N entries: more than N is fine and only the last N count', () => {
+    expect(getClientKeys(h('10.0.0.9', '1.1.1.1, 2.2.2.2, 3.3.3.3, 4.4.4.4'), 2)).toEqual({ key: '3.3.3.3' })
+  })
+})
+
+describe('withPeerAddress', () => {
+  it('stamps the request before the listener runs', () => {
+    const seen: unknown[] = []
+    const req = { socket: { remoteAddress: '198.51.100.9' }, headers: { [PEER_ADDR_HEADER]: '1.1.1.1' } } as unknown as IncomingMessage
+    withPeerAddress((r, res) => seen.push(r.headers[PEER_ADDR_HEADER], res))(req, 'res')
+    expect(seen).toEqual(['198.51.100.9', 'res'])
+  })
+
+  it('deletes a client value before the listener runs when the socket has no peer address', () => {
+    const seen: unknown[] = []
+    const req = { socket: {}, headers: { [PEER_ADDR_HEADER]: '1.1.1.1' } } as unknown as IncomingMessage
+    withPeerAddress((r) => seen.push(r.headers[PEER_ADDR_HEADER]))(req, undefined)
+    expect(seen).toEqual([undefined])
+  })
+
+  // The real thing: a node http server, raw requests that name the header in
+  // several letter cases and more than once.
+  describe('on a real http server', () => {
+    const seen: Array<string | string[] | undefined> = []
+    const server = createServer(
+      withPeerAddress<ServerResponse>((req, res) => {
+        seen.push(req.headers[PEER_ADDR_HEADER])
+        res.end('ok')
+      }),
+    )
+    let port = 0
+    beforeAll(async () => {
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+      port = (server.address() as AddressInfo).port
+    })
+    afterAll(async () => {
+      server.closeAllConnections()
+      await new Promise<void>((r) => server.close(() => r()))
+    })
+
+    function raw(headerLines: string[]): Promise<void> {
+      return new Promise((resolve, reject) => {
+        const sock = connect(port, '127.0.0.1', () => {
+          sock.write(['GET / HTTP/1.1', 'Host: x', ...headerLines, 'Connection: close', '', ''].join('\r\n'))
+        })
+        sock.on('data', () => {})
+        sock.on('close', () => resolve())
+        sock.on('error', reject)
+      })
+    }
+
+    it('replaces a client-sent header, in any case and repeated, with the socket peer', async () => {
+      seen.length = 0
+      await raw([
+        'x-clawd-peer-addr: 1.1.1.1',
+        'X-Clawd-Peer-Addr: 2.2.2.2',
+        'X-CLAWD-PEER-ADDR: 3.3.3.3, 4.4.4.4',
+      ])
+      expect(seen).toEqual(['127.0.0.1'])
+    })
+
+    it('stamps the peer on a request that sent no such header', async () => {
+      seen.length = 0
+      await raw([])
+      expect(seen).toEqual(['127.0.0.1'])
+    })
+  })
+})
+
 describe('server.ts wiring', () => {
   const src = readFileSync(resolve(__dirname, '../../server.ts'), 'utf8')
 
-  it('imports stampPeerAddress', () => {
-    expect(src).toMatch(/import \{ stampPeerAddress \} from '\.\/src\/lib\/client-ip\.js'/)
+  it('imports withPeerAddress', () => {
+    expect(src).toMatch(/import \{ withPeerAddress \} from '\.\/src\/lib\/client-ip\.js'/)
   })
 
-  it('stamps the peer address on every request before Next.js handles it', () => {
-    const stamp = src.indexOf('stampPeerAddress(req)')
-    const handle = src.indexOf('void handle(req, res')
-    expect(stamp).toBeGreaterThan(-1)
-    expect(handle).toBeGreaterThan(stamp)
+  it('creates its one request server with the stamping wrapper around the handler', () => {
+    expect(src).toMatch(/createServer\(\s*withPeerAddress\(\(req, res\) => \{[\s\S]*?void handle\(req, res, parsedUrl\)/)
   })
 })

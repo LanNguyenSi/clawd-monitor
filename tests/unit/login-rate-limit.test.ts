@@ -177,40 +177,224 @@ describe('memory bound', () => {
     expect(l.acquire('target').allowed).toBe(false)
   })
 
-  it('when every entry is locked out a new key is admitted untracked, not refused', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const l = new LoginRateLimiter(1, WINDOW, 2)
+  it('a flood of single-attempt keys keeps every newcomer tracked', () => {
+    const l = new LoginRateLimiter(5, WINDOW, 3)
+    for (let i = 0; i < 100; i++) {
+      const key = `flood${i}`
+      hit(l, key)
+      // tracked: 4 more attempts, then refused, however many keys came before
+      expect(l.acquire(key).allowed).toBe(true)
+    }
+  })
+})
+
+describe('saturation: every entry locked out', () => {
+  const hit = (l: LoginRateLimiter, key: string, n = 1) => {
+    for (let i = 0; i < n; i++) l.acquire(key)
+  }
+  // 2 slots, both locked (1 attempt each), overflow: one attempt per 100 ms
+  const saturated = () => {
+    const l = new LoginRateLimiter(1, WINDOW, 2, undefined, 50, 100, 1)
     hit(l, 'a')
     hit(l, 'b')
-    expect(l.acquire('a').allowed).toBe(false)
-    expect(l.acquire('b').allowed).toBe(false)
+    return l
+  }
+
+  it('never lets newcomers in for free: untracked attempts are capped by the overflow bucket', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const l = saturated()
+    let allowed = 0
+    // 99 requests from 99 different clients, one every 10 ms, inside one window
+    for (let i = 0; i < 99; i++) {
+      if (l.acquire(`new${i}`).allowed) allowed++
+      vi.advanceTimersByTime(10)
+    }
+    // t = 0, 100, ..., 900 each find a token (burst 1, refill 100 ms)
+    expect(allowed).toBe(10)
+  })
+
+  it('the same newcomer gets no tracked budget either, only the bucket rate', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const l = saturated()
     expect(l.acquire('c').allowed).toBe(true)
-    expect(l.acquire('c').allowed).toBe(true) // untracked: no budget either
+    expect(l.acquire('c').allowed).toBe(false) // no token left, and not tracked as 1/1 either
+    vi.advanceTimersByTime(100)
+    expect(l.acquire('c').allowed).toBe(true) // a token again; an untracked key has no lockout
     expect(l.size).toBe(2)
-    // the locked keys stay locked
+  })
+
+  it('refuses with a short Retry-After while the bucket is empty', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const l = saturated()
+    l.acquire('c')
+    expect(l.acquire('d')).toEqual({ allowed: false, retryAfterSeconds: 1 })
+  })
+
+  it('rounds a long refill interval up to whole seconds', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const l = new LoginRateLimiter(1, 60_000, 1, undefined, 50, 2500, 1)
+    hit(l, 'a')
+    l.acquire('c')
+    expect(l.acquire('d')).toEqual({ allowed: false, retryAfterSeconds: 3 })
+    vi.advanceTimersByTime(1000)
+    expect(l.acquire('d')).toEqual({ allowed: false, retryAfterSeconds: 2 })
+  })
+
+  it('holds at most `burst` tokens however long it was idle', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const l = new LoginRateLimiter(1, 100_000, 1, undefined, 50, 100, 2)
+    hit(l, 'a')
+    vi.advanceTimersByTime(50_000)
+    expect(l.acquire('x').allowed).toBe(true)
+    expect(l.acquire('y').allowed).toBe(true)
+    expect(l.acquire('z').allowed).toBe(false)
+  })
+
+  it('the locked keys stay locked and keep their lockout', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const l = saturated()
+    for (let i = 0; i < 20; i++) l.acquire(`new${i}`)
     expect(l.acquire('a').allowed).toBe(false)
     expect(l.acquire('b').allowed).toBe(false)
-    // warned once per window, not once per request
+    expect(l.size).toBe(2)
+  })
+
+  it('newcomers are tracked again once the locked entries have expired', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const l = saturated()
+    vi.advanceTimersByTime(WINDOW)
+    expect(l.acquire('c').allowed).toBe(true)
+    expect(l.acquire('c').allowed).toBe(false) // tracked: 1/1 used
+  })
+
+  it('warns once per window, not once per request', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const l = saturated()
+    for (let i = 0; i < 5; i++) l.acquire(`new${i}`)
     expect(warn).toHaveBeenCalledTimes(1)
     vi.advanceTimersByTime(WINDOW - 1)
-    hit(l, 'd')
+    l.acquire('late')
     expect(warn).toHaveBeenCalledTimes(1)
   })
 
-  it('warns again when it is still saturated in a later window', () => {
+  it('warns again in a later window while still saturated', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const l = new LoginRateLimiter(1, WINDOW, 1)
-    hit(l, 'a') // t0, locked until t0 + WINDOW
-    hit(l, 'b') // saturated
+    const l = new LoginRateLimiter(1, WINDOW, 1, undefined, 50, 100, 1)
+    hit(l, 'a') // locked until WINDOW
+    l.acquire('b')
     expect(warn).toHaveBeenCalledTimes(1)
-    vi.advanceTimersByTime(WINDOW - 1)
-    hit(l, 'c')
-    expect(warn).toHaveBeenCalledTimes(1) // same window
-    // a second locked key keeps the cap full after 'a' expires
-    vi.advanceTimersByTime(1)
-    hit(l, 'd') // 'a' expired and is purged, 'd' takes its place
-    hit(l, 'e') // saturated again, a full window after the first warning
+    vi.advanceTimersByTime(WINDOW)
+    hit(l, 'd') // 'a' expired, 'd' takes the slot and is locked until 2 * WINDOW
+    l.acquire('e') // saturated again, a full window after the first warning
     expect(warn).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('parent key (the /48 around an IPv6 client)', () => {
+  // child budget 2, parent budget 3
+  const mk = () => new LoginRateLimiter(2, WINDOW, 100, undefined, 3, 100, 1)
+
+  it('charges both keys', () => {
+    const l = mk()
+    l.acquire('c1', 'P')
+    l.acquire('c1', 'P')
+    expect(l.acquire('c1', 'P').allowed).toBe(false) // child budget 2
+    expect(l.size).toBe(2)
+  })
+
+  it('refuses a fresh child once the parent budget is used up, whatever the child', () => {
+    const l = mk()
+    expect(l.acquire('c1', 'P').allowed).toBe(true)
+    expect(l.acquire('c2', 'P').allowed).toBe(true)
+    expect(l.acquire('c3', 'P').allowed).toBe(true)
+    expect(l.acquire('c4', 'P').allowed).toBe(false)
+    expect(l.acquire('c5', 'P').allowed).toBe(false)
+  })
+
+  it('a refused request is not charged to either key', () => {
+    const l = mk()
+    l.acquire('c1', 'P')
+    l.acquire('c1', 'P')
+    expect(l.acquire('c1', 'P').allowed).toBe(false) // child used up, parent must stay at 2
+    expect(l.acquire('c2', 'P').allowed).toBe(true) // parent 3/3
+    expect(l.acquire('c3', 'P').allowed).toBe(false)
+    // the parent refusal did not create an entry for c3 or charge c2
+    expect(l.size).toBe(3)
+    expect(l.acquire('c2').allowed).toBe(true) // c2 had 1 of 2
+    expect(l.acquire('c2').allowed).toBe(false)
+  })
+
+  it('other parents are unaffected', () => {
+    const l = mk()
+    for (let i = 0; i < 3; i++) l.acquire(`c${i}`, 'P')
+    expect(l.acquire('x', 'Q').allowed).toBe(true)
+  })
+
+  it('without a parent only the child budget applies', () => {
+    const l = mk()
+    expect(l.acquire('c1').allowed).toBe(true)
+    expect(l.acquire('c1').allowed).toBe(true)
+    expect(l.acquire('c1').allowed).toBe(false)
+  })
+
+  it('waits for the later of the two windows', () => {
+    const l = new LoginRateLimiter(1, 10_000, 100, undefined, 2, 100, 1)
+    l.acquire('a', 'P') // t0: a 1/1, P 1/2, window to 10 s
+    vi.advanceTimersByTime(4000)
+    l.acquire('b', 'P') // b 1/1 (window to 14 s), P 2/2 (window to 10 s)
+    vi.advanceTimersByTime(1000) // t = 5 s
+    expect(l.acquire('b', 'P')).toEqual({ allowed: false, retryAfterSeconds: 9 })
+  })
+
+  it('reset clears the child and the parent', () => {
+    const l = mk()
+    for (let i = 0; i < 3; i++) l.acquire(`c${i}`, 'P')
+    l.reset('c0', 'P')
+    expect(l.size).toBe(2) // c1, c2 remain
+    expect(l.acquire('c9', 'P').allowed).toBe(true)
+  })
+
+  it('reset of a child alone leaves other keys', () => {
+    const l = mk()
+    l.acquire('c1', 'P')
+    l.reset('c1')
+    expect(l.size).toBe(1)
+  })
+
+  it('a parent that is locked is never evicted, one in use by this request is not either', () => {
+    // 3 slots: P (1 attempt, oldest), a, x
+    const l = new LoginRateLimiter(5, WINDOW, 3, undefined, 50, 100, 1)
+    l.acquire('P')
+    vi.advanceTimersByTime(10)
+    l.acquire('a')
+    vi.advanceTimersByTime(10)
+    l.acquire('x')
+    vi.advanceTimersByTime(10)
+    l.acquire('b', 'P') // needs a slot for b: evicts a (P is protected although it is the oldest)
+    expect(l.size).toBe(3)
+    // P now has 2 of its 5 here: 3 more attempts, then refused
+    for (let i = 0; i < 3; i++) expect(l.acquire('P').allowed).toBe(true)
+    expect(l.acquire('P').allowed).toBe(false)
+  })
+
+  it('a parent entry is locked at the parent budget, not the child budget', () => {
+    // maxKeys 2, child budget 1, parent budget 50: a parent entry with 1 attempt is NOT locked out
+    const l = new LoginRateLimiter(1, WINDOW, 2, undefined, 50, 100, 1)
+    l.acquire('c1', 'P') // c1 locked (1/1), P at 1 of 50
+    // a newcomer needs room: c1 is locked, P is evictable -> P goes, the newcomer is tracked
+    expect(l.acquire('n').allowed).toBe(true)
+    expect(l.acquire('n').allowed).toBe(false)
+    expect(l.size).toBe(2)
+  })
+
+  it('when the parent cannot be tracked either the request goes through the overflow bucket', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const l = new LoginRateLimiter(1, WINDOW, 2, undefined, 50, 100, 1)
+    l.acquire('a')
+    l.acquire('b')
+    expect(l.acquire('c', 'P').allowed).toBe(true) // the one token
+    expect(l.acquire('d', 'Q').allowed).toBe(false)
+    expect(l.size).toBe(2)
   })
 })
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { generateToken, isAuthenticated } from '@/lib/auth'
 import { readPasswordConfig, type PasswordConfig } from '@/lib/data-store'
-import { getClientKey, getTrustedProxyHops } from '@/lib/client-ip'
+import { getClientKeys, getTrustedProxyHops } from '@/lib/client-ip'
 import { loginRateLimiter } from '@/lib/login-rate-limit'
 import { safeEqual } from '@/lib/secure-compare'
 
@@ -58,8 +58,8 @@ export async function POST(req: NextRequest) {
 
   // Limit guessing per client. Over the limit the password is not looked at at
   // all, so the right password does not get through either until the window ends.
-  const clientKey = getClientKey(req.headers, getTrustedProxyHops())
-  const gate = loginRateLimiter.acquire(clientKey)
+  const client = getClientKeys(req.headers, getTrustedProxyHops())
+  const gate = loginRateLimiter.acquire(client.key, client.parent)
   if (!gate.allowed) {
     return NextResponse.json(
       { error: 'Too many failed login attempts. Try again later.' },
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
   if (!(await verify(password))) {
     return NextResponse.json({ error: 'Invalid password' }, { status: 401 })
   }
-  loginRateLimiter.reset(clientKey)
+  loginRateLimiter.reset(client.key, client.parent)
 
   const token = generateToken({ sub: 'admin' })
 
