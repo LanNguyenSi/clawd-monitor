@@ -650,6 +650,8 @@ describe('known-good keys under saturation', () => {
       vi.advanceTimersByTime(1)
       drainOverflow(l)
       expect(l.acquire('k').allowed).toBe(false)
+      // the refusal alone could come from the 10 s reserved spacing: the key must be gone
+      expect(l.knownSize).toBe(0)
     })
 
     it('the default parameters keep a key known for 14 days after its last success, not longer', () => {
@@ -665,6 +667,7 @@ describe('known-good keys under saturation', () => {
       vi.advanceTimersByTime(1)
       drainOverflow(l)
       expect(l.acquire('k').allowed).toBe(false)
+      expect(l.knownSize).toBe(0)
     })
 
     it('a refused or reserved attempt does not extend the TTL', () => {
