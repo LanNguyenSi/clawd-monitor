@@ -63,6 +63,16 @@ containers, which run under `clawd-monitor` from `docker-compose.traefik.yml`.
 The plain stack publishes `127.0.0.1:3000` only, so it serves the host it runs
 on.
 
+## CI
+
+`.github/workflows/ci.yml` runs four jobs on every pull request and push to
+`master`: `build` (type checks, lint, production build), `test` (coverage run),
+`relay-config` (`scripts/relay-config.test.sh` against `.relay.yml`) and
+`docker-image`. `docker-image` builds the production `Dockerfile` without
+pushing it, then runs `docker --version` and `node` inside the image to prove
+the runner stage has docker-ce-cli and Node 22. It catches a broken base tag or
+apt step before the deploy system builds the image on the server.
+
 ## Pull requests
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md#pull-requests) for the PR checklist,

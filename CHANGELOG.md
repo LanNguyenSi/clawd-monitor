@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **CI builds the production Docker image.** A new `docker-image` job in `.github/workflows/ci.yml` runs `docker build` on the `Dockerfile` for every pull request and push to `master` (nothing is pushed) and then smoke-tests the runner stage: `docker --version` must work (docker-ce-cli from the apt step) and `node` must report major 22. Dockerfile regressions used to surface only when the server built the image. The workflow now also declares `permissions: contents: read`.
+
 ### Changed
 
 - Dependency updates: `renovate.json` extends the shared `github>LanNguyenSi/renovate-config` preset (weekly grouped patch/minor pull requests, 7-day minimum release age, no automerge, majors only through the Dependency Dashboard). The `overrides` entries that equal a direct dependency now reference it (`"postcss": "$postcss"` in `package.json`), so updating that dependency no longer fails with `EOVERRIDE`.
