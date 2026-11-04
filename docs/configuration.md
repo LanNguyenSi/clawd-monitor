@@ -14,7 +14,7 @@ AGENT_TTL_MS=300000         # offline-agent TTL in ms (default 5min)
 NEXT_PUBLIC_DEFAULT_GATEWAY_URL=http://localhost:9500
 DEFAULT_GATEWAY_TOKEN=      # default OpenClaw API token
 ALLOWED_GATEWAY_HOSTS=      # SSRF allowlist for gateway URLs that are not the operator default: agent-reported gatewayUrl and the x-gateway-url header (comma-separated hostnames, each optionally host:port)
-CLAWD_DIR=/root/.openclaw/workspace  # path as seen by the server process, not mounted by the Docker compose files (see "CLAWD_DIR under Docker"); server-local OpenClaw workspace: Memory Viewer fallback (MEMORY.md / CURRENT.md / memory/*.md) and Alert History source (memory/smart-alert-state.json); code default when unset is /root/clawd
+CLAWD_DIR=/root/.openclaw/workspace  # path as seen by the server process, not mounted by the shipped Docker compose files (see "CLAWD_DIR under Docker"); server-local OpenClaw workspace: Memory Viewer fallback (MEMORY.md / CURRENT.md / memory/*.md) and Alert History source (memory/smart-alert-state.json); code default when unset is /root/clawd
 CLAWD_MONITOR_DATA_DIR=/data   # persistent storage for tokens + password hash
 DOMAIN=monitor.yourdomain.com  # read by docker-compose.traefik.yml only, not by the server
 GITHUB_TOKEN=               # GitHub API token for the GitHub PRs widget (read-only; repo/PR and checks read scope)
@@ -191,11 +191,13 @@ start to the "ready" log line and the first healthy status came 6 s after
   and after a deploy the app receives traffic only once its first check has
   passed.
 
-**Memory limit.** `mem_limit: 512m`. In the limited container Node 20 sizes its
-heap from the cgroup limit: `v8.getHeapStatistics().heap_size_limit` was
-259 MiB, so a runaway JavaScript heap should end in Node's own out-of-memory abort (and
-the restart policy) before the kernel kills the container; memory outside the
-heap (buffers, native code) is not covered by that margin. An idle container used
+**Memory limit.** `mem_limit: 512m`. In the limited container Node 22 (the base
+image is `node:22-slim`, `Dockerfile`) sizes its heap from the cgroup limit:
+`v8.getHeapStatistics().heap_size_limit` was 259 MiB, a figure measured on
+Node 20 and not re-measured on Node 22, so a runaway JavaScript heap should end
+in Node's own out-of-memory abort (and the restart policy) before the kernel
+kills the container; memory outside the heap (buffers, native code) is not
+covered by that margin. An idle container used
 about 58 MiB. Before the first deploy with this limit, compare `docker stats` of
 the running production container with 512m: a container that already sits near
 the limit under real agent load needs a higher `mem_limit` first. Swap is not
@@ -255,11 +257,14 @@ path inside the container, and the container user (UID 1001, `Dockerfile`)
 could not read `/root` anyway.
 
 To use these two features in Docker, add a read-only bind mount of the
-workspace to the service in your compose file and point `CLAWD_DIR` at the
-container path. Add the two entries to the service's existing `volumes:` and
-`environment:` lists (or put them in a compose override file) instead of
-pasting a second key. The directory and its files must be readable by UID 1001
-(world-readable, or owned by or group-readable for 1001):
+workspace to the service and point `CLAWD_DIR` at the container path.
+Production is deployed by agent-relay with `compose_file:
+docker-compose.traefik.yml` in `.relay.yml`, so the recommended path is a
+tracked change: add the two entries to the `volumes:` and `environment:` lists
+of the `app` service in `docker-compose.traefik.yml` in the repository, commit,
+push, and let the normal relay deploy pick it up. The directory and its files
+must be readable by UID 1001 (world-readable, or owned by or group-readable
+for 1001):
 
 ```yaml
     volumes:
@@ -268,8 +273,17 @@ pasting a second key. The directory and its files must be readable by UID 1001
       - CLAWD_DIR=/openclaw
 ```
 
-The shipped compose files are not changed for this; the mount is an
-operator-side addition.
+Neither shipped compose file sets this mount because the host path is specific
+to your server, so only you can write it, and the place to write it is the
+repository. A hand edit of the compose file on the server blocks the next relay
+deploy: the relay runs a `git status --porcelain` preflight before `git pull`
+and a modified tracked file fails it, and `--force` only skips that check, so
+the following pull either stops on the conflict or keeps the local edit and the
+server tree drifts from the repo. A compose override file does not work either:
+the relay passes an explicit `-f docker-compose.traefik.yml`, and Compose loads
+`docker-compose.override.yml` only when it picks the file names itself, so the
+override is never read for this stack, and as an untracked file it fails the
+same preflight.
 
 ## Data volume ownership
 
