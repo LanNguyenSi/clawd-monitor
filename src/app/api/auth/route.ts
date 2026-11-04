@@ -71,6 +71,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid password' }, { status: 401 })
   }
   loginRateLimiter.reset(client.key, client.parent)
+  // Only here, after the password was verified: this key keeps a way in while a flood fills the limiter.
+  loginRateLimiter.recordSuccess(client.key, client.parent)
 
   const token = generateToken({ sub: 'admin' })
 

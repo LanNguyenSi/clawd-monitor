@@ -10,12 +10,27 @@ export const LOGIN_MAX_TRACKED_KEYS = 10_000
 export const OVERFLOW_REFILL_MS = 1000
 /** Attempts the shared overflow bucket holds when it is full. */
 export const OVERFLOW_BURST = 1
+/** Most client keys remembered as known good (a /64 and its /48 each count as one key). */
+export const KNOWN_GOOD_MAX_KEYS = 64
+/** How long a key stays known good after its last successful login. */
+export const KNOWN_GOOD_TTL_MS = 14 * 24 * 60 * 60 * 1000
+/** While the table is saturated, a known-good key gets one attempt per this interval (burst 1). */
+export const KNOWN_GOOD_REFILL_MS = 10_000
+/** While the table is saturated, all known-good keys together get one attempt per this interval. */
+export const KNOWN_GOOD_GLOBAL_REFILL_MS = 2000
 
 interface Entry {
   attempts: number
   windowStart: number
   /** The budget this entry was created with (a /48 parent has a larger one). */
   max: number
+}
+
+interface KnownGood {
+  /** When this key last logged in successfully. */
+  lastSuccess: number
+  /** When this key last used its reserved attempt while the table was saturated. */
+  lastReserved: number
 }
 
 export type LoginGate = { allowed: true } | { allowed: false; retryAfterSeconds: number }
@@ -43,9 +58,21 @@ export type LoginGate = { allowed: true } | { allowed: false; retryAfterSeconds:
  * that refills one attempt per `overflowRefillMs` and holds at most
  * `overflowBurst`; without a token the answer is a refusal with a short
  * Retry-After. That keeps guessing capped at about one attempt per refill
- * interval for everyone not yet tracked, and the real admin gets in after a
- * brief retry, at the price that a flooder can keep the overflow bucket empty
- * and so make that retry succeed only now and then.
+ * interval for everyone not yet tracked. A flooder can keep that bucket empty,
+ * so a client that is not known good (see below) gets in only now and then.
+ *
+ * To keep the real admin from depending on that, a separate small set of known
+ * good keys is kept (`recordSuccess`, called only after a verified successful
+ * login; at most `knownMaxKeys`, least recently successful dropped first, each
+ * forgotten `knownTtlMs` after its last success). It is not part of `entries`,
+ * so a flood of failed attempts can neither fill nor evict it. A request that
+ * cannot be tracked and whose key (or IPv6 /48 parent) is known good does not
+ * use the shared overflow bucket but a reserved one: one attempt per
+ * `knownRefillMs` per known key, and one per `knownGlobalRefillMs` across all
+ * known keys, so guessing through it stays capped. Everywhere else a known key
+ * is treated like any other: it is tracked while there is room and its own
+ * lockout always applies. A first login from a new key during a flood is not
+ * helped, and the set is lost on restart, like the table.
  */
 export class LoginRateLimiter {
   private readonly entries = new Map<string, Entry>()
@@ -54,6 +81,9 @@ export class LoginRateLimiter {
   // arithmetic stays exact.
   private overflowCredit: number
   private overflowStamp = 0
+  // Least recently successful first (a refresh moves a key to the end).
+  private readonly known = new Map<string, KnownGood>()
+  private lastReservedAny = -Infinity
 
   constructor(
     private readonly max: number = LOGIN_MAX_ATTEMPTS,
@@ -63,12 +93,21 @@ export class LoginRateLimiter {
     private readonly parentMax: number = LOGIN_MAX_ATTEMPTS_PER_PARENT,
     private readonly overflowRefillMs: number = OVERFLOW_REFILL_MS,
     private readonly overflowBurst: number = OVERFLOW_BURST,
+    private readonly knownMaxKeys: number = KNOWN_GOOD_MAX_KEYS,
+    private readonly knownTtlMs: number = KNOWN_GOOD_TTL_MS,
+    private readonly knownRefillMs: number = KNOWN_GOOD_REFILL_MS,
+    private readonly knownGlobalRefillMs: number = KNOWN_GOOD_GLOBAL_REFILL_MS,
   ) {
     this.overflowCredit = overflowBurst * overflowRefillMs
   }
 
   get size(): number {
     return this.entries.size
+  }
+
+  /** Number of keys currently remembered as known good (expired ones may still be counted). */
+  get knownSize(): number {
+    return this.known.size
   }
 
   /** Count an attempt for `key` (and `parent`), or refuse it with the seconds to wait. */
@@ -94,8 +133,8 @@ export class LoginRateLimiter {
         this.lastSaturationWarn = t
         console.warn('[auth] Attempt limiter is full of locked-out clients; new clients share a rate-limited overflow bucket')
       }
-      const overflow = this.takeOverflowToken(t)
-      if (!overflow.allowed) return overflow
+      const untracked = this.takeUntrackedToken(key, parent, t)
+      if (!untracked.allowed) return untracked
     }
     for (const s of live) {
       if (s.entry) s.entry.attempts += 1
@@ -108,6 +147,63 @@ export class LoginRateLimiter {
   reset(key: string, parent?: string): void {
     this.entries.delete(key)
     if (parent !== undefined) this.entries.delete(parent)
+  }
+
+  /**
+   * Remember `key` and `parent` as known good. Call it only after a verified
+   * successful login: a failed attempt must never add to the set.
+   */
+  recordSuccess(key: string, parent?: string): void {
+    const t = this.now()
+    // The parent first, so the key (the more specific one) is the last to be dropped.
+    if (parent !== undefined) this.touchKnown(parent, t)
+    this.touchKnown(key, t)
+    // Least recently successful first: the Map keeps insertion order and a refresh re-inserts.
+    for (const oldest of this.known.keys()) {
+      if (this.known.size <= this.knownMaxKeys) break
+      this.known.delete(oldest)
+    }
+  }
+
+  // Add or refresh a known-good key as the most recent one; keeps its reserved-bucket state.
+  private touchKnown(k: string, t: number): void {
+    const lastReserved = this.known.get(k)?.lastReserved ?? -Infinity
+    this.known.delete(k)
+    this.known.set(k, { lastSuccess: t, lastReserved })
+  }
+
+  // The known-good key that covers this request (the key itself first, then its parent), if any.
+  private knownKeyFor(key: string, parent: string | undefined, t: number): string | undefined {
+    for (const k of parent === undefined ? [key] : [key, parent]) {
+      const entry = this.known.get(k)
+      if (!entry) continue
+      if (t - entry.lastSuccess >= this.knownTtlMs) {
+        this.known.delete(k)
+        continue
+      }
+      return k
+    }
+    return undefined
+  }
+
+  // Gate for a request that cannot be tracked: a known-good key uses the reserved
+  // bucket, everyone else the shared overflow bucket.
+  private takeUntrackedToken(key: string, parent: string | undefined, t: number): LoginGate {
+    const knownKey = this.knownKeyFor(key, parent, t)
+    return knownKey === undefined ? this.takeOverflowToken(t) : this.takeReservedToken(knownKey, t)
+  }
+
+  // One attempt per `knownRefillMs` for this known key and one per `knownGlobalRefillMs`
+  // across all of them; a refusal charges neither.
+  private takeReservedToken(knownKey: string, t: number): LoginGate {
+    const entry = this.known.get(knownKey) as KnownGood
+    const keyWaitMs = entry.lastReserved + this.knownRefillMs - t
+    const globalWaitMs = this.lastReservedAny + this.knownGlobalRefillMs - t
+    const waitMs = Math.max(keyWaitMs, globalWaitMs)
+    if (waitMs > 0) return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(waitMs / 1000)) }
+    entry.lastReserved = t
+    this.lastReservedAny = t
+    return { allowed: true }
   }
 
   // The entry of `key` unless its window is over (then it is dropped).

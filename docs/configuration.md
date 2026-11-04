@@ -227,12 +227,48 @@ and its parent), nobody new can be tracked, and the limiter does not fail open: 
 untracked clients share one overflow bucket that allows **one attempt per
 second** in total. An attempt without a token is answered `429` with
 `Retry-After: 1`, so guessing by untracked clients is capped at about 3,600 per
-hour altogether and the real admin gets in after a short retry. The cost is
-that someone who keeps that bucket empty (one request a second) makes the
-admin's retries succeed only occasionally, until the locked entries expire at
-the end of their windows. A warning is logged at most once per window while
-this lasts. At that scale an attacker has a botnet, and a strong password or
-`ADMIN_PASSWORD_HASH` is the defence, not this limit.
+hour altogether. The cost is that someone who keeps that bucket empty (one
+request a second) makes the retries of an unknown client succeed only
+occasionally, until the locked entries expire at the end of their windows. A
+warning is logged at most once per window while this lasts. At that scale an
+attacker has a botnet, and a strong password or `ADMIN_PASSWORD_HASH` is the
+defence, not this limit.
+
+**Known-good clients keep a way in during that flood.** The limiter also keeps
+a small separate set of clients that logged in successfully: at most **64
+keys**, each forgotten **14 days** after its last successful login (the least
+recently successful key goes first when the set is full). A key enters or is
+refreshed only after a login with the right password; failed attempts never add
+to it, and because the set is not part of the counter table, a flood cannot fill
+or evict it. For an IPv6 client the /64 and its /48 are both recorded. It
+matters only when a request cannot be tracked (the table is full of locked-out
+entries, or an IPv6 request whose /64 is tracked but whose /48 entry was evicted
+cannot be completed): a request whose key, or whose /48, is known good then
+skips the shared overflow bucket and uses a reserved one instead, with **one
+attempt per 10 seconds per known key** (the /64 if it is known, else the /48)
+and **one attempt per 2 seconds across all known keys**. A refused attempt is
+answered `429` with a `Retry-After` of the seconds left. A known client that is
+tracked normally, with the table not full, behaves exactly as before: its own
+5-attempt limit applies, and a known key whose own entry is locked out stays
+locked out. The values are constants in `src/lib/login-rate-limit.ts`, not
+settings, and the set lives in memory, so a restart forgets it (as it forgets
+the counters).
+
+Limits you should know about:
+
+- A **first-ever login from a new address during a flood is not helped**: that
+  client is not known yet, so it competes for the shared overflow bucket as
+  described above. Restarting the server clears the counters if you need in
+  right away.
+- Behind a reverse proxy with `TRUSTED_PROXY_HOPS` left at `0`, all clients
+  share the proxy's address as their key. After your first login that address
+  is known good, and then every client behind the proxy can use the reserved
+  bucket during a flood (still capped at the rates above). Set the number of
+  hops correctly.
+- The reserved bucket is still guessing: a known address can try one password
+  every 10 seconds, and all known addresses together one every 2 seconds. It is
+  reachable only from the known address itself (the peer address, or the
+  address a trusted proxy reports).
 
 ## Docker Compose env files
 
@@ -526,6 +562,10 @@ same two commands migrate data between the volumes of the two compose files
   restart the server to clear every lockout. If a lockout hits you after one or
   two typos behind a reverse proxy, the proxy's address is probably the client
   key (all users share it): set `TRUSTED_PROXY_HOPS` (see "Login rate limit").
+  With `Retry-After: 1` while you have not been locked out yourself, the counter
+  table is full of locked-out clients (a flood); an address you logged in from
+  in the last 14 days still gets one attempt per 10 seconds, any other address
+  waits for the flood's entries to expire (up to 15 minutes) or for a restart.
 - **Lost admin password:** delete `password.json` from the data directory
   (`CLAWD_MONITOR_DATA_DIR`, the data volume under Docker Compose); the env
   password applies again on the next login.
