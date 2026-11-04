@@ -321,14 +321,14 @@ describe('withPeerAddress', () => {
   it('stamps the request before the listener runs', () => {
     const seen: unknown[] = []
     const req = { socket: { remoteAddress: '198.51.100.9' }, headers: { [PEER_ADDR_HEADER]: '1.1.1.1' } } as unknown as IncomingMessage
-    withPeerAddress((r, res) => seen.push(r.headers[PEER_ADDR_HEADER], res))(req, 'res')
+    withPeerAddress((r, res) => seen.push(r.headers[PEER_ADDR_HEADER], res))(req, 'res' as unknown as ServerResponse)
     expect(seen).toEqual(['198.51.100.9', 'res'])
   })
 
   it('deletes a client value before the listener runs when the socket has no peer address', () => {
     const seen: unknown[] = []
     const req = { socket: {}, headers: { [PEER_ADDR_HEADER]: '1.1.1.1' } } as unknown as IncomingMessage
-    withPeerAddress((r) => seen.push(r.headers[PEER_ADDR_HEADER]))(req, undefined)
+    withPeerAddress((r) => seen.push(r.headers[PEER_ADDR_HEADER]))(req, {} as ServerResponse)
     expect(seen).toEqual([undefined])
   })
 
@@ -337,7 +337,7 @@ describe('withPeerAddress', () => {
   describe('on a real http server', () => {
     const seen: Array<string | string[] | undefined> = []
     const server = createServer(
-      withPeerAddress<ServerResponse>((req, res) => {
+      withPeerAddress((req, res) => {
         seen.push(req.headers[PEER_ADDR_HEADER])
         res.end('ok')
       }),

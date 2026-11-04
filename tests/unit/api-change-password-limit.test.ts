@@ -161,6 +161,16 @@ describe('success', () => {
   })
 })
 
+describe('success on IPv6', () => {
+  it('resets the /48 as well', async () => {
+    for (let i = 0; i < 49; i++) await change(changeReq('wrong', { peer: `2001:db8:1:${i.toString(16)}::1` }))
+    expect(await statusOf(changeReq('correct-horse', { peer: '2001:db8:1:ff::1' }))).toBe(200)
+    for (let i = 0; i < 49; i++) {
+      expect(await statusOf(changeReq('wrong', { peer: `2001:db8:1:${(i + 100).toString(16)}::1` }))).toBe(401)
+    }
+  })
+})
+
 describe('which requests use up an attempt', () => {
   it('unauthenticated, invalid and store-error requests do not', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})

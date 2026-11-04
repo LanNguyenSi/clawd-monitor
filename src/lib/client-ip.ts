@@ -1,4 +1,4 @@
-import type { IncomingMessage } from 'http'
+import type { IncomingMessage, ServerResponse } from 'http'
 
 /**
  * Header the custom server (server.ts) sets from the TCP peer address of every
@@ -27,9 +27,9 @@ export function stampPeerAddress(req: IncomingMessage): void {
  * repeated) before the listener, and so Next.js, sees it. server.ts uses this
  * for its one request listener.
  */
-export function withPeerAddress<Res>(
-  listener: (req: IncomingMessage, res: Res) => void,
-): (req: IncomingMessage, res: Res) => void {
+export function withPeerAddress(
+  listener: (req: IncomingMessage, res: ServerResponse) => void,
+): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     stampPeerAddress(req)
     listener(req, res)

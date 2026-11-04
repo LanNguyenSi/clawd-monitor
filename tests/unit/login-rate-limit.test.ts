@@ -383,6 +383,8 @@ describe('parent key (the /48 around an IPv6 client)', () => {
     l.acquire('c1', 'P') // c1 locked (1/1), P at 1 of 50
     // a newcomer needs room: c1 is locked, P is evictable -> P goes, the newcomer is tracked
     expect(l.acquire('n').allowed).toBe(true)
+    // tracked, so its one attempt stays used up even after the overflow bucket refilled
+    vi.advanceTimersByTime(100)
     expect(l.acquire('n').allowed).toBe(false)
     expect(l.size).toBe(2)
   })
