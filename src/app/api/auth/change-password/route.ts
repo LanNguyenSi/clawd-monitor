@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { isAuthenticated } from '@/lib/auth'
 import { readPasswordConfig, writePasswordConfig, type PasswordConfig } from '@/lib/data-store'
+import { getClientKeys, getTrustedProxyHops } from '@/lib/client-ip'
+import { passwordChangeRateLimiter } from '@/lib/login-rate-limit'
+import { safeEqual } from '@/lib/secure-compare'
 
 export async function POST(req: NextRequest) {
   if (!isAuthenticated(req)) {
@@ -38,21 +41,36 @@ export async function POST(req: NextRequest) {
   const envHash = process.env.ADMIN_PASSWORD_HASH
   const envPlain = process.env.ADMIN_PASSWORD
 
-  let currentValid = false
+  // Pick how the current password is checked first, then limit guessing per
+  // client in a key space of its own, so failures here do not use up login
+  // attempts and the other way round. Over the limit the password is not
+  // looked at at all.
+  let verify: (candidate: string) => Promise<boolean>
   if (config.hash) {
-    currentValid = await bcrypt.compare(currentPassword, config.hash)
+    const hash = config.hash
+    verify = (candidate) => bcrypt.compare(candidate, hash)
   } else if (envHash) {
-    currentValid = await bcrypt.compare(currentPassword, envHash)
+    verify = (candidate) => bcrypt.compare(candidate, envHash)
   } else if (envPlain) {
-    currentValid = currentPassword === envPlain
+    verify = async (candidate) => safeEqual(candidate, envPlain)
   } else {
     // Dev default
-    currentValid = currentPassword === 'admin'
+    verify = async (candidate) => safeEqual(candidate, 'admin')
   }
 
-  if (!currentValid) {
+  const client = getClientKeys(req.headers, getTrustedProxyHops())
+  const gate = passwordChangeRateLimiter.acquire(client.key, client.parent)
+  if (!gate.allowed) {
+    return NextResponse.json(
+      { error: 'Too many failed attempts. Try again later.' },
+      { status: 429, headers: { 'Retry-After': String(gate.retryAfterSeconds) } },
+    )
+  }
+
+  if (!(await verify(currentPassword))) {
     return NextResponse.json({ error: 'Current password is incorrect' }, { status: 401 })
   }
+  passwordChangeRateLimiter.reset(client.key, client.parent)
 
   // Hash and save new password
   const newHash = await bcrypt.hash(newPassword, 12)
