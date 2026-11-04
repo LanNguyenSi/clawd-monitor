@@ -6,6 +6,11 @@ services:
     environment:
       - NODE_ENV=production
       - CLAWD_MONITOR_DATA_DIR=/data
+      # Traefik is the one trusted proxy in front of the app: the login rate
+      # limiter takes the client address from the last X-Forwarded-For entry
+      # (what Traefik saw). Without this every client would share Traefik's
+      # address. See docs/configuration.md ("Login rate limit").
+      - TRUSTED_PROXY_HOPS=1
     volumes:
       - clawd_monitor_data:/data
       - /var/run/docker.sock:/var/run/docker.sock:ro

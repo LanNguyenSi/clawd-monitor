@@ -30,6 +30,7 @@ interface Compose {
       logging: unknown
       restart: string
       volumes?: string[]
+      environment?: string[]
       group_add?: unknown[]
     }
   }
@@ -225,6 +226,25 @@ describe('Docker socket access for the non-root app user', () => {
 
   it('documents DOCKER_GID in .env.example', () => {
     expect(readFileSync(resolve(ROOT, '.env.example'), 'utf8')).toMatch(/^# DOCKER_GID=988$/m)
+  })
+})
+
+describe('client address trust for the login rate limiter', () => {
+  const envOf = (file: string) => loadCompose(file).services.app.environment ?? []
+  const hops = (env: string[]) => env.filter((e) => e.startsWith('TRUSTED_PROXY_HOPS'))
+
+  it('traefik compose trusts exactly one proxy hop (Traefik)', () => {
+    expect(hops(envOf('docker-compose.traefik.yml'))).toEqual(['TRUSTED_PROXY_HOPS=1'])
+  })
+
+  it('the plain compose file sets none, so X-Forwarded-For is ignored there', () => {
+    expect(hops(envOf('docker-compose.yml'))).toEqual([])
+  })
+
+  it('traefik compose keeps the other environment entries', () => {
+    expect(envOf('docker-compose.traefik.yml')).toEqual(
+      expect.arrayContaining(['NODE_ENV=production', 'CLAWD_MONITOR_DATA_DIR=/data']),
+    )
   })
 })
 

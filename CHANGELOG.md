@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **Login is rate-limited per client and the plain-text password compare is constant-time.** `POST /api/auth` had no limit on failed logins. It now allows 5 attempts per client in a 15-minute window and answers `429` with `Retry-After` afterwards, without checking the password (so the correct one is refused too until the window ends); a successful login clears the count; attempts are counted on admission, so parallel requests cannot get past the limit. State is in memory (one process, a restart clears it) and bounded to 10,000 clients: expired entries go first, then the entry with the fewest attempts, locked-out clients are never evicted, and a table full of locked-out clients admits new ones untracked instead of locking everyone out. The client is the TCP peer address; the new `TRUSTED_PROXY_HOPS` (default `0`, `X-Forwarded-For` ignored; invalid values behave like `0` and log once) takes the N-th `X-Forwarded-For` address from the right instead, and `docker-compose.traefik.yml` sets it to `1`. IPv6 clients are keyed by /64. `server.ts` passes the peer address to the routes in a header it overwrites on every request, because Next.js 15 does not expose it. The `ADMIN_PASSWORD` compare (and the development default) uses `crypto.timingSafeEqual` over SHA-256 digests. The next production deploy picks up `TRUSTED_PROXY_HOPS=1` from the compose file; no manual step. `POST /api/auth/change-password` still compares its current password with `===` and has no limit (it needs a session). Details in `docs/configuration.md` ("Login rate limit").
+
 ### Changed
 
 - Dependency updates: `renovate.json` extends the shared `github>LanNguyenSi/renovate-config` preset (weekly grouped patch/minor pull requests, 7-day minimum release age, no automerge, majors only through the Dependency Dashboard). The `overrides` entries that equal a direct dependency now reference it (`"postcss": "$postcss"` in `package.json`), so updating that dependency no longer fails with `EOVERRIDE`.

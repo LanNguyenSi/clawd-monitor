@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { generateToken, isAuthenticated } from '@/lib/auth'
 import { readPasswordConfig, type PasswordConfig } from '@/lib/data-store'
+import { getClientKey, getTrustedProxyHops } from '@/lib/client-ip'
+import { loginRateLimiter } from '@/lib/login-rate-limit'
+import { safeEqual } from '@/lib/secure-compare'
 
 export async function GET(req: NextRequest) {
   return NextResponse.json({ authenticated: isAuthenticated(req) })
@@ -33,24 +36,41 @@ export async function POST(req: NextRequest) {
   const envHash = process.env.ADMIN_PASSWORD_HASH
   const envPlain = process.env.ADMIN_PASSWORD
 
-  let valid = false
+  // Pick how the password is checked first, so a store or config error answers
+  // 500 without using up one of the client's attempts.
+  let verify: (candidate: string) => Promise<boolean>
   if (persisted.hash) {
-    valid = await bcrypt.compare(password, persisted.hash)
+    const hash = persisted.hash
+    verify = (candidate) => bcrypt.compare(candidate, hash)
   } else if (envHash) {
-    valid = await bcrypt.compare(password, envHash)
+    verify = (candidate) => bcrypt.compare(candidate, envHash)
   } else if (envPlain) {
-    valid = password === envPlain
+    verify = async (candidate) => safeEqual(candidate, envPlain)
   } else if (process.env.NODE_ENV === 'production') {
     return NextResponse.json({ error: 'No admin password configured' }, { status: 500 })
   } else {
     // Dev default — no password configured
-    console.warn('[auth] No password configured — using insecure dev default. Do NOT use in production.')
-    valid = password === 'admin'
+    verify = async (candidate) => {
+      console.warn('[auth] No password configured — using insecure dev default. Do NOT use in production.')
+      return safeEqual(candidate, 'admin')
+    }
   }
 
-  if (!valid) {
+  // Limit guessing per client. Over the limit the password is not looked at at
+  // all, so the right password does not get through either until the window ends.
+  const clientKey = getClientKey(req.headers, getTrustedProxyHops())
+  const gate = loginRateLimiter.acquire(clientKey)
+  if (!gate.allowed) {
+    return NextResponse.json(
+      { error: 'Too many failed login attempts. Try again later.' },
+      { status: 429, headers: { 'Retry-After': String(gate.retryAfterSeconds) } },
+    )
+  }
+
+  if (!(await verify(password))) {
     return NextResponse.json({ error: 'Invalid password' }, { status: 401 })
   }
+  loginRateLimiter.reset(clientKey)
 
   const token = generateToken({ sub: 'admin' })
 

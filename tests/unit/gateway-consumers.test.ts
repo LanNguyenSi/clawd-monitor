@@ -147,6 +147,9 @@ function hasEntry(map: Record<string, unknown>, key: string): boolean {
 const ALLOWED_ROUTE_IMPORTS: Record<string, string> = {
   'next/server': 'request and response types',
   '@/lib/auth': 'session check',
+  '@/lib/client-ip': 'client address for the login rate limit (string parsing only)',
+  '@/lib/login-rate-limit': 'in-memory limiter for failed logins',
+  '@/lib/secure-compare': 'constant-time comparison of the plain admin password',
   '@/lib/gateway': 'the gateway helpers (the only way to a gateway)',
   '@/lib/agent-registry': 'the registry of connected agents',
   '@/lib/data-store': 'local JSON stores',
@@ -298,7 +301,7 @@ const REACHABLE_ALLOWED_MODULES: Record<string, string> = {
   jsonwebtoken: 'signs and verifies the dashboard session cookie (auth.ts)',
   fs: 'reads and writes the local JSON stores (data-store.ts)',
   path: 'joins paths inside the local data directory (data-store.ts)',
-  crypto: 'random bytes for the unique temp file name of an atomic write (data-store.ts)',
+  crypto: 'random bytes for the unique temp file name of an atomic write (data-store.ts) and the constant-time password compare (secure-compare.ts)',
 }
 
 /**

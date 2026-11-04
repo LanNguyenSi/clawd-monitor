@@ -129,7 +129,9 @@ There is one admin password (see
 a JWT valid for 24 hours in an httpOnly, `SameSite=Lax` cookie that is Secure
 when `NODE_ENV=production`; an `Authorization: Bearer` header is also
 accepted. There is no server-side session store, so logout and a password
-change do not revoke an already issued JWT before it expires.
+change do not revoke an already issued JWT before it expires. Login is
+rate-limited per client address, 5 attempts per 15 minutes in memory (see
+[configuration.md](configuration.md#login-rate-limit)).
 
 ### Unauthenticated endpoints
 
