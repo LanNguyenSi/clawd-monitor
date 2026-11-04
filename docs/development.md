@@ -57,6 +57,16 @@ A stack started earlier with a bare `docker compose up -d` runs under the
 directory's project name; stop it once with `docker compose down` before the
 first `make docker-up`, or the two compete for port 3000.
 
+## CI
+
+`.github/workflows/ci.yml` runs four jobs on every pull request and push to
+`master`: `build` (type checks, lint, production build), `test` (coverage run),
+`relay-config` (`scripts/relay-config.test.sh` against `.relay.yml`) and
+`docker-image`. `docker-image` builds the production `Dockerfile` without
+pushing it, then runs `docker --version` and `node` inside the image to prove
+the runner stage has docker-ce-cli and Node 22. It catches a broken base tag or
+apt step before the deploy system builds the image on the server.
+
 ## Pull requests
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md#pull-requests) for the PR checklist,

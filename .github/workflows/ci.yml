@@ -7,6 +7,9 @@ on:
     branches: [master]
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -83,3 +86,25 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: bash scripts/relay-config.test.sh
+
+  docker-image:
+    # Builds the production Dockerfile on every PR and push, without pushing it
+    # anywhere, then smoke-tests the runner stage. The image is built on the
+    # server at deploy time; a broken base tag or docker-ce-cli apt step used to
+    # surface only there. The smoke checks avoid starting the app: docker-ce-cli
+    # has to be installed (LogTail docker source) and the runtime has to be
+    # Node 22. No build cache, so a cold cache is the only case.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build image
+        run: docker build --pull -t clawd-monitor-ci:${{ github.sha }} .
+      - name: Smoke test runner stage
+        run: |
+          set -eu
+          image="clawd-monitor-ci:${{ github.sha }}"
+          docker run --rm --entrypoint docker "$image" --version
+          node_major=$(docker run --rm --entrypoint node "$image" -p 'process.versions.node.split(".")[0]')
+          echo "node major: $node_major"
+          test "$node_major" = "22"
