@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { LoginRateLimiter } from '@/lib/login-rate-limit'
+import {
+  LoginRateLimiter,
+  KNOWN_GOOD_MAX_KEYS,
+  KNOWN_GOOD_TTL_MS,
+  KNOWN_GOOD_REFILL_MS,
+  KNOWN_GOOD_GLOBAL_REFILL_MS,
+} from '@/lib/login-rate-limit'
 
 const WINDOW = 1000
 
@@ -287,6 +293,392 @@ describe('saturation: every entry locked out', () => {
     hit(l, 'd') // 'a' expired, 'd' takes the slot and is locked until 2 * WINDOW
     l.acquire('e') // saturated again, a full window after the first warning
     expect(warn).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('known-good keys under saturation', () => {
+  const BIG_WINDOW = 1_000_000
+  const TTL = 100_000
+  const KEY_REFILL = 10_000
+  const GLOBAL_REFILL = 2000
+  // 2 slots, both locked (1 attempt each), overflow: one attempt per 100 ms, set of 4 keys
+  const mk = (knownMax = 4, knownTtl = TTL) =>
+    new LoginRateLimiter(1, BIG_WINDOW, 2, undefined, 50, 100, 1, knownMax, knownTtl, KEY_REFILL, GLOBAL_REFILL)
+  const saturated = (l = mk()) => {
+    l.acquire('a')
+    l.acquire('b')
+    return l
+  }
+  // the shared overflow bucket is empty right after this
+  const drainOverflow = (l: LoginRateLimiter) => {
+    l.acquire('drain')
+  }
+
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  it('exports the operator-set values', () => {
+    expect(KNOWN_GOOD_MAX_KEYS).toBe(64)
+    expect(KNOWN_GOOD_TTL_MS).toBe(14 * 24 * 60 * 60 * 1000)
+    expect(KNOWN_GOOD_REFILL_MS).toBe(10_000)
+    expect(KNOWN_GOOD_GLOBAL_REFILL_MS).toBe(2000)
+  })
+
+  it('saturated + known key: admitted through the reserved bucket while the shared one is empty', () => {
+    const l = saturated()
+    l.recordSuccess('k')
+    drainOverflow(l)
+    expect(l.acquire('other')).toEqual({ allowed: false, retryAfterSeconds: 1 })
+    expect(l.acquire('k')).toEqual({ allowed: true })
+    expect(l.size).toBe(2) // not tracked either
+  })
+
+  it('saturated + known key: does not take the shared overflow token', () => {
+    const l = saturated()
+    l.recordSuccess('k')
+    expect(l.acquire('k').allowed).toBe(true)
+    expect(l.acquire('other').allowed).toBe(true) // the shared token is still there
+  })
+
+  it('saturated + unknown key: shared overflow as before, even with other keys known', () => {
+    const l = saturated()
+    l.recordSuccess('k')
+    drainOverflow(l)
+    expect(l.acquire('stranger')).toEqual({ allowed: false, retryAfterSeconds: 1 })
+    vi.advanceTimersByTime(100)
+    expect(l.acquire('stranger').allowed).toBe(true)
+  })
+
+  it('saturated + empty set: shared overflow as before', () => {
+    const l = saturated()
+    expect(l.knownSize).toBe(0)
+    drainOverflow(l)
+    expect(l.acquire('k').allowed).toBe(false)
+  })
+
+  it('saturated + known /48 parent but unknown /64: reserved bucket', () => {
+    const l = saturated()
+    l.recordSuccess('K64', 'P48')
+    drainOverflow(l)
+    expect(l.acquire('OTHER64', 'P48')).toEqual({ allowed: true })
+  })
+
+  it('saturated + known /64 but unknown parent: reserved bucket', () => {
+    const l = saturated()
+    l.recordSuccess('K64')
+    drainOverflow(l)
+    expect(l.acquire('K64', 'NEW48').allowed).toBe(true)
+  })
+
+  it('saturated + neither /64 nor /48 known: shared overflow', () => {
+    const l = saturated()
+    l.recordSuccess('K64', 'P48')
+    drainOverflow(l)
+    expect(l.acquire('OTHER64', 'OTHER48').allowed).toBe(false)
+  })
+
+  it('tracked /64 whose /48 parent was evicted: known key goes through the reserved bucket', () => {
+    // key budget 3, parent budget 50, room for 4 entries
+    const mkSub = () => new LoginRateLimiter(3, BIG_WINDOW, 4, undefined, 50, 100, 1, 4, TTL, KEY_REFILL, GLOBAL_REFILL)
+    const build = () => {
+      const l = mkSub()
+      l.acquire('c1') // c1 1
+      l.acquire('c1', 'P') // c1 2, P 1
+      for (let i = 0; i < 3; i++) l.acquire('a')
+      for (let i = 0; i < 3; i++) l.acquire('b')
+      for (let i = 0; i < 3; i++) l.acquire('d') // evicts P (fewest attempts), d takes its place
+      expect(l.size).toBe(4)
+      return l
+    }
+    // without the set the request is a pure overflow client
+    const plain = build()
+    expect(plain.acquire('c1', 'P').allowed).toBe(true) // the one overflow token
+    expect(plain.acquire('c1', 'P').allowed).toBe(false)
+    // with the set it has its own reserved attempt
+    const known = build()
+    known.recordSuccess('c1', 'P')
+    expect(known.acquire('c1', 'P')).toEqual({ allowed: true })
+    // the tracked /64 was charged (3/3), so its own lockout now applies, as for any key
+    expect(known.acquire('c1', 'P')).toEqual({ allowed: false, retryAfterSeconds: 1000 })
+    expect(known.size).toBe(4)
+
+  })
+
+  it('caps a known key at one reserved attempt per interval, with Retry-After', () => {
+    const l = saturated()
+    l.recordSuccess('k')
+    expect(l.acquire('k').allowed).toBe(true)
+    expect(l.acquire('k')).toEqual({ allowed: false, retryAfterSeconds: 10 })
+    vi.advanceTimersByTime(KEY_REFILL - 1)
+    expect(l.acquire('k')).toEqual({ allowed: false, retryAfterSeconds: 1 })
+    vi.advanceTimersByTime(1)
+    expect(l.acquire('k').allowed).toBe(true)
+    expect(l.acquire('k')).toEqual({ allowed: false, retryAfterSeconds: 10 })
+  })
+
+  it('rounds the Retry-After of a fractional reserved wait up', () => {
+    const l = saturated()
+    l.recordSuccess('k')
+    l.acquire('k')
+    vi.advanceTimersByTime(500) // 9.5 s left of the per-key interval
+    expect(l.acquire('k')).toEqual({ allowed: false, retryAfterSeconds: 10 })
+    vi.advanceTimersByTime(8999) // 501 ms left
+    expect(l.acquire('k')).toEqual({ allowed: false, retryAfterSeconds: 1 })
+  })
+
+  it('a refused attempt does not push the next reserved attempt out', () => {
+    const l = saturated()
+    l.recordSuccess('k')
+    l.acquire('k')
+    vi.advanceTimersByTime(5000)
+    expect(l.acquire('k').allowed).toBe(false)
+    vi.advanceTimersByTime(5000)
+    expect(l.acquire('k').allowed).toBe(true)
+  })
+
+  it('caps all known keys together at one reserved attempt per global interval', () => {
+    const l = saturated()
+    l.recordSuccess('k1')
+    l.recordSuccess('k2')
+    expect(l.acquire('k1').allowed).toBe(true)
+    expect(l.acquire('k2')).toEqual({ allowed: false, retryAfterSeconds: 2 })
+    vi.advanceTimersByTime(GLOBAL_REFILL - 1)
+    expect(l.acquire('k2')).toEqual({ allowed: false, retryAfterSeconds: 1 })
+    vi.advanceTimersByTime(1)
+    expect(l.acquire('k2').allowed).toBe(true) // the refusals did not charge k2
+    expect(l.acquire('k1')).toEqual({ allowed: false, retryAfterSeconds: 8 }) // k1 still waits for its own interval
+  })
+
+  it('the longer of the per-key and the global wait is reported', () => {
+    const l = saturated()
+    l.recordSuccess('k1')
+    l.recordSuccess('k2')
+    l.acquire('k1')
+    vi.advanceTimersByTime(GLOBAL_REFILL)
+    // k1: own interval has 8 s left, the global one is free
+    expect(l.acquire('k1')).toEqual({ allowed: false, retryAfterSeconds: 8 })
+    // k2 never used its own interval, the global one is free
+    expect(l.acquire('k2').allowed).toBe(true)
+  })
+
+  it('charges the most specific known identity: the known /64, not the parent', () => {
+    const l = saturated()
+    l.recordSuccess('K64', 'P48')
+    expect(l.acquire('K64', 'P48').allowed).toBe(true)
+    vi.advanceTimersByTime(GLOBAL_REFILL)
+    // the parent's own interval is untouched, so another /64 of the /48 gets its attempt
+    expect(l.acquire('OTHER64', 'P48').allowed).toBe(true)
+    // and that one charged the parent: the next /64 of the /48 waits for it
+    vi.advanceTimersByTime(GLOBAL_REFILL)
+    expect(l.acquire('THIRD64', 'P48')).toEqual({ allowed: false, retryAfterSeconds: 8 })
+  })
+
+  it('an expired /64 falls back to a still-known parent', () => {
+    const l = saturated(mk(4, 1000))
+    l.recordSuccess('K64', 'P48')
+    vi.advanceTimersByTime(600)
+    l.recordSuccess('N64', 'P48') // refreshes only the parent
+    vi.advanceTimersByTime(600) // K64 is 1200 ms old, P48 600 ms
+    expect(l.acquire('K64', 'P48').allowed).toBe(true)
+    expect(l.acquire('K64', 'P48').allowed).toBe(false) // charged to P48: its interval holds
+  })
+
+  it('a success refresh does not give the key a fresh reserved attempt', () => {
+    const l = saturated()
+    l.recordSuccess('k')
+    l.acquire('k')
+    vi.advanceTimersByTime(3000)
+    l.recordSuccess('k')
+    expect(l.acquire('k')).toEqual({ allowed: false, retryAfterSeconds: 7 })
+  })
+
+  it('not saturated + known key: tracked like any other, its own lockout applies', () => {
+    const l = new LoginRateLimiter(2, BIG_WINDOW, 100, undefined, 50, 100, 1, 4, TTL, KEY_REFILL, GLOBAL_REFILL)
+    l.recordSuccess('k')
+    expect(l.acquire('k').allowed).toBe(true)
+    expect(l.acquire('k').allowed).toBe(true)
+    expect(l.acquire('k')).toEqual({ allowed: false, retryAfterSeconds: 1000 })
+    expect(l.acquire('k').allowed).toBe(false) // no reserved attempt either
+    expect(l.size).toBe(1)
+  })
+
+  it('not saturated + known key: the reserved bucket is not used (no per-key spacing)', () => {
+    const l = new LoginRateLimiter(5, BIG_WINDOW, 100, undefined, 50, 100, 1, 4, TTL, KEY_REFILL, GLOBAL_REFILL)
+    l.recordSuccess('k')
+    for (let i = 0; i < 5; i++) expect(l.acquire('k').allowed).toBe(true)
+  })
+
+  it('saturated + known key whose own entry is locked: stays refused with the lock wait', () => {
+    const l = saturated()
+    l.recordSuccess('a') // 'a' is a locked entry of the table
+    expect(l.acquire('a')).toEqual({ allowed: false, retryAfterSeconds: 1000 })
+    vi.advanceTimersByTime(10_000)
+    expect(l.acquire('a').allowed).toBe(false)
+  })
+
+  it('a known parent does not lift a locked /64', () => {
+    // parent budget 1: the first request locks both its /64 and its /48
+    const l = new LoginRateLimiter(1, BIG_WINDOW, 2, undefined, 1, 100, 1, 4, TTL, KEY_REFILL, GLOBAL_REFILL)
+    l.acquire('c1', 'P')
+    l.recordSuccess('c2', 'P')
+    expect(l.acquire('c2', 'P')).toEqual({ allowed: false, retryAfterSeconds: 1000 })
+  })
+
+  it('tracking resumes once the table has room, known or not', () => {
+    const l = saturated()
+    l.recordSuccess('k')
+    vi.advanceTimersByTime(BIG_WINDOW)
+    expect(l.acquire('k').allowed).toBe(true)
+    expect(l.acquire('k').allowed).toBe(false) // tracked: 1/1 used, no reserved bucket
+    expect(l.size).toBe(1)
+  })
+
+  it('warns about saturation also for a known key, once per window', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const l = saturated()
+    l.recordSuccess('k')
+    l.acquire('k')
+    l.acquire('x')
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+
+  describe('what enters the set', () => {
+    it('only recordSuccess adds: attempts, refusals and locked-out keys never do', () => {
+      const l = saturated()
+      for (let i = 0; i < 20; i++) l.acquire(`new${i}`, `P${i}`)
+      l.acquire('a')
+      l.acquire('b', 'Q')
+      expect(l.knownSize).toBe(0)
+      vi.advanceTimersByTime(100)
+      drainOverflow(l)
+      expect(l.acquire('new0', 'P0').allowed).toBe(false)
+    })
+
+    it('records the /64 and its /48 parent, an IPv4 key alone', () => {
+      const l = mk()
+      l.recordSuccess('K64', 'P48')
+      expect(l.knownSize).toBe(2)
+      l.recordSuccess('1.2.3.4')
+      expect(l.knownSize).toBe(3)
+      l.recordSuccess('1.2.3.4')
+      expect(l.knownSize).toBe(3)
+    })
+
+    it('a success does not touch the table', () => {
+      const l = saturated()
+      l.recordSuccess('k', 'P')
+      expect(l.size).toBe(2)
+    })
+  })
+
+  describe('set size', () => {
+    it('holds at most the cap and drops the least recently successful first', () => {
+      const l = saturated(mk(3))
+      for (const k of ['k1', 'k2', 'k3', 'k4']) {
+        l.recordSuccess(k)
+        vi.advanceTimersByTime(1)
+      }
+      expect(l.knownSize).toBe(3)
+      vi.advanceTimersByTime(GLOBAL_REFILL)
+      drainOverflow(l)
+      expect(l.acquire('k1').allowed).toBe(false) // dropped: shared bucket, which is empty
+      expect(l.acquire('k2').allowed).toBe(true)
+      vi.advanceTimersByTime(GLOBAL_REFILL)
+      expect(l.acquire('k3').allowed).toBe(true)
+      vi.advanceTimersByTime(GLOBAL_REFILL)
+      expect(l.acquire('k4').allowed).toBe(true)
+    })
+
+    it('a repeated success makes the key the most recent one', () => {
+      const l = saturated(mk(3))
+      l.recordSuccess('k1')
+      l.recordSuccess('k2')
+      l.recordSuccess('k3')
+      l.recordSuccess('k1') // now k2 is the least recent
+      l.recordSuccess('k4')
+      expect(l.knownSize).toBe(3)
+      vi.advanceTimersByTime(GLOBAL_REFILL)
+      drainOverflow(l)
+      expect(l.acquire('k2').allowed).toBe(false)
+      expect(l.acquire('k1').allowed).toBe(true)
+    })
+
+    it('an IPv6 success counts two keys; the oldest one goes first, the /64 outlives its parent', () => {
+      const l = saturated(mk(3))
+      l.recordSuccess('K1', 'P1')
+      l.recordSuccess('K2', 'P2') // 4 keys: P1 goes
+      expect(l.knownSize).toBe(3)
+      drainOverflow(l)
+      expect(l.acquire('other', 'P1').allowed).toBe(false)
+      expect(l.acquire('K1').allowed).toBe(true)
+    })
+
+    it('with the default cap it keeps 64 keys and forgets the 65th oldest', () => {
+      const l = new LoginRateLimiter(1, BIG_WINDOW, 2, undefined, 50, 100, 1)
+      l.acquire('a')
+      l.acquire('b')
+      for (let i = 0; i < 65; i++) l.recordSuccess(`k${i}`)
+      expect(l.knownSize).toBe(64)
+      l.acquire('drain')
+      expect(l.acquire('k0').allowed).toBe(false)
+      expect(l.acquire('k1').allowed).toBe(true)
+    })
+  })
+
+  describe('expiry', () => {
+    it('a key is known until the TTL after its last success, not longer', () => {
+      const l = saturated()
+      l.recordSuccess('k')
+      vi.advanceTimersByTime(TTL - 1)
+      expect(l.acquire('k').allowed).toBe(true)
+      vi.advanceTimersByTime(1)
+      drainOverflow(l)
+      expect(l.acquire('k').allowed).toBe(false) // expired: shared bucket
+      expect(l.knownSize).toBe(0)
+    })
+
+    it('a new success restarts the TTL', () => {
+      const l = saturated()
+      l.recordSuccess('k')
+      vi.advanceTimersByTime(TTL - 1)
+      l.recordSuccess('k')
+      vi.advanceTimersByTime(TTL - 1)
+      drainOverflow(l) // otherwise the shared token would let an expired key in
+      expect(l.acquire('k').allowed).toBe(true)
+      // the TTL runs from the second success: one more ms and the key is forgotten
+      vi.advanceTimersByTime(1)
+      drainOverflow(l)
+      expect(l.acquire('k').allowed).toBe(false)
+      // the refusal alone could come from the 10 s reserved spacing: the key must be gone
+      expect(l.knownSize).toBe(0)
+    })
+
+    it('the default parameters keep a key known for 14 days after its last success, not longer', () => {
+      const DAY = 24 * 60 * 60 * 1000
+      // default known-good parameters; a long window so the locked entries outlast the test
+      const l = new LoginRateLimiter(1, 30 * DAY, 2, undefined, 50, 100, 1)
+      l.acquire('a')
+      l.acquire('b')
+      l.recordSuccess('k')
+      vi.advanceTimersByTime(14 * DAY - 1)
+      drainOverflow(l)
+      expect(l.acquire('k').allowed).toBe(true)
+      vi.advanceTimersByTime(1)
+      drainOverflow(l)
+      expect(l.acquire('k').allowed).toBe(false)
+      expect(l.knownSize).toBe(0)
+    })
+
+    it('a refused or reserved attempt does not extend the TTL', () => {
+      const l = saturated()
+      l.recordSuccess('k')
+      vi.advanceTimersByTime(TTL / 2)
+      expect(l.acquire('k').allowed).toBe(true)
+      vi.advanceTimersByTime(TTL / 2)
+      drainOverflow(l)
+      expect(l.acquire('k').allowed).toBe(false)
+    })
   })
 })
 

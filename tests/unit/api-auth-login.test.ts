@@ -357,3 +357,73 @@ describe('IPv6 clients', () => {
   })
 })
 
+
+describe('known-good clients while the limiter is saturated by a flood', () => {
+  // Fill the (singleton) limiter with 10,000 locked-out clients, as a flood of many
+  // addresses would, through the same module instance the route uses.
+  async function flood(): Promise<void> {
+    const { loginRateLimiter, LOGIN_MAX_TRACKED_KEYS, LOGIN_MAX_ATTEMPTS } = await import('@/lib/login-rate-limit')
+    for (let i = 0; i < LOGIN_MAX_TRACKED_KEYS; i++) {
+      for (let j = 0; j < LOGIN_MAX_ATTEMPTS; j++) loginRateLimiter.acquire(`flood-${i}`)
+    }
+    expect(loginRateLimiter.size).toBe(LOGIN_MAX_TRACKED_KEYS)
+  }
+
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  it('a key that logged in before the flood gets in with the right password', async () => {
+    expect(await statusOf(login('correct-horse', { peer: '10.0.0.1' }))).toBe(200)
+    await flood()
+    expect(await statusOf(login('wrong', { peer: '10.0.0.77' }))).toBe(401) // a stranger takes the shared token
+    expect(await statusOf(login('correct-horse', { peer: '10.0.0.78' }))).toBe(429) // so strangers are out
+    expect(await statusOf(login('correct-horse', { peer: '10.0.0.1' }))).toBe(200)
+  })
+
+  it('a wrong password from a known key is 401, and the next attempt within 10 s is 429 with Retry-After', async () => {
+    await POST(login('correct-horse', { peer: '10.0.0.1' }))
+    await flood()
+    expect(await statusOf(login('wrong', { peer: '10.0.0.1' }))).toBe(401)
+    const refused = await POST(login('correct-horse', { peer: '10.0.0.1' }))
+    expect(refused.status).toBe(429)
+    expect(refused.headers.get('Retry-After')).toBe('10')
+    vi.advanceTimersByTime(10_000)
+    expect(await statusOf(login('correct-horse', { peer: '10.0.0.1' }))).toBe(200)
+  })
+
+  it('an unknown key stays on the shared overflow bucket: one attempt, then 429', async () => {
+    await POST(login('correct-horse', { peer: '10.0.0.1' }))
+    await flood()
+    expect(await statusOf(login('wrong', { peer: '10.0.0.2' }))).toBe(401) // the shared token
+    const refused = await POST(login('correct-horse', { peer: '10.0.0.3' }))
+    expect(refused.status).toBe(429)
+    expect(refused.headers.get('Retry-After')).toBe('1')
+  })
+
+  it('a failed login never makes a key known', async () => {
+    await flood()
+    expect(await statusOf(login('wrong', { peer: '10.0.0.9' }))).toBe(401) // takes the shared token
+    expect(await statusOf(login('correct-horse', { peer: '10.0.0.9' }))).toBe(429)
+  })
+
+  it('two different known keys within 2 s: the second is refused, then admitted', async () => {
+    await POST(login('correct-horse', { peer: '10.0.0.1' }))
+    await POST(login('correct-horse', { peer: '10.0.0.2' }))
+    await flood()
+    expect(await statusOf(login('wrong', { peer: '10.0.0.1' }))).toBe(401)
+    const refused = await POST(login('correct-horse', { peer: '10.0.0.2' }))
+    expect(refused.status).toBe(429)
+    expect(refused.headers.get('Retry-After')).toBe('2')
+    vi.advanceTimersByTime(2000)
+    expect(await statusOf(login('correct-horse', { peer: '10.0.0.2' }))).toBe(200)
+  })
+
+  it('an IPv6 client that logged in covers its /48: another /64 of it gets in, another /48 does not', async () => {
+    expect(await statusOf(login('correct-horse', { peer: '2001:db8:1:2::1' }))).toBe(200)
+    await flood()
+    expect(await statusOf(login('wrong', { peer: '2001:db8:2::1' }))).toBe(401) // the shared token
+    expect(await statusOf(login('correct-horse', { peer: '2001:db8:2:5::1' }))).toBe(429)
+    expect(await statusOf(login('correct-horse', { peer: '2001:db8:1:7::1' }))).toBe(200)
+  })
+})

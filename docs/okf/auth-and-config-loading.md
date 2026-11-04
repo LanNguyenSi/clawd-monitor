@@ -3,7 +3,7 @@ type: module
 title: Auth and config loading across the two module graphs
 description: Admin password precedence, the login rate limit and its client key (TRUSTED_PROXY_HOPS), the password.json and tokens.json data files, JWT cookie flags and lifetime, the production startup check, and how the custom server loads .env files before its modules read the environment, while the compiled route graph reads its own variables later.
 tags: [auth, config, env, jwt, startup, rate-limit]
-timestamp: 2026-11-04T06:17:36Z
+timestamp: 2026-11-04T08:08:51Z
 sources:
   - server.ts
   - tsconfig.server.json
@@ -182,10 +182,13 @@ After the 400 checks and the choice of password source, the login route asks
 `loginRateLimiter.acquire(key, parent)`; when it refuses, the route answers 429
 with `Retry-After` and never calls the password check
 (`src/app/api/auth/route.ts:63-68#"status: 429"`). A correct password resets
-the client's keys (`src/app/api/auth/route.ts:73#"loginRateLimiter.reset"`).
-The change-password route does the same with a second limiter instance,
+the client's keys and records them as known good (next paragraphs)
+(`src/app/api/auth/route.ts:73#"loginRateLimiter.reset"`,
+`src/app/api/auth/route.ts:75#"loginRateLimiter.recordSuccess"`).
+The change-password route does the same admission with a second limiter instance,
 `passwordChangeRateLimiter`, so the two key spaces do not share counts
-(`src/app/api/auth/change-password/route.ts:62-68#"passwordChangeRateLimiter.acquire"`).
+(`src/app/api/auth/change-password/route.ts:62-68#"passwordChangeRateLimiter.acquire"`);
+it never calls `recordSuccess`, so its known-good set stays empty.
 
 The limiter (`src/lib/login-rate-limit.ts`) allows 5 attempts per key in a fixed
 15-minute window, counted when admitted (before the password is checked). An
@@ -194,11 +197,39 @@ is refused if either budget is used up and is then charged to neither. It holds
 at most 10,000 keys: at the cap it drops expired entries, then the entries with
 the fewest attempts that are not locked out (a locked-out key, and the keys of
 the current request, are never evicted). If no room can be made, the request is
-not tracked and is not let in for free either: untracked requests share an
-overflow bucket of one attempt per second and otherwise get 429 with
-`Retry-After: 1`
+not tracked and is not let in for free either: it gets a token from
+`takeUntrackedToken`, which for an unknown client is the shared overflow bucket
+of one attempt per second, otherwise 429 with `Retry-After: 1`
 (`src/lib/login-rate-limit.ts:2-12#"OVERFLOW_BURST"`,
-`src/lib/login-rate-limit.ts:75-105#"takeOverflowToken(t)"`).
+`src/lib/login-rate-limit.ts:114-144#"takeUntrackedToken(key, parent, t)"`,
+`src/lib/login-rate-limit.ts:229-241#"takeOverflowToken(t: number)"`).
+
+A flood that locks every entry would leave the real admin competing for that one
+token, so the limiter keeps a separate known-good set, not part of the table and
+so not fillable or evictable by failed attempts. `recordSuccess(key, parent)`
+is its only writer and runs only after the password was verified: it records the
+key and, for IPv6, the /48 parent. The set holds at most 64 keys (least recently
+successful dropped first) and forgets a key 14 days after its last success
+(`src/lib/login-rate-limit.ts:13-20#"KNOWN_GOOD_GLOBAL_REFILL_MS"`,
+`src/lib/login-rate-limit.ts:156-166#"recordSuccess(key: string"`,
+`src/lib/login-rate-limit.ts:176-187#"knownKeyFor"`). It matters only for a
+request that cannot be tracked: if its key (first) or its parent is known good,
+it uses a reserved bucket instead of the shared one, with one attempt per 10 s
+per known key (the key that matched, so the most specific) and one per 2 s across all
+known keys; a refusal charges neither
+(`src/lib/login-rate-limit.ts:198-207#"takeReservedToken(knownKey: string"`).
+A known key that is tracked normally behaves like any other: its own lockout
+still applies, and a known parent never lifts a locked /64. The constants are
+exported and injected through the constructor, not settings. Not helped: a first
+login from a new key during a flood. The reserved bucket is shared by everyone
+who maps to a known key: everyone behind one public IPv4 address, and for IPv6
+the known /64 or any /64 of a known /48. Such a sharer, or someone on 5 or more
+known keys, can use up its attempts and keep the admin out until the flood ends,
+as before. Behind a proxy with `TRUSTED_PROXY_HOPS=0`, and for the fallback key
+`unknown`, all clients share one key, so recording it lets everyone behind it use
+the (capped) reserved bucket. Total guessing under saturation is therefore about
+3,600 per hour for unknown clients plus up to 1,800 per hour through the reserved
+bucket. The set is memory only and a restart clears it, as it clears the table.
 
 The key comes from `getClientKeys()` in `src/lib/client-ip.ts`. A route handler
 cannot see the TCP peer (Next 15 gives `NextRequest` no `ip`, and its own
@@ -222,7 +253,7 @@ which wins over `.env` and `.env.runtime`.
 ## Session JWT and cookie
 
 - The token is a JWT with `sub: 'admin'`
-  (`src/app/api/auth/route.ts:75#"generateToken({ sub: 'admin' })"`), signed
+  (`src/app/api/auth/route.ts:77#"generateToken({ sub: 'admin' })"`), signed
   with `JWT_SECRET` and valid for 24 hours
   (`src/lib/auth.ts:28-29#"expiresIn: JWT_EXPIRES"`).
 - The secret is read on first use and cached for the life of the process
@@ -232,9 +263,9 @@ which wins over `.env` and `.env.runtime`.
   hard-coded dev secret (`src/lib/auth.ts:14-16#"return _jwtSecret"`).
 - Login sets the cookie `token`: `httpOnly`, `secure` only when
   `NODE_ENV=production`, `sameSite: 'lax'`, `maxAge` 24 hours, `path: '/'`
-  (`src/app/api/auth/route.ts:78-83#"path: '/'"`). `DELETE /api/auth`
+  (`src/app/api/auth/route.ts:85#"path: '/'"`). `DELETE /api/auth`
   overwrites it with `maxAge: 0`
-  (`src/app/api/auth/route.ts:91-96#"maxAge: 0"`).
+  (`src/app/api/auth/route.ts:97#"maxAge: 0"`).
 - `extractToken()` takes an `Authorization: Bearer` header first, then the
   cookie (`src/lib/auth.ts:42-49#"if (cookie) return cookie.value"`).
 
@@ -245,7 +276,7 @@ and the `/api/auth` handlers: `GET` only reports whether the request is
 authenticated (`src/app/api/auth/route.ts:9-10#"isAuthenticated(req)"`),
 `POST` logs in
 (`src/app/api/auth/route.ts:13#"export async function POST"`), and `DELETE`
-clears the cookie (`src/app/api/auth/route.ts:89#"export async function DELETE"`).
+clears the cookie (`src/app/api/auth/route.ts:91#"export async function DELETE"`).
 The dashboard page calls `GET /api/auth` from the browser and redirects to
 `/login` when the response is not OK
 (`src/app/dashboard/page.tsx:31-33#"router.replace('/login')"`) or reports
