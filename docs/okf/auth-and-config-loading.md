@@ -221,10 +221,15 @@ known keys; a refusal charges neither
 A known key that is tracked normally behaves like any other: its own lockout
 still applies, and a known parent never lifts a locked /64. The constants are
 exported and injected through the constructor, not settings. Not helped: a first
-login from a new key during a flood. Behind a proxy with `TRUSTED_PROXY_HOPS=0`
-all clients share the proxy's key, so recording it lets everyone behind it use
-the (capped) reserved bucket. The set is memory only and a restart clears it, as
-it clears the table.
+login from a new key during a flood. The reserved bucket is shared by everyone
+who maps to a known key: everyone behind one public IPv4 address, and for IPv6
+the known /64 or any /64 of a known /48. Such a sharer, or someone on 5 or more
+known keys, can use up its attempts and keep the admin out until the flood ends,
+as before. Behind a proxy with `TRUSTED_PROXY_HOPS=0`, and for the fallback key
+`unknown`, all clients share one key, so recording it lets everyone behind it use
+the (capped) reserved bucket. Total guessing under saturation is therefore about
+3,600 per hour for unknown clients plus up to 1,800 per hour through the reserved
+bucket. The set is memory only and a restart clears it, as it clears the table.
 
 The key comes from `getClientKeys()` in `src/lib/client-ip.ts`. A route handler
 cannot see the TCP peer (Next 15 gives `NextRequest` no `ip`, and its own

@@ -226,8 +226,9 @@ distinct IPv6 /48s, since one /48 can hold at most 11 locked entries, ten /64s
 and its parent), nobody new can be tracked, and the limiter does not fail open: all such
 untracked clients share one overflow bucket that allows **one attempt per
 second** in total. An attempt without a token is answered `429` with
-`Retry-After: 1`, so guessing by untracked clients is capped at about 3,600 per
-hour altogether. The cost is that someone who keeps that bucket empty (one
+`Retry-After: 1`, so guessing by untracked clients that are not known good is
+capped at about 3,600 per hour altogether (known-good clients have the reserved
+bucket described below, up to 1,800 per hour more). The cost is that someone who keeps that bucket empty (one
 request a second) makes the retries of an unknown client succeed only
 occasionally, until the locked entries expire at the end of their windows. A
 warning is logged at most once per window while this lasts. At that scale an
@@ -260,15 +261,26 @@ Limits you should know about:
   client is not known yet, so it competes for the shared overflow bucket as
   described above. Restarting the server clears the counters if you need in
   right away.
+- The reserved bucket is **shared by everyone who maps to a known key**, not
+  only by you. For IPv4 that is everyone behind the same public address (an
+  office or carrier NAT). For IPv6 it is the known /64, and any /64 of a known
+  /48. Someone who shares your known key and keeps sending requests takes its
+  reserved attempts and keeps you out until the flood ends, exactly as before
+  this change (the key's one attempt per 10 seconds goes to whoever asks
+  first); a restart clears it. The same holds for the 2-second cap across all
+  known keys: someone on 5 or more known keys can take every attempt of it.
 - Behind a reverse proxy with `TRUSTED_PROXY_HOPS` left at `0`, all clients
-  share the proxy's address as their key. After your first login that address
-  is known good, and then every client behind the proxy can use the reserved
-  bucket during a flood (still capped at the rates above). Set the number of
-  hops correctly.
-- The reserved bucket is still guessing: a known address can try one password
-  every 10 seconds, and all known addresses together one every 2 seconds. It is
-  reachable only from the known address itself (the peer address, or the
-  address a trusted proxy reports).
+  share the proxy's address as their key; the same is true of the key
+  `unknown`, which every request gets when no peer address is available. After
+  your first login that key is known good, and then every client behind the
+  proxy can use the reserved bucket during a flood (still capped at the rates
+  above). Set the number of hops correctly.
+- The reserved bucket is still guessing: a known key can try one password every
+  10 seconds, and all known keys together one every 2 seconds, at most 1,800 an
+  hour through the bucket altogether, on top of the roughly 3,600 an hour the
+  shared bucket allows to unknown clients. It is reachable only from an address
+  that maps to a known key (the peer address, or the address a trusted proxy
+  reports).
 
 ## Docker Compose env files
 

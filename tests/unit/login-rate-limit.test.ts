@@ -417,6 +417,16 @@ describe('known-good keys under saturation', () => {
     expect(l.acquire('k')).toEqual({ allowed: false, retryAfterSeconds: 10 })
   })
 
+  it('rounds the Retry-After of a fractional reserved wait up', () => {
+    const l = saturated()
+    l.recordSuccess('k')
+    l.acquire('k')
+    vi.advanceTimersByTime(500) // 9.5 s left of the per-key interval
+    expect(l.acquire('k')).toEqual({ allowed: false, retryAfterSeconds: 10 })
+    vi.advanceTimersByTime(8999) // 501 ms left
+    expect(l.acquire('k')).toEqual({ allowed: false, retryAfterSeconds: 1 })
+  })
+
   it('a refused attempt does not push the next reserved attempt out', () => {
     const l = saturated()
     l.recordSuccess('k')
@@ -634,7 +644,27 @@ describe('known-good keys under saturation', () => {
       vi.advanceTimersByTime(TTL - 1)
       l.recordSuccess('k')
       vi.advanceTimersByTime(TTL - 1)
+      drainOverflow(l) // otherwise the shared token would let an expired key in
       expect(l.acquire('k').allowed).toBe(true)
+      // the TTL runs from the second success: one more ms and the key is forgotten
+      vi.advanceTimersByTime(1)
+      drainOverflow(l)
+      expect(l.acquire('k').allowed).toBe(false)
+    })
+
+    it('the default parameters keep a key known for 14 days after its last success, not longer', () => {
+      const DAY = 24 * 60 * 60 * 1000
+      // default known-good parameters; a long window so the locked entries outlast the test
+      const l = new LoginRateLimiter(1, 30 * DAY, 2, undefined, 50, 100, 1)
+      l.acquire('a')
+      l.acquire('b')
+      l.recordSuccess('k')
+      vi.advanceTimersByTime(14 * DAY - 1)
+      drainOverflow(l)
+      expect(l.acquire('k').allowed).toBe(true)
+      vi.advanceTimersByTime(1)
+      drainOverflow(l)
+      expect(l.acquire('k').allowed).toBe(false)
     })
 
     it('a refused or reserved attempt does not extend the TTL', () => {
