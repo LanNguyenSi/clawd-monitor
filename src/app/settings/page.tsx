@@ -32,7 +32,9 @@ function SettingsInner() {
   const [tokenName, setTokenName] = useState('')
   const [newToken, setNewToken] = useState<{ token: string; name: string } | null>(null)
   const [tokenLoading, setTokenLoading] = useState(false)
-  const [revokeError, setRevokeError] = useState('')
+  // Shown under the generate form's input row (generate) and under the token list (revoke, rename).
+  const [generateError, setGenerateError] = useState('')
+  const [listError, setListError] = useState('')
   const [revokingId, setRevokingId] = useState<string | null>(null)
   const revokeInFlight = useRef(false)
   // Inline name editing
@@ -105,37 +107,47 @@ function SettingsInner() {
 
   async function handleGenerateToken(e: React.FormEvent) {
     e.preventDefault()
-    if (!tokenName.trim()) return
+    const name = tokenName.trim()
+    if (!name) return
+    setGenerateError('')
     setTokenLoading(true)
     try {
-      const res = await fetch('/api/settings/tokens', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: tokenName.trim() }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setNewToken({ token: data.token, name: data.name })
-        setTokenName('')
-        await loadTokens()
+      let res: Response
+      try {
+        res = await fetch('/api/settings/tokens', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        })
+      } catch {
+        setGenerateError(`Could not generate token "${name}": network error. Your input is kept; reload to check whether the token was created before trying again.`)
+        return
       }
+      if (!res.ok) {
+        setGenerateError(`Could not generate token "${name}" (HTTP ${res.status}). No token is shown and your input is kept; try again.`)
+        return
+      }
+      const data = await res.json()
+      setNewToken({ token: data.token, name: data.name })
+      setTokenName('')
+      await loadTokens()
     } finally { setTokenLoading(false) }
   }
 
   async function handleRevokeToken(t: TokenEntry) {
     if (revokeInFlight.current) return
-    setRevokeError('')
+    setListError('')
     if (!window.confirm(revokeConfirmMessage(t.name))) return
     revokeInFlight.current = true
     setRevokingId(t.id)
     try {
       const res = await fetch(`/api/settings/tokens/${t.id}`, { method: 'DELETE' })
       if (!res.ok) {
-        setRevokeError(`Could not revoke token "${t.name}" (HTTP ${res.status}). The token list was not changed; reload to see its current state.`)
+        setListError(`Could not revoke token "${t.name}" (HTTP ${res.status}). The token list was not changed; reload to see its current state.`)
         return
       }
     } catch {
-      setRevokeError(`Could not revoke token "${t.name}": network error. The token list was not changed; reload to see its current state.`)
+      setListError(`Could not revoke token "${t.name}": network error. The token list was not changed; reload to see its current state.`)
       return
     } finally {
       revokeInFlight.current = false
@@ -145,17 +157,28 @@ function SettingsInner() {
   }
 
   function startEdit(t: TokenEntry) {
+    setListError('')
     setEditingId(t.id)
     setEditName(t.name)
   }
 
-  async function saveEdit(id: string) {
+  async function saveEdit(t: TokenEntry) {
+    setListError('')
     if (!editName.trim()) { setEditingId(null); return }
-    await fetch(`/api/settings/tokens/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: editName.trim() }),
-    })
+    try {
+      const res = await fetch(`/api/settings/tokens/${t.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName.trim() }),
+      })
+      if (!res.ok) {
+        setListError(`Could not rename token "${t.name}" (HTTP ${res.status}). The name was not changed; your edit is still open.`)
+        return
+      }
+    } catch {
+      setListError(`Could not rename token "${t.name}": network error. The name may not have changed; your edit is still open.`)
+      return
+    }
     setEditingId(null)
     await loadTokens()
   }
@@ -194,9 +217,10 @@ function SettingsInner() {
                 <p className="text-sm text-zinc-800 dark:text-zinc-200">Theme</p>
                 <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">Keyboard shortcut: <kbd className="font-mono bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-sm px-1">t</kbd></p>
               </div>
-              <div className="flex items-center gap-0.5 bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-lg p-0.5">
+              <div role="group" aria-label="Theme" className="flex items-center gap-0.5 bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-lg p-0.5">
                 <button
                   onClick={() => setTheme('light')}
+                  aria-pressed={theme === 'light'}
                   className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                     theme === 'light'
                       ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
@@ -207,6 +231,7 @@ function SettingsInner() {
                 </button>
                 <button
                   onClick={() => setTheme('dark')}
+                  aria-pressed={theme === 'dark'}
                   className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                     theme === 'dark'
                       ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
@@ -238,7 +263,15 @@ function SettingsInner() {
                 />
               </div>
             ))}
-            {pwMsg && <p className={`text-sm ${pwStatus === 'success' ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>{pwMsg}</p>}
+            {/* A failure interrupts (alert); a success is confirmation (status, polite). Each attempt clears
+                the message first, so the outcome always mounts a fresh element with its role already set;
+                screen readers do not reliably announce a role that changes on a node already in the page. */}
+            {pwMsg && (
+              <p
+                role={pwStatus === 'success' ? 'status' : 'alert'}
+                className={`text-sm ${pwStatus === 'success' ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}
+              >{pwMsg}</p>
+            )}
             <button type="submit" disabled={pwStatus === 'loading'}
               className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm font-medium transition-colors">
               {pwStatus === 'loading' ? 'Updating…' : 'Update Password'}
@@ -259,7 +292,7 @@ function SettingsInner() {
                     <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
                     <div className="flex-1 min-w-0">
                       {editingId === t.id ? (
-                        <form onSubmit={(e) => { e.preventDefault(); void saveEdit(t.id) }} className="flex items-center gap-2">
+                        <form onSubmit={(e) => { e.preventDefault(); void saveEdit(t) }} className="flex items-center gap-2">
                           <input
                             type="text"
                             aria-label={`Name for token ${t.name}`}
@@ -269,7 +302,7 @@ function SettingsInner() {
                             className="bg-zinc-50 border border-indigo-500 dark:bg-zinc-800 rounded-sm px-2 py-0.5 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-hidden w-40"
                           />
                           <button type="submit" className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-200 px-1.5">Save</button>
-                          <button type="button" onClick={() => setEditingId(null)} className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 px-1.5">Cancel</button>
+                          <button type="button" onClick={() => { setListError(''); setEditingId(null) }} className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 px-1.5">Cancel</button>
                         </form>
                       ) : (
                         <div className="flex items-center gap-1.5">
@@ -300,24 +333,30 @@ function SettingsInner() {
               </div>
             )}
 
-            {revokeError && (
+            {listError && (
               <div role="alert" className="px-5 py-3 text-sm text-red-700 dark:text-red-400 border-t border-zinc-200 dark:border-zinc-800">
-                {revokeError}
+                {listError}
               </div>
             )}
 
             {/* Generate new token */}
             <div className="p-5 border-t border-zinc-200 dark:border-zinc-800">
-              <form onSubmit={handleGenerateToken} className="flex gap-2">
-                <input type="text" value={tokenName} onChange={(e) => setTokenName(e.target.value)}
-                  aria-label="Agent name"
-                  placeholder="Agent name (e.g. Lava VPS)" required
-                  className="flex-1 bg-zinc-50 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-                />
-                <button type="submit" disabled={tokenLoading}
-                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm transition-colors whitespace-nowrap">
-                  {tokenLoading ? '…' : '+ Generate Token'}
-                </button>
+              <form onSubmit={handleGenerateToken}>
+                <label htmlFor="token-name" className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5">Agent name</label>
+                {/* Stacked below sm: side by side, the input and the nowrap button do not fit a 390 px card. */}
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input type="text" id="token-name" value={tokenName} onChange={(e) => setTokenName(e.target.value)}
+                    placeholder="e.g. Lava VPS" required
+                    className="min-w-0 flex-1 bg-zinc-50 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button type="submit" disabled={tokenLoading}
+                    className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-sm text-sm transition-colors whitespace-nowrap">
+                    {tokenLoading ? '…' : '+ Generate Token'}
+                  </button>
+                </div>
+                {generateError && (
+                  <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-400">{generateError}</p>
+                )}
               </form>
             </div>
           </div>

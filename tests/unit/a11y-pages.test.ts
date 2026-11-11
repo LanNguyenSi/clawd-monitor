@@ -100,7 +100,8 @@ describe('settings page', () => {
       expect(label, `label for ${input.id}`).not.toBeNull()
     }
     // new-token name input
-    expect(container.querySelector('input[aria-label="Agent name"]')).not.toBeNull()
+    expect(container.querySelector('label[for="token-name"]')?.textContent).toBe('Agent name')
+    expect(container.querySelector('input#token-name')).not.toBeNull()
     // rename input of an existing token
     await click(container.querySelector('button[title="Edit name"]')!)
     expect(container.querySelector('input[aria-label="Name for token Lava VPS"]')).not.toBeNull()
