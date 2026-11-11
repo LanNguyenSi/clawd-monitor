@@ -22,7 +22,11 @@ function cpuColor(pct: number): string {
   return 'text-green-700 dark:text-green-400'
 }
 
-function Sparkline({ data, color }: { data: number[]; color: string }) {
+// Stroke paints through currentColor so the caller's text-* classes
+// pick the colour (WCAG 1.4.11: the light shades reach 3:1+ on the
+// white card, dark keeps the old -400 hexes at the 0.7 opacity the
+// inline stroke used to carry).
+function Sparkline({ data, className }: { data: number[]; className: string }) {
   if (data.length < 2) return null
   const max = Math.max(...data, 1)
   const w = 120
@@ -38,11 +42,11 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
       <polyline
         points={pts.join(' ')}
         fill="none"
-        stroke={color}
+        stroke="currentColor"
         strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"
-        opacity="0.7"
+        className={`opacity-100 dark:opacity-70 ${className}`}
       />
     </svg>
   )
@@ -114,7 +118,10 @@ export function MetricsWidget() {
     ? Math.round((metrics.memUsed / metrics.memTotal) * 100)
     : 0
 
-  const memBarColor = memPct >= 80 ? 'bg-red-500' : memPct >= 60 ? 'bg-yellow-500' : 'bg-green-500'
+  // Non-text contrast (WCAG 1.4.11) at 3:1+ on the white light card:
+  // red-700 6.47:1, yellow-800 6.85:1, green-700 5.02:1. Dark mode
+  // keeps the original -500 fills.
+  const memBarColor = memPct >= 80 ? 'bg-red-700 dark:bg-red-500' : memPct >= 60 ? 'bg-yellow-800 dark:bg-yellow-500' : 'bg-green-700 dark:bg-green-500'
 
   if (activeAgentId && snapshotData && !snapshotData.online) {
     const lastSeen = snapshotData.lastSnapshotAt ? (() => { const s = Math.floor((Date.now() - snapshotData.lastSnapshotAt!) / 1000); return s < 60 ? `${s}s ago` : `${Math.floor(s/60)}m ago` })() : '—'
@@ -149,7 +156,7 @@ export function MetricsWidget() {
             </div>
             <Sparkline
               data={cpuHistory}
-              color={metrics.cpu >= 80 ? '#f87171' : metrics.cpu >= 60 ? '#facc15' : '#4ade80'}
+              className={cpuColor(metrics.cpu)}
             />
           </div>
 

@@ -12,6 +12,10 @@ interface Props {
 
 type Step = 'name' | 'snippet'
 
+/** Focusable descendants of the dialog, in tab order (WCAG 2.4.3). */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 /**
  * "Add Agent" modal. Two steps:
  *
@@ -39,12 +43,18 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
   const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Bumped on every submit so the error paragraph can be keyed by it:
+  // a second failed submit with the same message remounts the alert
+  // instead of writing identical text into the same node, which
+  // assistive technology would not announce again.
+  const [attempt, setAttempt] = useState(0)
   const [token, setToken] = useState<string | null>(null)
   const [tokenName, setTokenName] = useState<string>('')
   const [copied, setCopied] = useState<'token' | 'snippet' | null>(null)
   const nameInputRef = useRef<HTMLInputElement | null>(null)
   const tokenCopyButtonRef = useRef<HTMLButtonElement | null>(null)
   const previousFocusRef = useRef<Element | null>(null)
+  const dialogRef = useRef<HTMLDivElement | null>(null)
 
   // Reset all state when the modal opens; capture the previously
   // focused element so we can restore it on close.
@@ -89,10 +99,51 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
 
   // Esc closes — but only on the name step. On the snippet step the
   // token is unrecoverable, so we require an explicit Done click.
+  //
+  // The same window listener runs the focus trap (WCAG 2.4.3): Tab
+  // from the last focusable control wraps to the first, Shift+Tab
+  // from the first wraps to the last, and either one with focus
+  // outside the dialog's focusable set (a click on the backdrop or on
+  // a non-focusable spot inside the panel parks focus on <body>)
+  // moves focus into the dialog instead of onward into the page
+  // behind it. The listener has to sit on the window (like Escape's
+  // already does), not on the dialog: a keydown while focus is on
+  // <body> never reaches the dialog node, so a handler there could
+  // only wrap and could not catch the outside case. Tab and Shift+Tab
+  // are preventDefault'ed exactly when we move focus ourselves.
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && step === 'name') onClose()
+      if (e.key === 'Escape' && step === 'name') {
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab') return
+      // Another handler already took this Tab (for example the trap of
+      // an overlay opened on top of this dialog), or focus sits in a
+      // different modal: leave it alone instead of pulling focus back
+      // into this dialog behind it.
+      if (e.defaultPrevented) return
+      const focused = document.activeElement
+      const otherModal = focused instanceof Element ? focused.closest('[aria-modal="true"]') : null
+      if (otherModal && otherModal !== dialogRef.current) return
+      const items = dialogRef.current
+        ? Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE))
+        : []
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      const inside = items.includes(active as HTMLElement)
+      if (e.shiftKey) {
+        if (active === first || !inside) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else if (active === last || !inside) {
+        e.preventDefault()
+        first.focus()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -102,6 +153,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault()
+    setAttempt((n) => n + 1)
     setError(null)
     const trimmed = name.trim()
     if (trimmed.length === 0) {
@@ -174,6 +226,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-agent-title"
@@ -224,12 +277,12 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
               </p>
             </div>
             {!originValid && (
-              <p className="text-sm text-red-700 dark:text-red-400">
+              <p role="alert" className="text-sm text-red-700 dark:text-red-400">
                 Cannot determine the dashboard origin (current: <code>{origin || '<empty>'}</code>). Reload the page and try again.
               </p>
             )}
             {error && (
-              <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+              <p role="alert" key={attempt} className="text-sm text-red-700 dark:text-red-400">{error}</p>
             )}
             <div className="flex justify-end gap-2 pt-2">
               <button

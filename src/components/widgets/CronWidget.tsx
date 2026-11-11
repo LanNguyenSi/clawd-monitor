@@ -82,7 +82,8 @@ export function CronWidget() {
       {!isLoading && errorMsg && (
         <div className="flex items-center justify-center h-full px-4">
           <div className="text-center">
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">{errorMsg}</p>
+            <p role="status" className="text-xs text-red-700 dark:text-red-400">Gateway request failed.</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">{errorMsg}</p>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Select an agent to view cron jobs</p>
           </div>
         </div>
