@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 /**
- * Gateway-error state of AgentStatusWidget and CronWidget: a rejected
- * gateway fetch surfaces as the readable sentence "Could not reach the
- * gateway." in the HeartbeatWidget error look (text-red-700
- * dark:text-red-400) inside a role="status" element, with the raw
- * transport message kept as a secondary detail (not the only content).
+ * Gateway-error state of AgentStatusWidget and CronWidget: a failed
+ * gateway request surfaces as the neutral sentence "Gateway request
+ * failed." (neutral because the failure may be an unreachable
+ * gateway, a gateway that answered with an error, or a request
+ * refused by the URL policy) in the HeartbeatWidget error look
+ * (text-red-700 dark:text-red-400) inside a role="status" element,
+ * with the raw transport message kept as a secondary detail line (not
+ * the only content, and not duplicated in a title attribute).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act } from 'react'
@@ -69,7 +72,7 @@ for (const widget of [
       const host = await mountUntilError(widget.element())
       const status = host.querySelector('[role="status"]')
       expect(status).not.toBeNull()
-      expect(status!.textContent).toContain('Could not reach the gateway.')
+      expect(status!.textContent).toContain('Gateway request failed.')
       expect(status!.className).toContain('text-red-700')
       expect(status!.className).toContain('dark:text-red-400')
     })
@@ -79,10 +82,12 @@ for (const widget of [
       const status = host.querySelector('[role="status"]')!
       const block = status.parentElement!
       expect(block.textContent).toContain('fetch failed')
-      expect(block.textContent).toContain('Could not reach the gateway.')
-      const detail = block.querySelector('p[title="fetch failed"]')
-      expect(detail).not.toBeNull()
+      expect(block.textContent).toContain('Gateway request failed.')
+      const detail = Array.from(block.querySelectorAll('p')).find((p) => p.textContent === 'fetch failed')
+      expect(detail).toBeDefined()
       expect(detail!.textContent).toBe('fetch failed')
+      // The visible text already is the full message; no title copy.
+      expect(detail!.hasAttribute('title')).toBe(false)
       expect(status!.textContent).not.toContain('fetch failed')
     })
   })

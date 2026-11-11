@@ -43,6 +43,11 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
   const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Bumped on every submit so the error paragraph can be keyed by it:
+  // a second failed submit with the same message remounts the alert
+  // instead of writing identical text into the same node, which
+  // assistive technology would not announce again.
+  const [attempt, setAttempt] = useState(0)
   const [token, setToken] = useState<string | null>(null)
   const [tokenName, setTokenName] = useState<string>('')
   const [copied, setCopied] = useState<'token' | 'snippet' | null>(null)
@@ -94,10 +99,43 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
 
   // Esc closes — but only on the name step. On the snippet step the
   // token is unrecoverable, so we require an explicit Done click.
+  //
+  // The same window listener runs the focus trap (WCAG 2.4.3): Tab
+  // from the last focusable control wraps to the first, Shift+Tab
+  // from the first wraps to the last, and either one with focus
+  // outside the dialog's focusable set (a click on the backdrop or on
+  // a non-focusable spot inside the panel parks focus on <body>)
+  // moves focus into the dialog instead of onward into the page
+  // behind it. The listener has to sit on the window (like Escape's
+  // already does), not on the dialog: a keydown while focus is on
+  // <body> never reaches the dialog node, so a handler there could
+  // only wrap and could not catch the outside case. Tab and Shift+Tab
+  // are preventDefault'ed exactly when we move focus ourselves.
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && step === 'name') onClose()
+      if (e.key === 'Escape' && step === 'name') {
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const items = dialogRef.current
+        ? Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE))
+        : []
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      const inside = items.includes(active as HTMLElement)
+      if (e.shiftKey) {
+        if (active === first || !inside) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else if (active === last || !inside) {
+        e.preventDefault()
+        first.focus()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -107,6 +145,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault()
+    setAttempt((n) => n + 1)
     setError(null)
     const trimmed = name.trim()
     if (trimmed.length === 0) {
@@ -177,29 +216,6 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
   // step the token is unrecoverable; closing must be deliberate.
   const handleBackdropClick = step === 'name' ? onClose : undefined
 
-  // Focus trap (WCAG 2.4.3): Tab from the last focusable element wraps
-  // to the first, Shift+Tab from the first wraps to the last, so Tab
-  // never reaches the page behind the dialog. Same keydown-on-dialog
-  // approach as the KeyboardShortcuts overlay, widened to the general
-  // wrap because this dialog has several focusable controls.
-  function handleTabKey(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key !== 'Tab') return
-    const items = dialogRef.current
-      ? Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE))
-      : []
-    if (items.length === 0) return
-    const first = items[0]
-    const last = items[items.length - 1]
-    const active = document.activeElement
-    if (e.shiftKey && active === first) {
-      e.preventDefault()
-      last.focus()
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault()
-      first.focus()
-    }
-  }
-
   return (
     <div
       ref={dialogRef}
@@ -208,7 +224,6 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
       aria-labelledby="add-agent-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
       onClick={handleBackdropClick}
-      onKeyDown={handleTabKey}
     >
       <div
         className="w-full max-w-2xl bg-white border border-zinc-200 dark:bg-zinc-950 dark:border-zinc-800 rounded-xl shadow-2xl"
@@ -259,7 +274,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
               </p>
             )}
             {error && (
-              <p role="alert" className="text-sm text-red-700 dark:text-red-400">{error}</p>
+              <p role="alert" key={attempt} className="text-sm text-red-700 dark:text-red-400">{error}</p>
             )}
             <div className="flex justify-end gap-2 pt-2">
               <button
