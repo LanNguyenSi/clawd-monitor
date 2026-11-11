@@ -3,7 +3,7 @@ type: module
 title: Widget data modes, agent snapshot vs default gateway vs dashboard host
 description: For each dashboard widget, where its data comes from when an agent is selected (the agent's last WebSocket snapshot) and when none is (the default gateway or the dashboard host itself), which widgets ignore the selection, and how the selection is held.
 tags: [widgets, dashboard, agents, data-sources]
-timestamp: 2026-10-30T21:43:40Z
+timestamp: 2026-11-11T07:13:36Z
 sources:
   - src/lib/widgets.ts
   - src/lib/active-agent.tsx
@@ -143,8 +143,8 @@ Evidence for the switch in each component, agent URL first:
   (`src/app/api/proxy/memory/route.ts:48-50#"FILE_PATHS[file] ?? FILE_PATHS.memory"`).
 - `docker`: `src/components/widgets/DockerWidget.tsx:30-31#"'/api/proxy/docker'"`;
   route `src/app/api/proxy/docker/route.ts:56#"docker ps -a"`.
-- `metrics`: `src/components/widgets/MetricsWidget.tsx:66-67#"/api/agents/"`
-  and `src/components/widgets/MetricsWidget.tsx:94-95#"new EventSource('/api/stream/metrics')"`;
+- `metrics`: `src/components/widgets/MetricsWidget.tsx:70-71#"/api/agents/"`
+  and `src/components/widgets/MetricsWidget.tsx:98-99#"new EventSource('/api/stream/metrics')"`;
   route `src/app/api/stream/metrics/route.ts:19#"/proc/stat"` and
   `src/app/api/stream/metrics/route.ts:38#"/proc/meminfo"`, sampled every
   2 s (`src/app/api/stream/metrics/route.ts:85-89#"}, 2000)"`).
