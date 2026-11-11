@@ -12,6 +12,10 @@ interface Props {
 
 type Step = 'name' | 'snippet'
 
+/** Focusable descendants of the dialog, in tab order (WCAG 2.4.3). */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 /**
  * "Add Agent" modal. Two steps:
  *
@@ -45,6 +49,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
   const nameInputRef = useRef<HTMLInputElement | null>(null)
   const tokenCopyButtonRef = useRef<HTMLButtonElement | null>(null)
   const previousFocusRef = useRef<Element | null>(null)
+  const dialogRef = useRef<HTMLDivElement | null>(null)
 
   // Reset all state when the modal opens; capture the previously
   // focused element so we can restore it on close.
@@ -172,13 +177,38 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
   // step the token is unrecoverable; closing must be deliberate.
   const handleBackdropClick = step === 'name' ? onClose : undefined
 
+  // Focus trap (WCAG 2.4.3): Tab from the last focusable element wraps
+  // to the first, Shift+Tab from the first wraps to the last, so Tab
+  // never reaches the page behind the dialog. Same keydown-on-dialog
+  // approach as the KeyboardShortcuts overlay, widened to the general
+  // wrap because this dialog has several focusable controls.
+  function handleTabKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== 'Tab') return
+    const items = dialogRef.current
+      ? Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE))
+      : []
+    if (items.length === 0) return
+    const first = items[0]
+    const last = items[items.length - 1]
+    const active = document.activeElement
+    if (e.shiftKey && active === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
+
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-agent-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
       onClick={handleBackdropClick}
+      onKeyDown={handleTabKey}
     >
       <div
         className="w-full max-w-2xl bg-white border border-zinc-200 dark:bg-zinc-950 dark:border-zinc-800 rounded-xl shadow-2xl"
@@ -224,12 +254,12 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
               </p>
             </div>
             {!originValid && (
-              <p className="text-sm text-red-700 dark:text-red-400">
+              <p role="alert" className="text-sm text-red-700 dark:text-red-400">
                 Cannot determine the dashboard origin (current: <code>{origin || '<empty>'}</code>). Reload the page and try again.
               </p>
             )}
             {error && (
-              <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+              <p role="alert" className="text-sm text-red-700 dark:text-red-400">{error}</p>
             )}
             <div className="flex justify-end gap-2 pt-2">
               <button
