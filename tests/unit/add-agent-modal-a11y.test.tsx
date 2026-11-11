@@ -120,6 +120,44 @@ describe('AddAgentModal focus trap', () => {
     expect(event.defaultPrevented).toBe(true)
   })
 
+  it('leaves Tab alone while focus is inside another modal opened on top', async () => {
+    const { container } = await openModal()
+    const items = controls(container.querySelector('[role="dialog"]')!)
+    const overlay = document.createElement('div')
+    overlay.setAttribute('role', 'dialog')
+    overlay.setAttribute('aria-modal', 'true')
+    const inner = document.createElement('button')
+    inner.textContent = 'Overlay close'
+    overlay.appendChild(inner)
+    document.body.appendChild(overlay)
+    try {
+      inner.focus()
+      const event = await pressTab(inner)
+      expect(event.defaultPrevented).toBe(false)
+      expect(document.activeElement).toBe(inner)
+      expect(items).not.toContain(document.activeElement)
+    } finally {
+      overlay.remove()
+    }
+  })
+
+  it('leaves a Tab alone that an earlier handler already prevented', async () => {
+    const { container } = await openModal()
+    const items = controls(container.querySelector('[role="dialog"]')!)
+    const outside = document.createElement('button')
+    outside.textContent = 'Outside'
+    outside.addEventListener('keydown', (e) => e.preventDefault())
+    document.body.appendChild(outside)
+    try {
+      outside.focus()
+      await pressTab(outside)
+      expect(document.activeElement).toBe(outside)
+      expect(items).not.toContain(document.activeElement)
+    } finally {
+      outside.remove()
+    }
+  })
+
   it('does not intercept Tab from a middle control (negative control)', async () => {
     const { container } = await openModal()
     const items = controls(container.querySelector('[role="dialog"]')!)
