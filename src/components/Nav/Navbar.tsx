@@ -44,6 +44,8 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
           {onToggleEditMode && (
             <button
               onClick={onToggleEditMode}
+              aria-label="Edit layout"
+              aria-pressed={!!editMode}
               className={`text-xs px-2 py-1 rounded-sm transition-colors border ${
                 editMode
                   ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-600 dark:border-indigo-600/40 dark:bg-indigo-600/10 dark:text-indigo-400'
@@ -65,11 +67,13 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
             </button>
           )}
 
-          <div className="flex items-center gap-0.5 bg-zinc-100 border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-lg p-0.5">
+          <div role="group" aria-label="Columns" className="flex items-center gap-0.5 bg-zinc-100 border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-lg p-0.5">
             {([2, 4, 8] as ColCount[]).map((c) => (
               <button
                 key={c}
                 onClick={() => onColsChange(c)}
+                aria-label={`${c} columns`}
+                aria-pressed={cols === c}
                 className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                   cols === c
                     ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
@@ -110,6 +114,8 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
             {onToggleEditMode && (
               <button
                 onClick={onToggleEditMode}
+                aria-label="Edit layout"
+                aria-pressed={!!editMode}
                 className={`text-xs px-2 py-1 rounded-sm transition-colors border ${
                   editMode
                     ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-600 dark:border-indigo-600/40 dark:bg-indigo-600/10 dark:text-indigo-400'
@@ -129,11 +135,13 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
               </button>
             )}
 
-            <div className="flex items-center gap-0.5 bg-zinc-100 border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-lg p-0.5">
+            <div role="group" aria-label="Columns" className="flex items-center gap-0.5 bg-zinc-100 border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-lg p-0.5">
               {([2, 4, 8] as ColCount[]).map((c) => (
                 <button
                   key={c}
                   onClick={() => onColsChange(c)}
+                  aria-label={`${c} columns`}
+                  aria-pressed={cols === c}
                   className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                     cols === c
                       ? 'bg-white text-zinc-900 shadow-xs dark:bg-zinc-700 dark:text-zinc-100'
