@@ -32,7 +32,7 @@ function SettingsInner() {
   const [tokenName, setTokenName] = useState('')
   const [newToken, setNewToken] = useState<{ token: string; name: string } | null>(null)
   const [tokenLoading, setTokenLoading] = useState(false)
-  // Shown above the generate form (generate) and under the token list (revoke, rename).
+  // Shown under the generate form's input row (generate) and under the token list (revoke, rename).
   const [generateError, setGenerateError] = useState('')
   const [listError, setListError] = useState('')
   const [revokingId, setRevokingId] = useState<string | null>(null)
@@ -302,7 +302,7 @@ function SettingsInner() {
                             className="bg-zinc-50 border border-indigo-500 dark:bg-zinc-800 rounded-sm px-2 py-0.5 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-hidden w-40"
                           />
                           <button type="submit" className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-200 px-1.5">Save</button>
-                          <button type="button" onClick={() => setEditingId(null)} className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 px-1.5">Cancel</button>
+                          <button type="button" onClick={() => { setListError(''); setEditingId(null) }} className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 px-1.5">Cancel</button>
                         </form>
                       ) : (
                         <div className="flex items-center gap-1.5">

@@ -44,7 +44,6 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
           {onToggleEditMode && (
             <button
               onClick={onToggleEditMode}
-              aria-label="Edit layout"
               aria-pressed={!!editMode}
               className={`text-xs px-2 py-1 rounded-sm transition-colors border ${
                 editMode
@@ -53,7 +52,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
               }`}
               title={editMode ? 'Lock layout (e)' : 'Edit layout (e)'}
             >
-              <span aria-hidden="true">{editMode ? '✏️' : '🔒'}</span> {editMode ? 'editing' : 'locked'}
+              <span aria-hidden="true">{editMode ? '✏️' : '🔒'}</span> Edit layout
             </button>
           )}
 
@@ -114,7 +113,6 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
             {onToggleEditMode && (
               <button
                 onClick={onToggleEditMode}
-                aria-label="Edit layout"
                 aria-pressed={!!editMode}
                 className={`text-xs px-2 py-1 rounded-sm transition-colors border ${
                   editMode
@@ -122,7 +120,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
                     : 'border-zinc-300 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400'
                 }`}
               >
-                <span aria-hidden="true">{editMode ? '✏️' : '🔒'}</span> {editMode ? 'editing' : 'locked'}
+                <span aria-hidden="true">{editMode ? '✏️' : '🔒'}</span> Edit layout
               </button>
             )}
 

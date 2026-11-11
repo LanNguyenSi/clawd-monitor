@@ -181,10 +181,22 @@ describe('rename token', () => {
     // The edit stays open with the typed name, and the list was not reloaded.
     expect(root.querySelector<HTMLInputElement>('input[aria-label="Name for token vps-main"]')?.value).toBe('renamed')
     expect(listCalls).toBe(1)
-    // Cancelling shows the old name again.
+    // Cancelling shows the old name again, in the token row (not in the alert text).
     await click(button(root, 'Cancel'))
-    expect(root.textContent).toContain('vps-main')
-    expect(root.textContent).not.toContain('renamed')
+    const row = root.querySelector('button[aria-label="Edit name of token vps-main"]')!.closest('.divide-y > div')!
+    expect(row.textContent).toContain('vps-main')
+    expect(row.textContent).not.toContain('renamed')
+  })
+
+  it('removes the rename error when the edit is cancelled', async () => {
+    patchImpl = async () => json({}, 500)
+    const root = await mountSettings()
+    const input = await startRename(root)
+    await submit(input.form!)
+    expect(root.querySelector('[role="alert"]')).not.toBeNull()
+    await click(button(root, 'Cancel'))
+    expect(root.querySelector('[role="alert"]')).toBeNull()
+    expect(root.querySelector('input[aria-label^="Name for token"]')).toBeNull()
   })
 
   it('shows an alert and keeps the edit open when the request itself fails', async () => {

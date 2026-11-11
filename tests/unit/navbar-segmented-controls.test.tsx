@@ -78,33 +78,55 @@ describe('column buttons', () => {
 })
 
 describe('edit layout toggle', () => {
-  const toggles = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLButtonElement>('button[aria-label="Edit layout"]'))
+  const toggles = (root: HTMLElement) =>
+    Array.from(root.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')).filter((b) => b.textContent?.includes('Edit layout'))
 
-  it('desktop: keeps one name, flips aria-pressed and the visible text', async () => {
+  /** The visible text, without the aria-hidden icon. */
+  const visibleText = (b: HTMLElement) =>
+    Array.from(b.childNodes)
+      .filter((n) => !(n instanceof HTMLElement && n.getAttribute('aria-hidden') === 'true'))
+      .map((n) => n.textContent)
+      .join('')
+      .trim()
+
+  /** WCAG 2.5.3: with no aria-label the name is the content, so the visible text is in it. */
+  function expectLabelInName(b: HTMLElement) {
+    expect(b.getAttribute('aria-label')).toBeNull()
+    expect(b.getAttribute('aria-labelledby')).toBeNull()
+    expect(visibleText(b)).toBe('Edit layout')
+    expect(b.textContent).toContain(visibleText(b))
+  }
+
+  it('desktop: the visible text is the name, stable across states; aria-pressed flips', async () => {
     const { container } = await mount(h(Harness))
     await flush()
     const [toggle] = toggles(container)
-    expect(toggle.getAttribute('aria-label')).toBe('Edit layout')
+    expectLabelInName(toggle)
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
-    expect(toggle.textContent).toContain('locked')
     await click(toggle)
-    expect(toggle.getAttribute('aria-label')).toBe('Edit layout')
+    expectLabelInName(toggle)
     expect(toggle.getAttribute('aria-pressed')).toBe('true')
-    expect(toggle.textContent).toContain('editing')
     await click(toggle)
+    expectLabelInName(toggle)
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
   })
 
-  it('mobile panel: the same name and pressed state', async () => {
+  it('mobile panel: the same visible name and pressed state', async () => {
     const { container } = await mount(h(Harness, { initialEdit: true }))
     await flush()
     await click(container.querySelector('button[aria-controls="mobile-layout-controls"]')!)
     const toggle = toggles(container.querySelector<HTMLElement>('#mobile-layout-controls')!)[0]
+    expectLabelInName(toggle)
     expect(toggle.getAttribute('aria-pressed')).toBe('true')
-    expect(toggle.textContent).toContain('editing')
     await click(toggle)
-    expect(toggle.getAttribute('aria-label')).toBe('Edit layout')
+    expectLabelInName(toggle)
     expect(toggle.getAttribute('aria-pressed')).toBe('false')
-    expect(toggle.textContent).toContain('locked')
+  })
+
+  it('does not show the old state words as the button text', async () => {
+    const { container } = await mount(h(Harness))
+    await flush()
+    const [toggle] = toggles(container)
+    expect(toggle.textContent).not.toMatch(/editing|locked/)
   })
 })

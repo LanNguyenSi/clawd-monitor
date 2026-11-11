@@ -92,7 +92,7 @@ describe('decorative glyphs', () => {
     const { container } = await mount(navbar())
     await flush()
     await click(container.querySelector('button[aria-controls="mobile-layout-controls"]')!)
-    expect(container.querySelector('#mobile-layout-controls')!.textContent).toContain('editing')
+    expect(container.querySelector('#mobile-layout-controls')!.textContent).toContain('Edit layout')
     expect(exposedGlyphs(container)).toEqual([])
   })
 
