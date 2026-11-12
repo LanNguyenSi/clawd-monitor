@@ -3,7 +3,7 @@ type: module
 title: Auth and config loading across the two module graphs
 description: Admin password precedence, the login rate limit and its client key (TRUSTED_PROXY_HOPS), the password.json and tokens.json data files, JWT cookie flags and lifetime, the production startup check, and how the custom server loads .env files before its modules read the environment, while the compiled route graph reads its own variables later.
 tags: [auth, config, env, jwt, startup, rate-limit]
-timestamp: 2026-11-12T08:46:57Z
+timestamp: 2026-11-12T12:36:23Z
 sources:
   - server.ts
   - tsconfig.server.json
@@ -140,7 +140,9 @@ the settings token routes and the password routes answer 500 and log the
 error (`Token store unavailable`, `Password store unavailable`), and the login
 route does not fall back to the env password while `password.json` is
 unusable. The agent handshake treats a throwing read like an invalid token
-and logs the reason (see agent-registry-lifecycle). The operator repairs or
+and logs the reason; for a static `AGENT_TOKENS` token, whose handshake also
+reads `tokens.json` to check agentId bindings, it refuses retryably (close
+1013, no `auth_error`) instead (see agent-registry-lifecycle). The operator repairs or
 removes the file; removing `password.json` restores the env password, removing
 `tokens.json` drops every UI-created token.
 
