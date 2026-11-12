@@ -152,7 +152,7 @@ closes, `disconnect(agentId, ws)` sees that it is no longer the entry's
 socket and does nothing
 (`src/lib/agent-registry.ts:84-88#"entry.online = false"`), so a reconnect
 is never marked offline by the stale socket's close. Regression-pinned by
-`tests/unit/agent-registry.test.ts:174#"does NOT mark the agent offline when called with a stale (replaced) ws"`.
+`tests/unit/agent-registry.test.ts:175#"does NOT mark the agent offline when called with a stale (replaced) ws"`.
 
 A `snapshot` sets `online: true` again
 (`src/lib/agent-registry.ts:76-81#"entry.online = true"`). A `ping` only
@@ -170,7 +170,9 @@ Eviction is lazy. `cleanup()` deletes an entry when it is offline and
 `now - lastSnapshotAt > AGENT_TTL_MS`
 (`src/lib/agent-registry.ts:114#"now - entry.lastSnapshotAt > AGENT_TTL_MS"`),
 with `AGENT_TTL_MS` defaulting to 300000 ms
-(`src/lib/agent-registry.ts:22#"AGENT_TTL_MS"`). Only `getAll()` calls it
+(`src/lib/agent-registry.ts:22#"AGENT_TTL_MS"`); a value that is not a plain
+positive integer falls back to that default with one `console.warn`
+(`src/lib/agent-registry.ts:24#"export function parseAgentTtlMs"`). Only `getAll()` calls it
 (`src/lib/agent-registry.ts:91-92#"this.cleanup()"`), and only two routes
 call `getAll()`: `GET /api/agents/list`
 (`src/app/api/agents/list/route.ts:11#"registry.getAll()"`) and the

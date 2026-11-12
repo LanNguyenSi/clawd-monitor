@@ -338,7 +338,7 @@ describe('parseAgentTtlMs', () => {
     const msg = String(warn.mock.calls[0][0])
     expect(msg).toContain('AGENT_TTL_MS')
     expect(msg).toContain(String(DEFAULT_AGENT_TTL_MS))
-    expect(msg).toContain(raw)
+    expect(msg).toContain(JSON.stringify(raw))
   })
 
   it('accepts a plain positive integer with no warning', () => {
