@@ -101,8 +101,8 @@ heartbeat widget shows `SILENT`
 Without a selection, each widget calls its own route. Routes that use
 `gatewayFetch()` without an `x-gateway-url` header go to the default
 gateway URL and token
-(`src/lib/gateway.ts:256#"options.gatewayUrl ?? DEFAULT_GATEWAY_URL"`,
-`src/lib/gateway.ts:257#"options.token ?? DEFAULT_GATEWAY_TOKEN"`). No
+(`src/lib/gateway.ts:262#"options.gatewayUrl ?? DEFAULT_GATEWAY_URL"`,
+`src/lib/gateway.ts:263#"options.token ?? DEFAULT_GATEWAY_TOKEN"`). No
 widget sets that header, so the widgets' requests to these routes always
 reach the default gateway. A route that does not read the body of a non-OK
 answer cancels it, so its connection is released at once
@@ -231,7 +231,7 @@ sources do not read logs from the agent's host, and a `source` outside
 - `openclaw`: the agent's own `gatewayUrl` plus `/logs/stream`, fetched only
   through `remoteGatewayFetch`
   (`src/app/api/agents/[agentId]/logs/route.ts:75#"remoteGatewayFetch(agent.gatewayUrl"`,
-  defined at `src/lib/gateway.ts:195#"export function remoteGatewayFetch("`).
+  defined at `src/lib/gateway.ts:201#"export function remoteGatewayFetch("`).
   It applies the URL rule (https, host and port in `ALLOWED_GATEWAY_HOSTS`, no
   private range) with no exception for the default gateway URL, unlike the
   callers that fetch the default, then connects through `pinnedFetch`,

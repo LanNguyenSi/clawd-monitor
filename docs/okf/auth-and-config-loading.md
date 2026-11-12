@@ -86,13 +86,13 @@ handshake and the token routes share. Next.js later calls the same loader
 for its own graph; it finds the files already loaded.
 
 The route-graph-only variables (`DEFAULT_GATEWAY_TOKEN` in
-`src/lib/gateway.ts:34#"DEFAULT_GATEWAY_TOKEN"`, `ALLOWED_GATEWAY_HOSTS` in
-`src/lib/gateway.ts:72#"process.env.ALLOWED_GATEWAY_HOSTS"`, `CLAWD_DIR` in
+`src/lib/gateway.ts:40#"DEFAULT_GATEWAY_TOKEN"`, `ALLOWED_GATEWAY_HOSTS` in
+`src/lib/gateway.ts:78#"process.env.ALLOWED_GATEWAY_HOSTS"`, `CLAWD_DIR` in
 `src/app/api/proxy/memory/route.ts:9#"CLAWD_DIR"` and
 `src/app/api/proxy/alert-history/route.ts:8#"CLAWD_DIR"`, `GITHUB_TOKEN` in
 `src/app/api/proxy/github/route.ts:84#"process.env.GITHUB_TOKEN"`) are read
 by the routes at request time. The default gateway URL
-(`src/lib/gateway.ts:24#"resolveDefaultGatewayUrl"`) is resolved once when
+(`src/lib/gateway.ts:25#"resolveDefaultGatewayUrl"`) is resolved once when
 `gateway.ts` loads in the running server (the stream/logs route uses the same
 exported value), never frozen at build time:
 `DEFAULT_GATEWAY_URL` first, then the deprecated
