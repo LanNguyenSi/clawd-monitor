@@ -9,7 +9,7 @@
  * - The message handler is async (bcrypt); use vi.waitFor to observe results.
  */
 
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'events'
 import bcrypt from 'bcryptjs'
 import type WebSocket from 'ws'
@@ -229,20 +229,15 @@ describe('handleAgentConnection – valid static env token', () => {
     expect(ws.close).not.toHaveBeenCalled()
   })
 
-  it('authenticates a valid static token even when the token store read throws', async () => {
-    mockReadTokens.mockImplementation(() => {
-      throw new Error('corrupt tokens.json')
-    })
+  it('reads the token store for a static token, to check the agentId bindings', async () => {
+    mockReadTokens.mockReturnValue([])
     const ws = makeMockWs()
     handleAgentConnection(ws as unknown as WebSocket, fakeReq)
 
     await emitAndWait(ws, { ...AUTH_MSG, token: STATIC_TOKEN })
 
-    const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
-    expect(sent.type).toBe('auth_ok')
-    expect(ws.close).not.toHaveBeenCalled()
-    // Static env tokens are checked before the store, so the store is never read
-    expect(mockReadTokens).not.toHaveBeenCalled()
+    expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_ok')
+    expect(mockReadTokens).toHaveBeenCalledTimes(1)
   })
 
   it('does not close the ws after a successful static-token auth', async () => {
@@ -616,6 +611,112 @@ describe('handleAgentConnection – static token is not bound', () => {
 
     expect(mockRegistry.register).toHaveBeenCalledTimes(3)
     expect(mockWriteTokens).not.toHaveBeenCalled()
+  })
+})
+
+describe('handleAgentConnection – static token and agentIds bound to a persisted token', () => {
+  const STATIC_TOKEN = 'static-vs-binding-token'
+  const BOUND_ID = 'victim-agent'
+  let store: Array<Record<string, unknown>>
+  let handleAgentConnection: (ws: WebSocket, req: IncomingMessage) => void
+
+  beforeAll(async () => {
+    vi.stubEnv('AGENT_TOKENS', STATIC_TOKEN)
+    vi.resetModules()
+    const mod = await import('@/lib/agent-ws-handler')
+    handleAgentConnection = mod.handleAgentConnection
+  })
+
+  afterAll(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+    mockReadTokens.mockReset()
+    mockReadTokens.mockReturnValue([])
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    store = [
+      { id: 'tok-bound', name: 'victim', tokenHash: 'h1', createdAt: 'c', agentId: BOUND_ID },
+      { id: 'tok-unbound', name: 'unused', tokenHash: 'h2', createdAt: 'c' },
+    ]
+    mockReadTokens.mockImplementation(() => structuredClone(store) as never)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  async function handshake(agentId: string): Promise<{ ws: MockWs; type: string }> {
+    const ws = makeMockWs()
+    handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+    await emitAndWait(ws, { ...AUTH_MSG, token: STATIC_TOKEN, agentId })
+    return { ws, type: JSON.parse(ws.send.mock.calls[0][0] as string).type }
+  }
+
+  it('rejects a static token claiming an agentId bound to a persisted token, answers like an invalid token and leaves the registry alone', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { ws } = await handshake(BOUND_ID)
+
+    expect(JSON.parse(ws.send.mock.calls[0][0] as string)).toEqual({ type: 'auth_error', message: 'Invalid token' })
+    expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+    expect(mockRegistry.register).not.toHaveBeenCalled()
+    expect(mockRegistry.update).not.toHaveBeenCalled()
+    expect(mockRegistry.disconnect).not.toHaveBeenCalled()
+    expect(mockWriteTokens).not.toHaveBeenCalled()
+    const logged = warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
+    expect(logged).toContain(BOUND_ID)
+    expect(logged).toContain('bound to a persisted token')
+    expect(logged).not.toContain(STATIC_TOKEN)
+  })
+
+  it('accepts a static token for an agentId no persisted token is bound to', async () => {
+    const { ws, type } = await handshake('some-other-host')
+
+    expect(type).toBe('auth_ok')
+    expect(ws.close).not.toHaveBeenCalled()
+    expect(mockRegistry.register).toHaveBeenCalledOnce()
+  })
+
+  it('accepts a static token for the agentId of an entry that has no binding', async () => {
+    // 'unused' is the name of an unbound entry, not a binding: only agentId counts
+    for (const agentId of ['unused', 'tok-unbound']) {
+      const { type } = await handshake(agentId)
+      expect(type).toBe('auth_ok')
+    }
+    expect(mockRegistry.register).toHaveBeenCalledTimes(2)
+  })
+
+  it('counts a binding created between two handshakes (read at handshake time, not cached)', async () => {
+    expect((await handshake('late-agent')).type).toBe('auth_ok')
+
+    store.push({ id: 'tok-late', name: 'late', tokenHash: 'h3', createdAt: 'c', agentId: 'late-agent' })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { ws, type } = await handshake('late-agent')
+
+    expect(type).toBe('auth_error')
+    expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+    expect(mockRegistry.register).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts when there are no persisted tokens at all (empty store)', async () => {
+    store = []
+    expect((await handshake(BOUND_ID)).type).toBe('auth_ok')
+  })
+
+  it('fails closed when the token store cannot be read, and logs the cause but not the token', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mockReadTokens.mockImplementation(() => {
+      throw new Error('tokens.json: not valid JSON')
+    })
+    const { ws } = await handshake('some-other-host')
+
+    expect(JSON.parse(ws.send.mock.calls[0][0] as string)).toEqual({ type: 'auth_error', message: 'Invalid token' })
+    expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+    expect(mockRegistry.register).not.toHaveBeenCalled()
+    const logged = warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
+    expect(logged).toContain('not valid JSON')
+    expect(logged).not.toContain(STATIC_TOKEN)
   })
 })
 

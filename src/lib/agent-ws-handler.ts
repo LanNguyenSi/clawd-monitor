@@ -54,7 +54,8 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
       }
 
       // Validate token — check static env tokens first, then persisted tokens.json
-      let tokenValid = STATIC_TOKENS.includes(msg.token)
+      const staticMatch = STATIC_TOKENS.includes(msg.token)
+      let tokenValid = staticMatch
       let matched: TokenEntry | null = null
       if (!tokenValid) {
         // Persisted tokens cost a store read and a bcrypt compare each: charge
@@ -86,6 +87,32 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
               break
             }
           } catch {}
+        }
+      }
+
+      if (staticMatch) {
+        // A static token is shared and unbound, but it must not take over an
+        // agentId that a persisted token is bound to: that binding is what
+        // keeps one host from replacing another agent's registry entry. The
+        // store is read here, at handshake time and synchronously, with no
+        // await before registry.register, so a binding created a moment ago
+        // counts and nothing is cached across handshakes. A missing
+        // tokens.json reads as an empty list (the normal "no persisted
+        // tokens" case), so it never locks out a static agent. A store that
+        // exists but cannot be read or parsed fails closed, like the
+        // persisted-token path: failing open there would make the check
+        // vanish exactly when the store is broken, and the operator can fix
+        // a corrupt file, while an agentId takeover cannot be undone. Both
+        // refusals answer like an invalid token; the server log names the
+        // reason, never the token.
+        try {
+          if (readTokens().some((t) => t.agentId === msg.agentId)) {
+            console.warn(`[agent-ws] Auth failed for agentId=${msg.agentId}: a static token cannot claim an agentId bound to a persisted token`)
+            tokenValid = false
+          }
+        } catch (err) {
+          console.warn(`[agent-ws] Could not read tokens to check agentId bindings; rejecting static-token handshake: ${err instanceof Error ? err.message : 'unknown error'}`)
+          tokenValid = false
         }
       }
 

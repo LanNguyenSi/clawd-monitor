@@ -551,6 +551,60 @@ describe('agent handshake with an unusable tokens.json (real store)', () => {
     expect(fs.readFileSync(file('tokens.json'), 'utf-8')).toBe(BODY)
   })
 
+  describe('static token (reads the store to check agentId bindings)', () => {
+    async function staticHandshake(agentId: string): Promise<MockWs> {
+      vi.stubEnv('AGENT_TOKENS', 'static-shared-token')
+      const { handleAgentConnection } = await import('@/lib/agent-ws-handler')
+      const ws = new MockWs()
+      handleAgentConnection(ws as unknown as WebSocket, {} as IncomingMessage)
+      ws.emit('message', Buffer.from(JSON.stringify({
+        type: 'auth', token: 'static-shared-token', agentId, name: 'A', version: '1',
+      })))
+      await vi.waitFor(() => expect(ws.send).toHaveBeenCalled(), { timeout: 5000 })
+      return ws
+    }
+
+    it('accepts when tokens.json does not exist (no persisted tokens is the normal case)', async () => {
+      const ws = await staticHandshake('a1')
+      expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_ok')
+      expect(ws.close).not.toHaveBeenCalled()
+      expect(dirEntries()).toEqual([])
+    })
+
+    it('rejects an agentId bound to a persisted token and accepts another one', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const BODY = JSON.stringify([{ id: 't1', name: 'n', tokenHash: 'x', createdAt: 'c', agentId: 'victim' }])
+      fs.writeFileSync(file('tokens.json'), BODY)
+      const denied = await staticHandshake('victim')
+      expect(JSON.parse(denied.send.mock.calls[0][0] as string).type).toBe('auth_error')
+      expect(denied.close).toHaveBeenCalledWith(1008, 'Invalid token')
+      const allowed = await staticHandshake('other')
+      expect(JSON.parse(allowed.send.mock.calls[0][0] as string).type).toBe('auth_ok')
+      expect(fs.readFileSync(file('tokens.json'), 'utf-8')).toBe(BODY)
+    })
+
+    it('fails closed on a corrupt tokens.json and leaves the file as it is', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const CORRUPT = '[{"id":"t1","tokenHash":'
+      fs.writeFileSync(file('tokens.json'), CORRUPT)
+      const ws = await staticHandshake('a1')
+      expect(JSON.parse(ws.send.mock.calls[0][0] as string)).toEqual({ type: 'auth_error', message: 'Invalid token' })
+      expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+      const logged = warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
+      expect(logged).toContain('not valid JSON')
+      expect(logged).not.toContain('static-shared-token')
+      expect(fs.readFileSync(file('tokens.json'), 'utf-8')).toBe(CORRUPT)
+    })
+
+    it('fails closed when tokens.json exists but cannot be read (a directory)', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      fs.mkdirSync(file('tokens.json'))
+      const ws = await staticHandshake('a1')
+      expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_error')
+      expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+    })
+  })
+
   it('a successful handshake stamps lastUsedAt through the atomic write and leaves no temp file', async () => {
     vi.stubEnv('AGENT_TOKENS', '')
     const hash = await bcrypt.hash('good-token', 4)
