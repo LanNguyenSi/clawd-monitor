@@ -8,6 +8,7 @@ sources:
   - server.ts
   - src/lib/ws-upgrade.ts
   - src/lib/agent-ws-handler.ts
+  - src/lib/agent-ws-limits.ts
   - src/lib/agent-registry.ts
   - src/lib/schemas.ts
   - src/lib/data-store.ts
@@ -47,7 +48,7 @@ The custom server (`server.ts`, run by `tsx` or compiled by `tsc`) and the
 Next.js-compiled API routes load `agent-registry.ts` as separate module
 instances; the `globalThis` slot is what makes the WebSocket handler and the
 routes see the same `agents` map. The server graph imports the handler
-statically (`server.ts:8#"handleAgentConnection"`), so it creates the
+statically (`server.ts:7#"handleAgentConnection"`), so it creates the
 singleton before Next.js starts. Module-level constants of the server-graph
 copy, `AGENT_TTL_MS` among them, are the ones the shared instance's methods
 use; see [auth and config loading](auth-and-config-loading.md) for when
@@ -68,19 +69,32 @@ those constants are read (after the `.env` files were loaded).
    (`src/lib/ws-upgrade.ts:35#"socket.destroy()"`); in development it is
    replayed on Next's server so HMR keeps its socket
    (`server.ts:62#"nextServer.emit"`).
-2. Every frame is JSON-parsed and validated against `wsMessageSchema`
+2. Before that, a socket is held to limits in `src/lib/agent-ws-limits.ts`
+   until it authenticates: at most 32 such sockets at once, the next is closed
+   with 1013 (`src/lib/agent-ws-limits.ts:135#"AGENT_WS_MAX_UNAUTHENTICATED"`);
+   a deadline of 10 s closes a silent one with 1008
+   (`src/lib/agent-ws-limits.ts:169#"AGENT_WS_AUTH_TIMEOUT_MS"`); a frame over
+   8 KiB closes it with 1009 before any parse
+   (`src/lib/agent-ws-handler.ts:34#"guard.tooLarge(raw)"`); and a handshake
+   that needs the token store is charged to the client IP first, 10 per 15
+   minutes, over which the socket is closed with 1008 before the store is read
+   (`src/lib/agent-ws-handler.ts:62#"guard.admitHandshake()"`). These refusals
+   send no `auth_error`. The server as a whole refuses any frame over 1 MiB
+   (`src/lib/agent-ws-limits.ts:63#"maxPayload"`).
+3. Every frame within those limits is JSON-parsed and validated against
+   `wsMessageSchema`
    (`auth`, `snapshot` or `ping`). A frame that is not JSON is dropped
    without a reply
-   (`src/lib/agent-ws-handler.ts:36-37#"return"`); a JSON frame that fails
+   (`src/lib/agent-ws-handler.ts:45-46#"return"`); a JSON frame that fails
    the schema gets `{type:'error'}` and the socket stays open
-   (`src/lib/agent-ws-handler.ts:30-32#"Invalid message format"`).
-3. Before authentication, any valid non-`auth` message gets `auth_error`
+   (`src/lib/agent-ws-handler.ts:40-42#"Invalid message format"`).
+4. Before authentication, any valid non-`auth` message gets `auth_error`
    and the socket is closed
-   (`src/lib/agent-ws-handler.ts:41-43#"ws.close()"`).
-4. The token is checked against the `AGENT_TOKENS` list first (exact string
+   (`src/lib/agent-ws-handler.ts:50-52#"ws.close()"`).
+5. The token is checked against the `AGENT_TOKENS` list first (exact string
    match), then with `bcrypt.compare` against every `tokenHash` in
    `tokens.json`
-   (`src/lib/agent-ws-handler.ts:66-68#"tokenValid = true"`). A miss sends
+   (`src/lib/agent-ws-handler.ts:78-80#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket with code 1008
    (`src/lib/agent-ws-handler.ts:124#"ws.close(1008"`). A `tokens.json` read
    that throws (the file is corrupt, empty, unreadable or holds an entry that is
@@ -89,8 +103,8 @@ those constants are read (after the `.env` files were loaded).
    tokens) is handled the same way: `auth_error`, close 1008, and
    a warning that carries only the error message, naming the file, so the
    client learns nothing about the store and the operator sees the cause
-   (`src/lib/agent-ws-handler.ts:58-62#"ws.close(1008, 'Invalid token')"`).
-5. On success the handler calls `registry.register()` with the agent's
+   (`src/lib/agent-ws-handler.ts:70-74#"ws.close(1008, 'Invalid token')"`).
+6. On success the handler calls `registry.register()` with the agent's
    self-reported `agentId`, `name`, `version`, `gatewayUrl` and
    `gatewayToken`, then sends `auth_ok`
    (`src/lib/agent-ws-handler.ts:128-139#"auth_ok"`). The handshake does not
@@ -210,7 +224,7 @@ and does not touch the registry. A token is checked only during the
 handshake, so a connected agent keeps its socket and keeps sending
 snapshots after its token is deleted; the deletion takes effect on its next
 reconnect. `AGENT_TOKENS` is read once at module load
-(`src/lib/agent-ws-handler.ts:9-12#".filter(Boolean)"`), so removing a
+(`src/lib/agent-ws-handler.ts:10-13#".filter(Boolean)"`), so removing a
 static token takes a restart.
 
 ## What the registry exposes

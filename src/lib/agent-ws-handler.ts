@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { registry } from './agent-registry.js'
 import { readTokens, writeTokens, type TokenEntry } from './data-store.js'
 import { wsMessageSchema, type ValidatedWsMessage } from './schemas.js'
+import { admitUnauthenticated } from './agent-ws-limits.js'
 
 // Static tokens from env (for backward compat + default setup)
 const STATIC_TOKENS = (process.env.AGENT_TOKENS ?? '')
@@ -19,11 +20,19 @@ function send(ws: WebSocket, msg: object) {
   }
 }
 
-export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
+export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
   let agentId: string | null = null
   let authenticated = false
 
+  // Bounds what a socket may cost before it authenticates (see agent-ws-limits.ts).
+  const guard = admitUnauthenticated(ws, req)
+  if (!guard) return
+
   ws.on('message', async (raw: Buffer | string) => {
+    // Before authentication a message is size-checked on the raw bytes, before
+    // it is parsed, and ignored once the socket was rejected or timed out.
+    if (!authenticated && (guard.gone || guard.tooLarge(raw))) return
+
     let msg: ValidatedWsMessage
     try {
       const parsed = JSON.parse(raw.toString())
@@ -48,6 +57,9 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
       let tokenValid = STATIC_TOKENS.includes(msg.token)
       let matched: TokenEntry | null = null
       if (!tokenValid) {
+        // Persisted tokens cost a store read and a bcrypt compare each: charge
+        // this client's budget first, so a client over it never gets that far.
+        if (!guard.admitHandshake()) return
         // A failing store read fails closed: access is denied like for any
         // invalid token, but the client is answered and the socket closed with
         // 1008 instead of left open until it times out. The message stays
@@ -125,8 +137,12 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
         return
       }
 
+      // The socket may have been closed or timed out while bcrypt ran.
+      if (guard.gone) return
+
       agentId = msg.agentId
       authenticated = true
+      guard.authenticated()
       registry.register(ws, {
         agentId: msg.agentId,
         name: msg.name,

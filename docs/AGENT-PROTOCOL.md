@@ -163,6 +163,35 @@ Server → agent:
   stays open.
 - A payload that is not valid JSON is ignored silently (no reply).
 
+## Limits and close codes
+
+The endpoint is open to anyone, so a socket that has not authenticated yet is
+held to limits (constants in `src/lib/agent-ws-limits.ts`, not settings). When
+one is hit the server closes the socket with a WebSocket close code and sends
+no `auth_error`: that message makes the reference agent stop for good, and
+these refusals are temporary, so the agent reconnects with its backoff.
+
+| Limit | Value | When it is hit |
+| --- | --- | --- |
+| Message size before authentication | 8 KiB | Close `1009` (`Message too big`), the message is not parsed |
+| Message size at any time | 1 MiB | ws closes the socket with `1009`; the reference agent's largest snapshot is about 360 KiB in the worst case, typically a tenth of that |
+| Time to authenticate | 10 s after connecting | Close `1008` (`Authentication timeout`); a socket that authenticated is not affected |
+| Sockets waiting to authenticate | 32, all clients together | The next socket is closed at once with `1013` (`Server busy`) |
+| Persisted-token handshakes per client IP | 10 per 15 minutes | Close `1008` (`Too many attempts`) before the token store is read; a successful handshake clears the IP's count |
+
+- The handshake limit counts only tokens that need the token store and a
+  bcrypt compare. A token from `AGENT_TOKENS` is matched first, costs nothing,
+  and is never refused or counted for it; a successful persisted-token
+  handshake clears the failures of that client.
+- The client IP is derived as for the login limit: the TCP peer address, or
+  with `TRUSTED_PROXY_HOPS=N` the N-th `X-Forwarded-For` address from the
+  right (see `docs/configuration.md`, "Login rate limit"). IPv6 clients count
+  by /64 and also against their /48 (50 handshakes).
+- Several agents behind one address share that address's count. State is in
+  memory, so a restart clears it.
+- An invalid token still gets `auth_error` ("Invalid token") and close `1008`,
+  as described under [Handshake](#handshake).
+
 ## Offline behavior and TTL
 
 When a socket closes, the agent is marked offline but its last snapshot is
@@ -184,7 +213,7 @@ The state diagram shows the lifecycle of a connection and its registry entry.
 stateDiagram-v2
   [*] --> AwaitingAuth: upgrade /api/agents/ws
   AwaitingAuth --> AwaitingAuth: malformed message
-  AwaitingAuth --> Closed: invalid token, or snapshot or ping first
+  AwaitingAuth --> Closed: invalid token, snapshot or ping first, over a limit, or no auth within the deadline
   AwaitingAuth --> Online: valid token, register, auth_ok
   Offline --> Online: re-auth
   Online --> Online: snapshot or ping
