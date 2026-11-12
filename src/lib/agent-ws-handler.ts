@@ -70,7 +70,7 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
         } catch (err) {
           console.warn(`[agent-ws] Could not read tokens; rejecting handshake: ${err instanceof Error ? err.message : 'unknown error'}`)
           send(ws, { type: 'auth_error', message: 'Invalid token' })
-          ws.close(1008, 'Invalid token')
+          guard.close(1008, 'Invalid token')
           return
         }
         for (const entry of entries) {
@@ -138,7 +138,7 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
       if (!tokenValid) {
         console.warn(`[agent-ws] Auth failed for agentId=${msg.agentId} — invalid token`)
         send(ws, { type: 'auth_error', message: 'Invalid token' })
-        ws.close(1008, 'Invalid token')
+        guard.close(1008, 'Invalid token')
         return
       }
 
@@ -167,9 +167,9 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
     }
   }
   // The guard keeps the unauthenticated slot until the work of each message,
-  // bcrypt included, has settled.
+  // bcrypt included, has settled, and logs a failing handler.
   ws.on('message', (raw: Buffer | string) => {
-    void guard.track(onMessage(raw))
+    guard.run(() => onMessage(raw))
   })
 
   ws.on('close', () => {

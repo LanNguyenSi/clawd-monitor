@@ -194,6 +194,12 @@ these refusals are temporary, so the agent reconnects with its backoff.
   includes a token compare still running after the socket closed. Many
   addresses together can still fill the 32 slots; agents then wait and retry.
   State is in memory, so a restart clears it.
+- The handshake budget also bounds the CPU one address can spend: up to 10
+  handshakes per 15 minutes, each up to one bcrypt compare (about 100 ms) per
+  stored token. A socket gets one persisted-token handshake (every
+  outcome but success closes it); an `auth` message sent on the same socket
+  meanwhile is ignored (the socket stays open and the first handshake decides
+  the outcome).
 - An invalid token still gets `auth_error` ("Invalid token") and close `1008`,
   as described under [Handshake](#handshake).
 

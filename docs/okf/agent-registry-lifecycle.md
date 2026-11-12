@@ -70,21 +70,22 @@ those constants are read (after the `.env` files were loaded).
    replayed on Next's server so HMR keeps its socket
    (`server.ts:62#"nextServer.emit"`).
 2. Before that, a socket is held to limits in `src/lib/agent-ws-limits.ts`
-   until it authenticates: at most 32 such sockets at once, 4 per client key
-   and 16 per IPv6 /48, the next is closed with 1013
-   (`src/lib/agent-ws-limits.ts:174#"AGENT_WS_MAX_UNAUTHENTICATED"`). A slot
-   is given back once the socket authenticated, closed, errored, timed out or
-   was rejected and the work for its messages (a token compare in progress)
-   has settled; 
-   a deadline of 10 s closes a silent one with 1008
-   (`src/lib/agent-ws-limits.ts:213#"AGENT_WS_AUTH_TIMEOUT_MS"`); a frame over
+   until it authenticates. At most 32 such sockets exist at once, 4 per client
+   key and 16 per IPv6 /48; the next is closed with 1013
+   (`src/lib/agent-ws-limits.ts:185#"AGENT_WS_MAX_UNAUTHENTICATED"`). A slot is
+   given back once the socket authenticated, closed, errored, timed out or was
+   rejected and the work for its messages (a token compare in progress) has
+   settled. A deadline of 10 s closes a silent socket with 1008
+   (`src/lib/agent-ws-limits.ts:226#"AGENT_WS_AUTH_TIMEOUT_MS"`). A frame over
    8 KiB closes it with 1009 before any parse
-   (`src/lib/agent-ws-handler.ts:34#"guard.tooLarge(raw)"`); and a handshake
-   that needs the token store is charged to the client IP first, 10 per 15
-   minutes, over which the socket is closed with 1008 before the store is read
-   (`src/lib/agent-ws-handler.ts:62#"guard.admitHandshake()"`). These refusals
-   send no `auth_error`. The server as a whole refuses any frame over 1 MiB
-   (`src/lib/agent-ws-limits.ts:73#"maxPayload"`).
+   (`src/lib/agent-ws-handler.ts:34#"guard.tooLarge(raw)"`). A handshake that
+   needs the token store is charged to the client IP first, 10 per 15 minutes,
+   and the socket is closed with 1008 before the store is read when the
+   budget is used up; a socket gets one such handshake, and an `auth` message
+   sent meanwhile is ignored
+   (`src/lib/agent-ws-handler.ts:62#"guard.admitHandshake()"`). These
+   refusals send no `auth_error`. The server as a whole refuses any frame over
+   1 MiB (`src/lib/agent-ws-limits.ts:73#"maxPayload"`).
 3. Every frame within those limits is JSON-parsed and validated against
    `wsMessageSchema`
    (`auth`, `snapshot` or `ping`). A frame that is not JSON is dropped
@@ -100,14 +101,14 @@ those constants are read (after the `.env` files were loaded).
    `tokens.json`, and stops at the next entry once the socket is gone
    (`src/lib/agent-ws-handler.ts:82-86#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket with code 1008
-   (`src/lib/agent-ws-handler.ts:141#"ws.close(1008"`). A `tokens.json` read
+   (`src/lib/agent-ws-handler.ts:141#"guard.close(1008"`). A `tokens.json` read
    that throws (the file is corrupt, empty, unreadable or holds an entry that is
    not an object with string `id`, `name`, `tokenHash` and `createdAt` and, when
    present, a string `lastUsedAt` and `agentId`; only a missing file reads as no
    tokens) is handled the same way: `auth_error`, close 1008, and
    a warning that carries only the error message, naming the file, so the
    client learns nothing about the store and the operator sees the cause
-   (`src/lib/agent-ws-handler.ts:70-74#"ws.close(1008, 'Invalid token')"`).
+   (`src/lib/agent-ws-handler.ts:70-74#"guard.close(1008, 'Invalid token')"`).
 6. On success the handler calls `registry.register()` with the agent's
    self-reported `agentId`, `name`, `version`, `gatewayUrl` and
    `gatewayToken`, then sends `auth_ok`

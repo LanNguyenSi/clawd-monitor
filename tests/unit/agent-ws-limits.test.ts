@@ -310,7 +310,7 @@ describe('cap on unauthenticated sockets', () => {
     expect(limits.unauthenticatedKeyCount('10.0.0.1')).toBe(1)
   })
 
-  it('frees a slot when a failed handshake ends in a close', async () => {
+  it('frees a slot when a failed handshake closes the socket, without waiting for the close handshake', async () => {
     await load()
     const held = await fill(limits.AGENT_WS_MAX_UNAUTHENTICATED - 1)
     const bad = await connect(FRESH)
@@ -318,11 +318,24 @@ describe('cap on unauthenticated sockets', () => {
     expect(sentTypes(bad)).toEqual(['auth_error'])
     expect(bad.close).toHaveBeenCalledWith(1008, expect.any(String))
     await flush()
-    expect(limits.unauthenticatedSocketCount()).toBe(limits.AGENT_WS_MAX_UNAUTHENTICATED)
+    expect(limits.unauthenticatedSocketCount()).toBe(held.length)
+    expect(limits.unauthenticatedKeyCount(FRESH)).toBe(0)
+    // the late close event does not free it again
     bad.emit('close')
     await flush()
     expect(limits.unauthenticatedSocketCount()).toBe(held.length)
     expect((await connect(FRESH)).close).not.toHaveBeenCalled()
+  })
+
+  it('destroys a socket that ignores the close after a failed handshake', async () => {
+    await load()
+    vi.useFakeTimers()
+    const bad = await connect(FRESH)
+    bad.emit('message', authWith('wrong'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(bad.close).toHaveBeenCalledWith(1008, 'Invalid token')
+    await vi.advanceTimersByTimeAsync(limits.AGENT_WS_CLOSE_GRACE_MS)
+    expect(bad.terminate).toHaveBeenCalledOnce()
   })
 
   it('frees a slot when the client closes', async () => {
@@ -728,13 +741,21 @@ describe('per-IP handshake budget', () => {
     }
   })
 
-  it('counts a handshake when it is admitted, so parallel messages on one socket cannot all pass', async () => {
+  it('charges a handshake when it is admitted, before the token store is read', async () => {
     await load()
     const ws = await connect('10.0.0.1')
-    for (let i = 0; i < 4 * limits.AGENT_WS_HANDSHAKE_MAX_ATTEMPTS; i++) ws.emit('message', authWith('wrong-token'))
-    await new Promise<void>((r) => setTimeout(r, 50))
-    expect(mockReadTokens).toHaveBeenCalledTimes(limits.AGENT_WS_HANDSHAKE_MAX_ATTEMPTS)
-    expect(ws.close).toHaveBeenCalledWith(limits.WS_CLOSE_POLICY, 'Too many attempts')
+    ws.emit('message', authWith('wrong-token'))
+    // the store was read synchronously after the charge; a second socket of the same IP is charged too
+    expect(mockReadTokens).toHaveBeenCalledTimes(1)
+    const ws2 = await connect('10.0.0.1')
+    ws2.emit('message', authWith('wrong-token'))
+    expect(mockReadTokens).toHaveBeenCalledTimes(2)
+    await flush()
+    // two charges stand, so eight more fit
+    for (let i = 0; i < limits.AGENT_WS_HANDSHAKE_MAX_ATTEMPTS - 2; i++) await fail('10.0.0.1')
+    const over = await connect('10.0.0.1')
+    over.emit('message', authWith('wrong-token'))
+    expect(over.close).toHaveBeenCalledWith(limits.WS_CLOSE_POLICY, 'Too many attempts')
   })
 
   it('keys on the socket peer when no proxy is trusted, whatever X-Forwarded-For says', async () => {
@@ -758,6 +779,164 @@ describe('per-IP handshake budget', () => {
     const otherClient = await connect('10.0.0.1', '203.0.113.8')
     await authenticate(otherClient, 'wrong-token')
     expect(sentTypes(otherClient)).toEqual(['auth_error'])
+  })
+})
+
+describe('one handshake per socket', () => {
+  const entries = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ id: `t${i}`, name: `n${i}`, tokenHash: `h${i}`, createdAt: new Date().toISOString() }))
+
+  function pendingCompares() {
+    const resolvers: Array<(ok: boolean) => void> = []
+    const spy = vi.spyOn(bcrypt, 'compare').mockImplementation(
+      () => new Promise<boolean>((resolve) => resolvers.push(resolve)) as never,
+    )
+    return { spy, resolvers }
+  }
+
+  it('starts one compare loop for several auth messages at once and does not close the socket for the extras', async () => {
+    await load()
+    mockReadTokens.mockReturnValue(entries(1))
+    const { spy, resolvers } = pendingCompares()
+    try {
+      const ws = await connect('10.4.4.4')
+      for (let i = 0; i < 8; i++) ws.emit('message', authWith('wrong-token'))
+      await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
+      await flush()
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(mockReadTokens).toHaveBeenCalledTimes(1)
+      expect(ws.close).not.toHaveBeenCalled()
+      expect(ws.send).not.toHaveBeenCalled()
+
+      resolvers[0](false)
+      await vi.waitFor(() => expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token'))
+      // one answer for one handshake, and the loop did not go on
+      expect(sentTypes(ws)).toEqual(['auth_error'])
+      expect(spy).toHaveBeenCalledTimes(1)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('charges the IP budget once for the several messages', async () => {
+    await load()
+    mockReadTokens.mockReturnValue(entries(1))
+    const { spy, resolvers } = pendingCompares()
+    try {
+      const ws = await connect('10.4.4.4')
+      for (let i = 0; i < 8; i++) ws.emit('message', authWith('wrong-token'))
+      await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
+      resolvers[0](false)
+      await flush()
+      for (let i = 0; i < limits.AGENT_WS_HANDSHAKE_MAX_ATTEMPTS - 1; i++) {
+        autoClose = true
+        const w = await connect('10.4.4.4')
+        w.emit('message', authWith('wrong-token'))
+        await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(i + 2))
+        resolvers[i + 1](false)
+        await flush()
+      }
+      const over = await connect('10.4.4.4')
+      over.emit('message', authWith('wrong-token'))
+      expect(over.close).toHaveBeenCalledWith(limits.WS_CLOSE_POLICY, 'Too many attempts')
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('lets a handshake of another socket of the same address run at the same time', async () => {
+    await load()
+    mockReadTokens.mockReturnValue(entries(3))
+    const { spy } = pendingCompares()
+    try {
+      const a = await connect('10.4.4.4')
+      const b = await connect('10.4.4.4')
+      a.emit('message', authWith('wrong-token'))
+      b.emit('message', authWith('wrong-token'))
+      await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(2))
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('counts a socket whose token was rejected as gone: later messages cost nothing', async () => {
+    await load()
+    const ws = await connect('10.4.4.4')
+    await authenticate(ws, 'wrong-token')
+    expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+    expect(mockReadTokens).toHaveBeenCalledTimes(1)
+    // no close event yet: the socket is still open for the peer, but the server is done with it
+    ws.send.mockClear()
+    ws.emit('message', authWith('wrong-token'))
+    ws.emit('message', authWith(STATIC_TOKEN))
+    await flush()
+    expect(mockReadTokens).toHaveBeenCalledTimes(1)
+    expect(ws.send).not.toHaveBeenCalled()
+    expect(mockRegister).not.toHaveBeenCalled()
+  })
+
+  it('counts a socket as gone when the token store cannot be read', async () => {
+    await load()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      mockReadTokens.mockImplementationOnce(() => {
+        throw new Error('EIO')
+      })
+      const ws = await connect('10.4.4.4')
+      await authenticate(ws, 'wrong-token')
+      expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+      ws.send.mockClear()
+      ws.emit('message', authWith(STATIC_TOKEN))
+      await flush()
+      expect(ws.send).not.toHaveBeenCalled()
+      expect(limits.unauthenticatedSocketCount()).toBe(0)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})
+
+describe('a handler that throws', () => {
+  it('produces no unhandled rejection, logs only the message, and frees the slot', async () => {
+    await load()
+    mockRegister.mockImplementationOnce(() => {
+      throw new Error('registry exploded')
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const rejections: unknown[] = []
+    const onRejection = (err: unknown) => rejections.push(err)
+    process.on('unhandledRejection', onRejection)
+    try {
+      const ws = await connect('10.5.5.5')
+      ws.emit('message', authWith(STATIC_TOKEN))
+      await vi.waitFor(() => expect(limits.unauthenticatedSocketCount()).toBe(0))
+      await new Promise<void>((r) => setTimeout(r, 50))
+      expect(rejections).toEqual([])
+      const logged = warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
+      expect(logged).toContain('registry exploded')
+      expect(logged).not.toContain(STATIC_TOKEN)
+      expect(limits.unauthenticatedKeyCount('10.5.5.5')).toBe(0)
+    } finally {
+      process.off('unhandledRejection', onRejection)
+      warn.mockRestore()
+    }
+  })
+
+  it('treats a compare that throws as a miss and closes the socket', async () => {
+    await load()
+    mockReadTokens.mockImplementationOnce(() => [{ id: 't', name: 'n', tokenHash: 'h', createdAt: 'x' }])
+    const compare = vi.spyOn(bcrypt, 'compare').mockImplementationOnce(() => Promise.reject(new Error('bcrypt failed')) as never)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const ws = await connect('10.5.5.6')
+      ws.emit('message', authWith('wrong-token'))
+      await flush()
+      await vi.waitFor(() => expect(ws.close).toHaveBeenCalled())
+      expect(compare).toHaveBeenCalledTimes(1)
+    } finally {
+      compare.mockRestore()
+      warn.mockRestore()
+    }
   })
 })
 

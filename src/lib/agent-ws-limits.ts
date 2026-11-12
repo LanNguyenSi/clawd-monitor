@@ -145,20 +145,31 @@ export interface PreAuthGuard {
   /** True (and the socket is closed with 1009) when a pre-auth message is over the limit. Check before JSON.parse. */
   tooLarge(raw: Buffer | string): boolean
   /**
-   * Charge one persisted-token handshake to the client IP. False (and the
-   * socket is closed with 1008) when the IP's budget is used up; call it
-   * before the token store is read.
+   * Admit the persisted-token handshake of this socket: charge it to the client
+   * IP, and allow one per socket (every outcome but success closes the socket). False means do not go on: the socket is closed
+   * with 1008 when the IP's budget is used up, and the message is ignored
+   * without closing when this socket already started one (the first decides
+   * the outcome, and closing would cut off a handshake that may be about to
+   * succeed). Call it before the token store is read.
    */
   admitHandshake(): boolean
+  /**
+   * Close the socket (as the deadline does): it counts as gone from now on, so
+   * any compare loop of it stops, and its slot is freed once its running work
+   * has settled. For a handshake that failed.
+   */
+  close(code: number, reason: string): void
   /** The socket authenticated: stop the deadline, free the slot, clear the IP's failures if it was charged. */
   authenticated(): void
   /**
-   * Register the processing of one message. The slot of a socket that is gone
-   * (or authenticated) is given back only when every tracked message has
+   * Run the processing of one message. The slot of a socket that is gone (or
+   * authenticated) is given back only when every message run this way has
    * settled, so the cap also bounds the bcrypt compares still running for
-   * sockets that already closed. Returns the promise it was given.
+   * sockets that already closed. A rejection of `work` is logged (message
+   * only, never the payload) and does not leave an unhandled rejection or
+   * keep the slot.
    */
-  track<T>(work: Promise<T>): Promise<T>
+  run(work: () => Promise<void>): void
 }
 
 /**
@@ -167,7 +178,7 @@ export interface PreAuthGuard {
  * waiting or its client key (or IPv6 /48) holds its share. Otherwise starts
  * the authentication deadline. The slot, global and per client, is given back
  * exactly once: after the first of authentication, close, error or the
- * deadline, and once every message tracked with track() has settled.
+ * deadline, and once every message processed with run() has settled.
  */
 export function admitUnauthenticated(ws: WebSocket, req: IncomingMessage): PreAuthGuard | null {
   const client = upgradeClientKeys(req)
@@ -186,6 +197,8 @@ export function admitUnauthenticated(ws: WebSocket, req: IncomingMessage): PreAu
   let inFlight = 0
   let gone = false
   let charged = false
+  // A socket gets one persisted-token handshake: every outcome but success closes it.
+  let handshakeStarted = false
   let cancelReap: (() => void) | null = null
 
   const releaseIfIdle = () => {
@@ -224,21 +237,29 @@ export function admitUnauthenticated(ws: WebSocket, req: IncomingMessage): PreAu
       return true
     },
     admitHandshake() {
+      if (handshakeStarted) return false
       const gate = agentHandshakeLimiter.acquire(client.key, client.parent)
       if (!gate.allowed) {
         reject(WS_CLOSE_POLICY, 'Too many attempts')
         return false
       }
       charged = true
+      handshakeStarted = true
       return true
     },
-    track(work) {
+    close(code, reason) {
+      reject(code, reason)
+    },
+    run(work) {
       inFlight += 1
-      void work.finally(() => {
-        inFlight -= 1
-        releaseIfIdle()
-      })
-      return work
+      work()
+        .catch((err: unknown) => {
+          console.warn(`[agent-ws] Message handler failed: ${err instanceof Error ? err.message : 'unknown error'}`)
+        })
+        .finally(() => {
+          inFlight -= 1
+          releaseIfIdle()
+        })
     },
     authenticated() {
       clearTimeout(deadline)
