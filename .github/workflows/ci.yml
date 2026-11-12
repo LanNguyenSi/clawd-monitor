@@ -49,7 +49,7 @@ jobs:
         env:
           ADMIN_PASSWORD: ci-test
           JWT_SECRET: ci-test-secret-32-chars-minimum-ok
-          NEXT_PUBLIC_DEFAULT_GATEWAY_URL: http://localhost:9500
+          DEFAULT_GATEWAY_URL: http://localhost:9500
 
   test:
     runs-on: ubuntu-latest
