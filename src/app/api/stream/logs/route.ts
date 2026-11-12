@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthenticated } from '@/lib/auth'
-import { gatewayFetch, GatewayUrlError } from '@/lib/gateway'
+import { gatewayFetch, GatewayUrlError, resolveDefaultGatewayUrl } from '@/lib/gateway'
 import { isLogSource, isValidContainerName, type LogSource } from '@/lib/input-validators'
 import { spawn } from 'child_process'
 
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
 
       } else {
         // openclaw: try Gateway /logs/stream, fall back to journal
-        const gatewayUrl = req.headers.get('x-gateway-url') ?? process.env.NEXT_PUBLIC_DEFAULT_GATEWAY_URL ?? 'http://localhost:9500'
+        const gatewayUrl = req.headers.get('x-gateway-url') ?? resolveDefaultGatewayUrl()
         const token = req.headers.get('x-gateway-token') ?? process.env.DEFAULT_GATEWAY_TOKEN ?? ''
 
         // Fall back to the local journal for the openclaw process.

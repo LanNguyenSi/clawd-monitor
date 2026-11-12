@@ -328,6 +328,30 @@ describe('GET /api/stream/logs, default gateway URL', () => {
     const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('http://localhost:9500/logs/stream')
   })
+
+  it('uses DEFAULT_GATEWAY_URL, and it wins over the deprecated NEXT_PUBLIC_ name', async () => {
+    vi.stubEnv('DEFAULT_GATEWAY_URL', 'http://gateway.internal:9700')
+    const fetchMock = vi.fn(async () => new Response('line one\n'))
+    vi.stubGlobal('fetch', fetchMock)
+    const { streamGET } = await loadRoutes()
+    const res = await streamGET(new NextRequest('http://localhost/api/stream/logs?source=openclaw'))
+    expect(await readLines(res, 1)).toEqual(['line one'])
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('http://gateway.internal:9700/logs/stream')
+  })
+
+  it('reads the default at request time, not at module load', async () => {
+    const fetchMock = vi.fn(async () => new Response('line one\n'))
+    vi.stubGlobal('fetch', fetchMock)
+    const { streamGET } = await loadRoutes()
+    // gateway.ts already loaded its own copy with the beforeEach value.
+    vi.stubEnv('DEFAULT_GATEWAY_URL', 'http://localhost:9500')
+    vi.stubEnv('NEXT_PUBLIC_DEFAULT_GATEWAY_URL', '')
+    const res = await streamGET(new NextRequest('http://localhost/api/stream/logs?source=openclaw'))
+    expect(await readLines(res, 1)).toEqual(['line one'])
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('http://localhost:9500/logs/stream')
+  })
 })
 
 describe('GET /api/stream/logs, source parameter', () => {
