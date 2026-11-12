@@ -19,7 +19,7 @@ function DashboardInner() {
   const { toggleTheme } = useTheme()
   const [cols, setCols] = useState<ColCount>(4)
   const [ready, setReady] = useState(false)
-  const [editMode, setEditMode] = useState(true)
+  const [editMode, setEditMode] = useState(false)
   const [gridKey, setGridKey] = useState(0)
   const [activeWidgetIds, setActiveWidgetIds] = useState<string[]>([])
 

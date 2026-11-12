@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { Responsive, WidthProvider } from 'react-grid-layout'
 import type { Layout } from 'react-grid-layout'
 import { GridItem } from './GridItem'
+import { UndoNotice } from './UndoNotice'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { WIDGET_REGISTRY } from '@/lib/widgets'
 import {
@@ -42,9 +43,17 @@ interface Props {
   onLayoutChange?: (widgetIds: string[]) => void
 }
 
-export function WidgetGrid({ cols, editMode = true, onLayoutChange }: Props) {
+interface RemovedWidget {
+  id: string
+  title: string
+  /** The widget's layout item on every breakpoint that had one. */
+  items: Record<string, Layout>
+}
+
+export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
   const [layouts, setLayouts] = useState<ResponsiveLayouts>({})
   const [mounted, setMounted] = useState(false)
+  const [removed, setRemoved] = useState<RemovedWidget | null>(null)
 
   useEffect(() => {
     const validIds = new Set(WIDGET_REGISTRY.map((w) => w.id))
@@ -60,11 +69,40 @@ export function WidgetGrid({ cols, editMode = true, onLayoutChange }: Props) {
     onLayoutChange?.(current.map((l) => l.i))
   }, [onLayoutChange])
 
+  const dismissRemoved = useCallback(() => setRemoved(null), [])
+
+  const handleRemove = (id: string, title: string) => {
+    const items: Record<string, Layout> = {}
+    for (const [bp, list] of Object.entries(layouts)) {
+      const item = list.find((l) => l.i === id)
+      if (item) items[bp] = item
+    }
+    const next = removeWidget(layouts, id)
+    setLayouts(next)
+    saveLayouts(localStorage, next)
+    onLayoutChange?.(widgetIdsOf(next))
+    setRemoved({ id, title, items })
+  }
+
+  const handleUndo = () => {
+    if (!removed) return
+    const next: ResponsiveLayouts = { ...layouts }
+    for (const [bp, item] of Object.entries(removed.items)) {
+      const list = next[bp] ?? []
+      if (!list.some((l) => l.i === removed.id)) next[bp] = [...list, item]
+    }
+    setLayouts(next)
+    saveLayouts(localStorage, next)
+    onLayoutChange?.(widgetIdsOf(next))
+    setRemoved(null)
+  }
+
   if (!mounted) return null
 
   const colsMap = { lg: cols, md: Math.min(cols, 4), sm: 2, xs: 1, xxs: 1 }
 
   return (
+    <>
     <ResponsiveGrid
       className="react-grid-layout"
       layouts={layouts}
@@ -88,12 +126,7 @@ export function WidgetGrid({ cols, editMode = true, onLayoutChange }: Props) {
             key={id}
             title={widget.title}
             editMode={editMode}
-            onRemove={() => {
-              const next = removeWidget(layouts, id)
-              setLayouts(next)
-              saveLayouts(localStorage, next)
-              onLayoutChange?.(widgetIdsOf(next))
-            }}
+            onRemove={() => handleRemove(id, widget.title)}
           >
             <ErrorBoundary>
               <Suspense fallback={
@@ -108,5 +141,13 @@ export function WidgetGrid({ cols, editMode = true, onLayoutChange }: Props) {
         )
       })}
     </ResponsiveGrid>
+    {removed && (
+      <UndoNotice
+        message={`${removed.title} removed`}
+        onUndo={handleUndo}
+        onDismiss={dismissRemoved}
+      />
+    )}
+    </>
   )
 }

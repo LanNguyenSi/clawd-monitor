@@ -111,6 +111,20 @@ describe('dashboard layout wiring', () => {
     expect(JSON.parse(localStorage.getItem(LAYOUT_STORAGE_KEY) as string)).toEqual(all)
   })
 
+  describe('lock mode', () => {
+    const editButtons = () =>
+      Array.from(host.querySelectorAll('button')).filter((x) => /Edit layout/.test(x.textContent ?? ''))
+
+    it('opens locked and unlocks through the edit toggle', async () => {
+      await mountDashboard()
+      expect((grid.props as { isDraggable: boolean }).isDraggable).toBe(false)
+      expect(editButtons().length).toBeGreaterThan(0)
+      expect(editButtons().every((b) => b.getAttribute('aria-pressed') === 'false')).toBe(true)
+      await act(async () => editButtons()[0].click())
+      expect((grid.props as { isDraggable: boolean }).isDraggable).toBe(true)
+    })
+  })
+
   describe('reset layout', () => {
     it('asks for confirmation and restores the default layout when confirmed', async () => {
       localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(SAVED))
