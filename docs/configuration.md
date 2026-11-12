@@ -16,13 +16,13 @@ DEFAULT_GATEWAY_TOKEN=      # default OpenClaw API token
 ALLOWED_GATEWAY_HOSTS=      # SSRF allowlist for gateway URLs that are not the operator default: agent-reported gatewayUrl and the x-gateway-url header (comma-separated hostnames, each optionally host:port)
 CLAWD_DIR=/root/.openclaw/workspace  # path as seen by the server process, not mounted by the shipped Docker compose files (see "CLAWD_DIR under Docker"); server-local OpenClaw workspace: Memory Viewer fallback (MEMORY.md / CURRENT.md / memory/*.md) and Alert History source (memory/smart-alert-state.json); code default when unset is /root/clawd
 CLAWD_MONITOR_DATA_DIR=/data   # persistent storage for tokens + password hash
-DOMAIN=monitor.yourdomain.com  # read by docker-compose.traefik.yml only, not by the server
+DOMAIN=monitor.yourdomain.com  # read by docker-compose.traefik.yml only, not by the server; the traefik stack refuses to start without it
 GITHUB_TOKEN=               # GitHub API token for the GitHub PRs widget (read-only; repo/PR and checks read scope)
 GITHUB_REPOS=owner/repo,owner/other  # repositories the GitHub PRs widget lists; empty means the widget shows a hint
 SERVICE_HEALTH_URLS=api=https://api.example.com/health,https://example.com  # Service Health widget targets, comma-separated `[name=]url`; empty means no checks
 TRUSTED_PROXY_HOPS=0        # reverse proxies in front of the app whose X-Forwarded-For entry is trusted for the login rate limit (default 0 = header ignored; docker-compose.traefik.yml sets 1; see "Login rate limit")
-PORT=3000                   # listen port (server.ts default)
-HOSTNAME=0.0.0.0            # listen address (server.ts default)
+PORT=3000                   # listen port (server.ts default); applies only outside Docker (npm run dev / npm start): both compose files pin PORT=3000, so to change the published port change the port mapping in docker-compose.yml (with traefik, nothing: Traefik reaches the container on 3000)
+HOSTNAME=0.0.0.0            # listen address (server.ts default); applies only outside Docker (npm run dev / npm start): both compose files pin HOSTNAME=0.0.0.0
 ```
 
 When running outside Docker (`npm run dev`, `npm start`), the custom server
@@ -287,7 +287,11 @@ Limits you should know about:
 - Both compose files read `.env` and then `.env.runtime`; both are optional.
   `.env.runtime` (template `.env.runtime.example`, gitignored) is the place
   for secrets such as `ADMIN_PASSWORD_HASH` and `JWT_SECRET`. `.env` is also
-  used for `${DOMAIN}` in `docker-compose.traefik.yml`.
+  used for `${DOMAIN}` in `docker-compose.traefik.yml`. That variable is
+  required there (`${DOMAIN:?...}`): with `DOMAIN` unset or empty, any
+  `docker compose` command on that file fails immediately with the message
+  `DOMAIN must be set in .env for docker-compose.traefik.yml`, instead of
+  deploying a stack whose `Host()` router rule is empty and routes nothing.
 - In these files, write every `$` in a value as `$$`. A bcrypt hash contains
   `$` characters (example in `.env.runtime.example`).
 - `NODE_ENV` and `CLAWD_MONITOR_DATA_DIR` are fixed in the compose files

@@ -301,6 +301,60 @@ describe('client address trust for the login rate limiter', () => {
   })
 })
 
+describe('the listen address the containers are wired to is pinned', () => {
+  // The containers are wired to port 3000 (loadbalancer.server.port label in
+  // docker-compose.traefik.yml, 127.0.0.1:3000:3000 mapping in
+  // docker-compose.yml) and the healthcheck follows $PORT, so a PORT or
+  // HOSTNAME from .env (both files load it with env_file) would move the
+  // listener while the check stays green. compose environment: wins over
+  // env_file, so both files pin the two variables.
+  const envOf = (file: string) => loadCompose(file).services.app.environment ?? []
+  const pin = (env: string[], key: string) => env.filter((e) => e.startsWith(`${key}=`))
+
+  for (const file of COMPOSE_FILES) {
+    it(`${file} pins PORT=3000, so .env cannot move the listener off the wiring`, () => {
+      expect(pin(envOf(file), 'PORT')).toEqual(['PORT=3000'])
+    })
+
+    it(`${file} pins HOSTNAME=0.0.0.0, so .env cannot bind it somewhere unreachable`, () => {
+      expect(pin(envOf(file), 'HOSTNAME')).toEqual(['HOSTNAME=0.0.0.0'])
+    })
+  }
+})
+
+describe('the traefik stack requires DOMAIN', () => {
+  interface TraefikDoc {
+    services: { app: { labels?: string[] } }
+  }
+  const doc = yaml.load(
+    readFileSync(resolve(ROOT, 'docker-compose.traefik.yml'), 'utf8'),
+  ) as TraefikDoc
+  const rules = (doc.services.app.labels ?? []).filter((l) =>
+    l.startsWith('traefik.http.routers.clawd-monitor.rule='),
+  )
+
+  it('has exactly one router rule', () => {
+    expect(rules).toHaveLength(1)
+  })
+
+  it('interpolates DOMAIN in the required form, so an unset or empty DOMAIN fails the command', () => {
+    // ${DOMAIN:?msg} makes any docker compose command on the file exit with
+    // the message instead of interpolating an empty Host() that routes nothing.
+    expect(rules[0]).toMatch(
+      /^traefik\.http\.routers\.clawd-monitor\.rule=Host\(`\$\{DOMAIN:\?[^`]*\}`\)$/,
+    )
+    expect(rules[0]).toContain('DOMAIN must be set in .env')
+  })
+
+  it('names no other interpolated variable in the rule', () => {
+    // A bare ${DOMAIN} (optional form) anywhere in the rule would keep the
+    // empty-Host deploy; the rule must hold exactly the one ${DOMAIN:?...}.
+    const interpolated = (rules[0] ?? '').match(/\$\{[^}]*\}/g) ?? []
+    expect(interpolated).toHaveLength(1)
+    expect(interpolated[0] ?? '').toMatch(/^\$\{DOMAIN:\?/)
+  })
+})
+
 describe('Dockerfile data directory', () => {
   const lines = readFileSync(resolve(ROOT, 'Dockerfile'), 'utf8').split('\n')
   const at = (re: RegExp) => lines.findIndex((l) => re.test(l))

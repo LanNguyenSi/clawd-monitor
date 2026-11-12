@@ -11,6 +11,13 @@ services:
       # (what Traefik saw). Without this every client would share Traefik's
       # address. See docs/configuration.md ("Login rate limit").
       - TRUSTED_PROXY_HOPS=1
+      # The container is wired to 3000 by the loadbalancer.server.port label
+      # below and the healthcheck, so PORT/HOSTNAME are pinned here (compose
+      # environment: wins over env_file): a PORT or HOSTNAME in .env must not
+      # move the listener away from what Traefik reaches. They apply only
+      # outside Docker; Traefik reaches the container on the pinned port.
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
     volumes:
       - clawd_monitor_data:/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -45,7 +52,7 @@ services:
       - "${DOCKER_GID:-988}"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.clawd-monitor.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.clawd-monitor.rule=Host(`${DOMAIN:?DOMAIN must be set in .env for docker-compose.traefik.yml}`)"
       - "traefik.http.routers.clawd-monitor.entrypoints=websecure"
       - "traefik.http.routers.clawd-monitor.tls=true"
       - "traefik.http.routers.clawd-monitor.tls.certresolver=letsencrypt"
