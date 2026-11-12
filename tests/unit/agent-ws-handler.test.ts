@@ -681,18 +681,6 @@ describe('handleAgentConnection – post-auth paths', () => {
     expect(ws.send).not.toHaveBeenCalled()
   })
 
-  it('still answers ping on a replaced socket without closing it', async () => {
-    const ws = makeMockWs()
-    await authenticate(ws)
-    mockRegistry.update.mockReturnValue(false)
-
-    await emitAndWait(ws, { type: 'ping' })
-
-    expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('pong')
-    expect(ws.close).not.toHaveBeenCalled()
-    mockRegistry.update.mockReturnValue(true)
-  })
-
   it('sends {type:pong} for a ping message', async () => {
     const ws = makeMockWs()
     await authenticate(ws)

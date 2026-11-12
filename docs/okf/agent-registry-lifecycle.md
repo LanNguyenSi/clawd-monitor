@@ -195,7 +195,7 @@ loop interference with the new connection). An agent that sees 4000 has been
 replaced by a newer connection of the same `agentId`; the reference agent
 reconnects with its backoff and becomes the current connection again. Two
 live agent processes configured with one `agentId` therefore take turns
-replacing each other at that backoff instead of one silently feeding a
+replacing each other, about once per snapshot interval plus the 1 s reconnect delay, instead of one silently feeding a
 dropped stream. A `ping` on a replaced socket is still answered with `pong`
 and does not close it, because it writes nothing. The close of the replaced
 socket reaches `disconnect(agentId, ws)` as a stale socket and leaves the

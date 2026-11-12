@@ -87,8 +87,9 @@ socket may not write any more: its next `snapshot` is dropped without an
 `ack` and the server closes it with code `4000` (`Replaced by a newer
 connection`); a `ping` on it is still answered. The server does not close the
 older socket at the moment the newer one connects. The reference agent
-reconnects with its backoff after a `4000`, so two agent processes that share
-an `agentId` take turns replacing each other.
+reconnects after a `4000` (it resets its delay to 1 s on every `auth_ok`), so two
+agent processes that share an `agentId` take turns replacing each other, about
+once per snapshot interval plus the 1 s reconnect delay.
 
 ## Snapshots
 
@@ -183,6 +184,7 @@ these refusals are temporary, so the agent reconnects with its backoff.
 | Time to authenticate | 10 s after connecting | Close `1008` (`Authentication timeout`); a socket that authenticated is not affected |
 | Sockets waiting to authenticate | 32, all clients together; 4 per client key and 16 per IPv6 /48 | The next socket is closed at once with `1013` (`Server busy`) |
 | Persisted-token handshakes per client IP | 10 per 15 minutes | Close `1008` (`Too many attempts`) before the token store is read; a successful handshake clears the IP's count |
+| Replaced by a newer connection | A newer connection of the same `agentId` authenticated | Close `4000` (`Replaced by a newer connection`), sent on the replaced socket's next `snapshot` (never when the newer one registers); not fatal, the agent reconnects |
 
 - The handshake limit counts only tokens that need the token store and a
   bcrypt compare. A token from `AGENT_TOKENS` is matched first, costs nothing,
@@ -234,6 +236,7 @@ stateDiagram-v2
   Offline --> Online: re-auth
   Online --> Online: snapshot or ping
   Online --> Offline: socket closes
+  Online --> Closed: replaced (next snapshot, 4000)
   Offline --> Evicted: list or health read after AGENT_TTL_MS since last snapshot
   Closed --> [*]
   Evicted --> [*]

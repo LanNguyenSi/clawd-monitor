@@ -172,7 +172,7 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
       // so a reconnecting agent retries with its backoff and becomes the
       // current connection again.
       if (!agentId || !registry.update(ws, agentId, msg.data)) {
-        console.warn(`[agent-ws] Closing replaced connection of agent ${agentId ?? 'unknown'}: a newer connection owns the entry`)
+        console.warn(`[agent-ws] Closing connection of agent ${agentId ?? 'unknown'}: this connection no longer owns the agent entry`)
         ws.close(REPLACED_CLOSE_CODE, 'Replaced by a newer connection')
         return
       }

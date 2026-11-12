@@ -144,4 +144,42 @@ describe('replaced socket against the real registry', () => {
     expect(entry.online).toBe(false)
     expect(entry.lastSnapshot).toBeNull()
   })
+
+  it('still answers a ping on the replaced socket, without closing it or touching the entry', async () => {
+    const wsOld = await connect()
+    const wsNew = await connect()
+    await sendSnapshot(wsNew, 'fresh')
+    const before = { ...registry.agents.get('reconnecting-agent')! }
+
+    wsOld.emit('message', Buffer.from(JSON.stringify({ type: 'ping' })))
+    await vi.waitFor(() => expect(sentTypes(wsOld)).toEqual(['pong']))
+
+    expect(wsOld.close).not.toHaveBeenCalled()
+    const entry = registry.agents.get('reconnecting-agent')!
+    expect(entry.ws).toBe(wsNew)
+    expect(entry.lastSnapshot).toBe(before.lastSnapshot)
+    expect(entry.lastSnapshotAt).toBe(before.lastSnapshotAt)
+    expect(entry.online).toBe(true)
+  })
+
+  it('closes a replaced socket with 4000 when its entry was removed meanwhile, writes nothing, and lets the agent register again', async () => {
+    const wsOld = await connect()
+    const wsNew = await connect()
+    wsNew.emit('close')
+    expect(registry.remove('reconnecting-agent')).toBe('removed')
+
+    await sendSnapshot(wsOld, 'injected')
+
+    expect(wsOld.close).toHaveBeenCalledWith(4000, 'Replaced by a newer connection')
+    expect(sentTypes(wsOld)).not.toContain('ack')
+    expect(registry.agents.has('reconnecting-agent')).toBe(false)
+
+    const wsAgain = await connect()
+    await sendSnapshot(wsAgain, 'back')
+    expect(sentTypes(wsAgain)).toContain('ack')
+    const entry = registry.agents.get('reconnecting-agent')!
+    expect(entry.ws).toBe(wsAgain)
+    expect(entry.lastSnapshot?.name).toBe('back')
+    expect(entry.online).toBe(true)
+  })
 })
