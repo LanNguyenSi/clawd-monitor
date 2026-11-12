@@ -12,6 +12,10 @@ const STATIC_TOKENS = (process.env.AGENT_TOKENS ?? '')
   .map((t) => t.trim())
   .filter(Boolean)
 
+// Application close code (4000-4999 is free for applications) for a socket that
+// a newer connection of the same agentId replaced.
+export const REPLACED_CLOSE_CODE = 4000
+
 function send(ws: WebSocket, msg: object) {
   try {
     ws.send(JSON.stringify(msg))
@@ -194,7 +198,18 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
     }
 
     if (msg.type === 'snapshot') {
-      if (agentId) registry.update(agentId, msg.data)
+      // Only the socket that owns the registry entry may write to it. A socket
+      // that a newer connection replaced is told to go and closed here, on its
+      // own next message: the registry never touches the old socket when the
+      // new one registers (see register()), and closing it from inside its own
+      // message handler is the ordinary path. The close is not an auth_error,
+      // so a reconnecting agent retries with its backoff and becomes the
+      // current connection again.
+      if (!agentId || !registry.update(ws, agentId, msg.data)) {
+        console.warn(`[agent-ws] Closing connection of agent ${agentId ?? 'unknown'}: this connection no longer owns the agent entry`)
+        ws.close(REPLACED_CLOSE_CODE, 'Replaced by a newer connection')
+        return
+      }
       send(ws, { type: 'ack' })
     } else if (msg.type === 'ping') {
       send(ws, { type: 'pong' })

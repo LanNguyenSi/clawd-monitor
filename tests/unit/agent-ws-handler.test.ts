@@ -28,7 +28,7 @@ vi.mock('@/lib/agent-registry', () => {
     registry: {
       agents,
       register: vi.fn(),
-      update: vi.fn(),
+      update: vi.fn(() => true),
       disconnect: vi.fn(),
       getAll: vi.fn(() => []),
       getAgent: vi.fn(() => null),
@@ -780,9 +780,23 @@ describe('handleAgentConnection – post-auth paths', () => {
 
     await emitAndWait(ws, SNAPSHOT_MSG)
 
-    expect(mockRegistry.update).toHaveBeenCalledWith('test-agent-1', SNAPSHOT_MSG.data)
+    expect(mockRegistry.update).toHaveBeenCalledWith(ws, 'test-agent-1', SNAPSHOT_MSG.data)
     const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
     expect(sent.type).toBe('ack')
+    expect(ws.close).not.toHaveBeenCalled()
+  })
+
+  it('closes the socket with 4000 and sends no ack when the registry refuses the snapshot (replaced socket)', async () => {
+    const ws = makeMockWs()
+    await authenticate(ws)
+    mockRegistry.update.mockReturnValueOnce(false)
+
+    ws.emit('message', Buffer.from(JSON.stringify(SNAPSHOT_MSG)))
+    await vi.waitFor(() => {
+      expect(ws.close).toHaveBeenCalledWith(4000, 'Replaced by a newer connection')
+    })
+
+    expect(ws.send).not.toHaveBeenCalled()
   })
 
   it('sends {type:pong} for a ping message', async () => {

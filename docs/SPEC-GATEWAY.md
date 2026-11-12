@@ -14,6 +14,8 @@
 >   logic lives in `src/lib/agent-ws-handler.ts`.
 > - The agent registry is `src/lib/agent-registry.ts` (kept on `globalThis` so the
 >   server and API routes share one instance).
+> - `AgentRegistry.update(ws, agentId, snapshot)` takes the sending socket and
+>   stores nothing unless it is the entry's current socket.
 > - For the current message format, see [AGENT-PROTOCOL.md](AGENT-PROTOCOL.md).
 
 ---

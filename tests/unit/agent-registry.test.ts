@@ -89,7 +89,7 @@ describe('register', () => {
     const ws1 = makeMockWs()
     registry.register(ws1, makeMeta('agent-r'))
     const snap = makeSnapshot('agent-r')
-    registry.update('agent-r', snap)
+    registry.update(ws1, 'agent-r', snap)
 
     const ws2 = makeMockWs()
     registry.register(ws2, makeMeta('agent-r'))
@@ -122,7 +122,7 @@ describe('update', () => {
     const ws = makeMockWs()
     registry.register(ws, makeMeta('agent-u'))
     const snap = makeSnapshot('agent-u')
-    registry.update('agent-u', snap)
+    expect(registry.update(ws, 'agent-u', snap)).toBe(true)
 
     const entry = registry.agents.get('agent-u')!
     expect(entry.lastSnapshot).toBe(snap)
@@ -131,8 +131,69 @@ describe('update', () => {
   })
 
   it('is a no-op for an unknown agentId', () => {
-    // Should not throw
-    expect(() => registry.update('ghost-agent', makeSnapshot('ghost-agent'))).not.toThrow()
+    // Should not throw, and reports that nothing was stored
+    const ws = makeMockWs()
+    expect(() => registry.update(ws, 'ghost-agent', makeSnapshot('ghost-agent'))).not.toThrow()
+    expect(registry.update(ws, 'ghost-agent', makeSnapshot('ghost-agent'))).toBe(false)
+    expect(registry.agents.has('ghost-agent')).toBe(false)
+  })
+
+  it('ignores a snapshot from a replaced ws and keeps the current data', () => {
+    const wsOld = makeMockWs()
+    registry.register(wsOld, makeMeta('agent-replaced'))
+    const wsNew = makeMockWs()
+    registry.register(wsNew, makeMeta('agent-replaced'))
+
+    const fresh = makeSnapshot('agent-replaced')
+    expect(registry.update(wsNew, 'agent-replaced', fresh)).toBe(true)
+    const stampedAt = registry.agents.get('agent-replaced')!.lastSnapshotAt
+
+    const injected = { ...makeSnapshot('agent-replaced'), name: 'injected' }
+    expect(registry.update(wsOld, 'agent-replaced', injected)).toBe(false)
+
+    const entry = registry.agents.get('agent-replaced')!
+    expect(entry.lastSnapshot).toBe(fresh)
+    expect(entry.lastSnapshotAt).toBe(stampedAt)
+    expect(entry.online).toBe(true)
+    expect(entry.ws).toBe(wsNew)
+  })
+
+  it('does not bring an offline agent back online from a replaced ws', () => {
+    const wsOld = makeMockWs()
+    registry.register(wsOld, makeMeta('agent-replaced-offline'))
+    const wsNew = makeMockWs()
+    registry.register(wsNew, makeMeta('agent-replaced-offline'))
+    registry.disconnect('agent-replaced-offline', wsNew)
+
+    expect(registry.update(wsOld, 'agent-replaced-offline', makeSnapshot('agent-replaced-offline'))).toBe(false)
+
+    const entry = registry.agents.get('agent-replaced-offline')!
+    expect(entry.online).toBe(false)
+    expect(entry.lastSnapshot).toBeNull()
+  })
+
+  it('keeps working across a reconnect: the old ws closing leaves the new one online and writable', () => {
+    const wsOld = makeMockWs()
+    registry.register(wsOld, makeMeta('agent-reconnect'))
+    const wsNew = makeMockWs()
+    registry.register(wsNew, makeMeta('agent-reconnect'))
+
+    registry.disconnect('agent-reconnect', wsOld)
+    expect(registry.agents.get('agent-reconnect')!.online).toBe(true)
+
+    const snap = makeSnapshot('agent-reconnect')
+    expect(registry.update(wsNew, 'agent-reconnect', snap)).toBe(true)
+    expect(registry.agents.get('agent-reconnect')!.lastSnapshot).toBe(snap)
+    expect(registry.agents.get('agent-reconnect')!.online).toBe(true)
+  })
+
+  it('does not close the replaced ws itself', () => {
+    const wsOld = makeMockWs()
+    registry.register(wsOld, makeMeta('agent-no-close'))
+    registry.register(makeMockWs(), makeMeta('agent-no-close'))
+    registry.update(wsOld, 'agent-no-close', makeSnapshot('agent-no-close'))
+
+    expect(wsOld.close).not.toHaveBeenCalled()
   })
 })
 
@@ -154,7 +215,7 @@ describe('AgentSnapshot memoryFiles', () => {
       memoryFiles: { memory: 'm', today: 't', yesterday: 'y' },
       containers: [],
     }
-    registry.update('agent-mem', snap)
+    registry.update(ws, 'agent-mem', snap)
 
     const entry = registry.agents.get('agent-mem')!
     expect(entry.lastSnapshot?.memoryFiles.yesterday).toBe('y')
