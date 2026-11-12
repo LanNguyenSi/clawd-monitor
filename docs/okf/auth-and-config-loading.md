@@ -76,7 +76,7 @@ expanded, not overridden). After that import:
 - Its static import of the WebSocket handler (`server.ts:8#"handleAgentConnection"`)
   evaluates three more module-level reads: `AGENT_TOKENS`
   (`src/lib/agent-ws-handler.ts:9-12#".filter(Boolean)"`), `AGENT_TTL_MS`
-  (`src/lib/agent-registry.ts:22#"AGENT_TTL_MS"`) and
+  (`src/lib/agent-registry.ts:37#"AGENT_TTL_MS"`) and
   `CLAWD_MONITOR_DATA_DIR` (`src/lib/data-store.ts:5#"CLAWD_MONITOR_DATA_DIR"`).
 
 Because the bootstrap import is first, a variable set only in a `.env` or

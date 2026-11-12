@@ -5,8 +5,9 @@
  * before each test to get a clean slate without module reloading.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { registry } from '@/lib/agent-registry'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { MockInstance } from 'vitest'
+import { registry, parseAgentTtlMs, DEFAULT_AGENT_TTL_MS } from '@/lib/agent-registry'
 import type { AgentSnapshot } from '@/lib/agent-registry'
 import type WebSocket from 'ws'
 
@@ -297,6 +298,98 @@ describe('toPublicEntry – field stripping', () => {
     registry.register(makeMockWs(), makeMeta('strip-4'))
     const pub = registry.getAgent('strip-4')!
     expect(pub.gatewayUrl).toBe('https://gw.example.com')
+  })
+})
+
+// ── AGENT_TTL_MS parsing ──────────────────────────────────────────────────────
+// Precedence: a plain positive integer (digits only, after trim) wins;
+// anything else (absent keeps the silent default; empty, whitespace,
+// non-digits, units, zero, negative, fractional) falls back to
+// DEFAULT_AGENT_TTL_MS with one console.warn.
+
+describe('parseAgentTtlMs', () => {
+  let warn: MockInstance
+
+  beforeEach(() => {
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('uses the default without warning when the variable is absent', () => {
+    expect(parseAgentTtlMs(undefined)).toBe(DEFAULT_AGENT_TTL_MS)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['', 'empty'],
+    ['   ', 'whitespace'],
+    ['abc', 'non-numeric'],
+    ['5min', 'minute-unit'],
+    ['300s', 'second-unit'],
+    ['0', 'zero'],
+    ['-5', 'negative'],
+    ['1.5', 'fractional'],
+  ])('falls back to the default and warns once for %s', (raw, label) => {
+    expect(parseAgentTtlMs(raw), label).toBe(DEFAULT_AGENT_TTL_MS)
+    expect(warn).toHaveBeenCalledTimes(1)
+    const msg = String(warn.mock.calls[0][0])
+    expect(msg).toContain('AGENT_TTL_MS')
+    expect(msg).toContain(String(DEFAULT_AGENT_TTL_MS))
+    expect(msg).toContain(JSON.stringify(raw))
+  })
+
+  it('accepts a plain positive integer with no warning', () => {
+    expect(parseAgentTtlMs('45000')).toBe(45000)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('accepts a valid value with surrounding spaces', () => {
+    expect(parseAgentTtlMs('  60000  ')).toBe(60000)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('prunes an offline agent once the parsed TTL has elapsed', () => {
+    const ttl = parseAgentTtlMs(undefined)
+    expect(Number.isFinite(ttl)).toBe(true)
+
+    const ws = makeMockWs()
+    registry.register(ws, makeMeta('agent-ttl-prune'))
+    registry.disconnect('agent-ttl-prune', ws)
+    registry.agents.get('agent-ttl-prune')!.lastSnapshotAt = Date.now() - ttl - 1000
+
+    registry.cleanup()
+
+    expect(registry.agents.has('agent-ttl-prune')).toBe(false)
+  })
+
+  it('a valid env value wins over the default and drives pruning', async () => {
+    const savedEnv = process.env.AGENT_TTL_MS
+    const g = globalThis as unknown as { agentRegistry?: unknown }
+    const savedRegistry = g.agentRegistry
+    process.env.AGENT_TTL_MS = '1500'
+    delete g.agentRegistry
+    vi.resetModules()
+    try {
+      const mod = await import('@/lib/agent-registry')
+      expect(mod.parseAgentTtlMs(process.env.AGENT_TTL_MS)).toBe(1500)
+
+      const ws = makeMockWs()
+      mod.registry.register(ws, makeMeta('agent-env-ttl'))
+      mod.registry.disconnect('agent-env-ttl', ws)
+      mod.registry.agents.get('agent-env-ttl')!.lastSnapshotAt = Date.now() - 2000
+
+      mod.registry.cleanup()
+
+      expect(mod.registry.agents.has('agent-env-ttl')).toBe(false)
+    } finally {
+      if (savedEnv === undefined) delete process.env.AGENT_TTL_MS
+      else process.env.AGENT_TTL_MS = savedEnv
+      g.agentRegistry = savedRegistry
+      vi.resetModules()
+    }
   })
 })
 
