@@ -583,25 +583,47 @@ describe('agent handshake with an unusable tokens.json (real store)', () => {
       expect(fs.readFileSync(file('tokens.json'), 'utf-8')).toBe(BODY)
     })
 
-    it('fails closed on a corrupt tokens.json and leaves the file as it is', async () => {
+    async function refusedHandshake(agentId: string): Promise<MockWs> {
+      vi.stubEnv('AGENT_TOKENS', 'static-shared-token')
+      const { handleAgentConnection } = await import('@/lib/agent-ws-handler')
+      const ws = new MockWs()
+      handleAgentConnection(ws as unknown as WebSocket, {} as IncomingMessage)
+      ws.emit('message', Buffer.from(JSON.stringify({
+        type: 'auth', token: 'static-shared-token', agentId, name: 'A', version: '1',
+      })))
+      await vi.waitFor(() => expect(ws.close).toHaveBeenCalled(), { timeout: 5000 })
+      return ws
+    }
+
+    it('fails closed and retryable (1013, no auth_error) on a corrupt tokens.json and leaves the file as it is', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const CORRUPT = '[{"id":"t1","tokenHash":'
       fs.writeFileSync(file('tokens.json'), CORRUPT)
-      const ws = await staticHandshake('a1')
-      expect(JSON.parse(ws.send.mock.calls[0][0] as string)).toEqual({ type: 'auth_error', message: 'Invalid token' })
-      expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+      const ws = await refusedHandshake('a1')
+      expect(ws.close).toHaveBeenCalledWith(1013, 'Server busy')
+      expect(ws.send).not.toHaveBeenCalled()
       const logged = warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
       expect(logged).toContain('not valid JSON')
       expect(logged).not.toContain('static-shared-token')
       expect(fs.readFileSync(file('tokens.json'), 'utf-8')).toBe(CORRUPT)
     })
 
-    it('fails closed when tokens.json exists but cannot be read (a directory)', async () => {
+    it('fails closed and retryable when tokens.json exists but cannot be read (a directory)', async () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       fs.mkdirSync(file('tokens.json'))
+      const ws = await refusedHandshake('a1')
+      expect(ws.close).toHaveBeenCalledWith(1013, 'Server busy')
+      expect(ws.send).not.toHaveBeenCalled()
+    })
+
+    it('recovers by itself: the same agent is accepted once the file is fixed', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      fs.writeFileSync(file('tokens.json'), '{broken')
+      const refused = await refusedHandshake('a1')
+      expect(refused.close).toHaveBeenCalledWith(1013, 'Server busy')
+      fs.writeFileSync(file('tokens.json'), '[]')
       const ws = await staticHandshake('a1')
-      expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_error')
-      expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+      expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_ok')
     })
   })
 

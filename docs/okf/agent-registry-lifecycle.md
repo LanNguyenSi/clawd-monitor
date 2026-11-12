@@ -101,7 +101,7 @@ those constants are read (after the `.env` files were loaded).
    `tokens.json`, and stops at the next entry once the socket is gone
    (`src/lib/agent-ws-handler.ts:80-85#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket with code 1008
-   (`src/lib/agent-ws-handler.ts:168#"guard.close(1008"`). A `tokens.json` read
+   (`src/lib/agent-ws-handler.ts:175#"guard.close(1008"`). A `tokens.json` read
    that throws (the file is corrupt, empty, unreadable or holds an entry that is
    not an object with string `id`, `name`, `tokenHash` and `createdAt` and, when
    present, a string `lastUsedAt` and `agentId`; only a missing file reads as no
@@ -112,7 +112,7 @@ those constants are read (after the `.env` files were loaded).
 6. On success the handler calls `registry.register()` with the agent's
    self-reported `agentId`, `name`, `version`, `gatewayUrl` and
    `gatewayToken`, then sends `auth_ok`
-   (`src/lib/agent-ws-handler.ts:172-184#"auth_ok"`). The handshake does not
+   (`src/lib/agent-ws-handler.ts:179-191#"auth_ok"`). The handshake does not
    validate `gatewayUrl` (the documented agent protocol sends a loopback
    URL); the only consumer that fetches it, the logs route, does so through
    `remoteGatewayFetch`, which applies the full URL rule (https, host and port
@@ -122,10 +122,10 @@ those constants are read (after the `.env` files were loaded).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored
-(`src/lib/agent-ws-handler.ts:189-194#"type: 'pong'"`). A snapshot is stored
+(`src/lib/agent-ws-handler.ts:196-201#"type: 'pong'"`). A snapshot is stored
 under the connection's own `agentId`, not the `agentId` field inside the
 snapshot payload
-(`src/lib/agent-ws-handler.ts:190#"registry.update(agentId, msg.data)"`).
+(`src/lib/agent-ws-handler.ts:197#"registry.update(agentId, msg.data)"`).
 
 ## Persisted tokens are bound to an agent on first use
 
@@ -137,7 +137,8 @@ match carries no entry, so it is not bound: its holder can register any
 reads `tokens.json` and rejects the handshake (same `auth_error` and close 1008
 as an invalid token, registry untouched) when any entry's `agentId` equals the
 handshake's; a missing file reads as no entries, an unreadable or corrupt one
-rejects the handshake too (fail closed)
+refuses the handshake too (fail closed) but retryably, with close 1013 and no
+`auth_error`, so the reference agent reconnects instead of stopping
 (`src/lib/agent-ws-handler.ts:93#"if (staticMatch)"`). A match against a persisted
 token is bound: the handler re-reads `tokens.json` after the bcrypt
 comparison, patches only the matched id and rewrites the file with no await
@@ -148,14 +149,14 @@ entry without `agentId` records the handshake's `agentId` in that write
 (existing tokens bind on their next handshake); an entry with another
 `agentId` is rejected with the same `auth_error` and close 1008 as an invalid
 token, and the registry is not touched
-(`src/lib/agent-ws-handler.ts:136#"current.agentId !== msg.agentId"`).
+(`src/lib/agent-ws-handler.ts:143#"current.agentId !== msg.agentId"`).
 The same write stamps `lastUsedAt`
-(`src/lib/agent-ws-handler.ts:146#"current.lastUsedAt"`). A failed write does
+(`src/lib/agent-ws-handler.ts:153#"current.lastUsedAt"`). A failed write does
 not fail the handshake of an already bound token, but a failed write of a new
 binding does (fail closed), because the token would otherwise stay usable for
 any `agentId`
-(`src/lib/agent-ws-handler.ts:151#"best effort"`,
-`src/lib/agent-ws-handler.ts:157#"needsBinding"`). Binding is trust on
+(`src/lib/agent-ws-handler.ts:158#"best effort"`,
+`src/lib/agent-ws-handler.ts:164#"needsBinding"`). Binding is trust on
 first use and not unique: two tokens may bind the same `agentId` (a token is
 rotated by creating the new one before revoking the old), and revoking a token
 drops its binding with the entry. An entry whose stored `agentId` is the empty
@@ -186,7 +187,7 @@ never sends snapshots keeps `lastSnapshotAt` at its last snapshot (or `0`).
 ## Offline and eviction
 
 An entry goes offline only through `disconnect()` from the socket's `close`
-handler (`src/lib/agent-ws-handler.ts:204#"registry.disconnect(agentId, ws)"`).
+handler (`src/lib/agent-ws-handler.ts:211#"registry.disconnect(agentId, ws)"`).
 There is no server-side idle timeout: an entry whose socket stays open is
 online indefinitely, whether or not it sends snapshots.
 

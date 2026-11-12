@@ -71,11 +71,18 @@ Agent → server:
   every static-token handshake for this check, so a binding created a moment
   ago counts at once; a missing file means "no persisted tokens" and checks
   nothing. If `tokens.json` exists but cannot be read or parsed, the static
-  handshake is refused the same way (fail closed, the reason is in the server
-  log) until the file is fixed. An agent that shares its `agentId` with a
-  settings-page token needs a distinct `agentId`, or its own token. Keep
-  `AGENT_TOKENS` for a single trusted host or small
-  setup and use per-agent tokens from the settings page where hosts should not
+  handshake is refused (fail closed, the reason is in the server log) but
+  retryably: the socket is closed with `1013` (`Server busy`) and no
+  `auth_error`, because `auth_error` makes the reference agent stop for good
+  and a transient broken file must not stop every static agent permanently.
+  The agents reconnect with their backoff and are accepted again once the file
+  is fixed. The first handshake of any persisted token with the `agentId` of a
+  static-token agent binds that token to it, after which that static agent is
+  refused (the log names the `agentId`, and `GET /api/settings/tokens` shows
+  the token); fix: revoke that token, or give the static agent its own token.
+  An agent that shares its `agentId` with a settings-page token needs a
+  distinct `agentId`, or its own token. Keep `AGENT_TOKENS` for a single
+  trusted host or small setup and use per-agent tokens from the settings page where hosts should not
   be able to claim each other's identity. Binding is per token and trust on
   first use, not unique per `agentId`: several tokens may bind the same
   `agentId` (needed to rotate a token: create the new one, connect, then revoke
@@ -189,9 +196,10 @@ these refusals are temporary, so the agent reconnects with its backoff.
 | Persisted-token handshakes per client IP | 10 per 15 minutes | Close `1008` (`Too many attempts`) before the token store is read; a successful handshake clears the IP's count |
 
 - The handshake limit counts only tokens that need the token store and a
-  bcrypt compare. A token from `AGENT_TOKENS` is matched first, costs only one
-  small read of `tokens.json` (the agentId binding check above), and is never
-  refused or counted for it; a successful persisted-token
+  bcrypt compare. A token from `AGENT_TOKENS` is matched first, costs one
+  synchronous read and parse of `tokens.json` per handshake (the agentId
+  binding check above, not rate-limited), and is never refused or counted for
+  it by this limit; a successful persisted-token
   handshake clears the failures of that client.
 - The client IP is derived as for the login limit: the TCP peer address, or
   with `TRUSTED_PROXY_HOPS=N` the N-th `X-Forwarded-For` address from the

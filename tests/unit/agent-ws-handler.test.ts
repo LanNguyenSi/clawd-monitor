@@ -704,19 +704,36 @@ describe('handleAgentConnection – static token and agentIds bound to a persist
     expect((await handshake(BOUND_ID)).type).toBe('auth_ok')
   })
 
-  it('fails closed when the token store cannot be read, and logs the cause but not the token', async () => {
+  it('fails closed with a retryable close, and no auth_error, when the token store cannot be read; logs the cause but not the token', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     mockReadTokens.mockImplementation(() => {
       throw new Error('tokens.json: not valid JSON')
     })
-    const { ws } = await handshake('some-other-host')
+    const ws = makeMockWs()
+    handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+    ws.emit('message', Buffer.from(JSON.stringify({ ...AUTH_MSG, token: STATIC_TOKEN, agentId: 'some-other-host' })))
+    await vi.waitFor(() => expect(ws.close).toHaveBeenCalled(), { timeout: 5000 })
 
-    expect(JSON.parse(ws.send.mock.calls[0][0] as string)).toEqual({ type: 'auth_error', message: 'Invalid token' })
-    expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+    // auth_error would make the reference agent stop for good; 1013 makes it retry
+    expect(ws.close).toHaveBeenCalledWith(1013, 'Server busy')
+    expect(ws.send).not.toHaveBeenCalled()
     expect(mockRegistry.register).not.toHaveBeenCalled()
     const logged = warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
     expect(logged).toContain('not valid JSON')
     expect(logged).not.toContain(STATIC_TOKEN)
+  })
+
+  it('recovers on the next handshake once the store is readable again', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mockReadTokens.mockImplementationOnce(() => {
+      throw new Error('EACCES')
+    })
+    const refused = makeMockWs()
+    handleAgentConnection(refused as unknown as WebSocket, fakeReq)
+    refused.emit('message', Buffer.from(JSON.stringify({ ...AUTH_MSG, token: STATIC_TOKEN })))
+    await vi.waitFor(() => expect(refused.close).toHaveBeenCalledWith(1013, 'Server busy'), { timeout: 5000 })
+
+    expect((await handshake('test-agent-1')).type).toBe('auth_ok')
   })
 })
 

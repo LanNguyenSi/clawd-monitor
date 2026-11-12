@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs'
 import { registry } from './agent-registry.js'
 import { readTokens, writeTokens, type TokenEntry } from './data-store.js'
 import { wsMessageSchema, type ValidatedWsMessage } from './schemas.js'
-import { admitUnauthenticated } from './agent-ws-limits.js'
+import { admitUnauthenticated, WS_CLOSE_TRY_AGAIN_LATER } from './agent-ws-limits.js'
 
 // Static tokens from env (for backward compat + default setup)
 const STATIC_TOKENS = (process.env.AGENT_TOKENS ?? '')
@@ -99,19 +99,26 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
         // counts and nothing is cached across handshakes. A missing
         // tokens.json reads as an empty list (the normal "no persisted
         // tokens" case), so it never locks out a static agent. A store that
-        // exists but cannot be read or parsed fails closed, like the
-        // persisted-token path: failing open there would make the check
-        // vanish exactly when the store is broken, and the operator can fix
-        // a corrupt file, while an agentId takeover cannot be undone. Both
-        // refusals answer like an invalid token; the server log names the
-        // reason, never the token.
+        // exists but cannot be read or parsed fails closed: failing open
+        // would drop the check exactly when the store is broken. That
+        // refusal is temporary and fixable by the operator, so it is
+        // answered like the other retryable refusals (close 1013, no
+        // auth_error): an auth_error makes the reference agent stop for good,
+        // and a transient broken file would then stop every static agent
+        // permanently. The agents reconnect with their backoff and recover
+        // once the file is fixed. A binding hit is a permanent refusal and
+        // answers like an invalid token. The server log names the reason,
+        // never the token.
+        let entries: TokenEntry[]
         try {
-          if (readTokens().some((t) => t.agentId === msg.agentId)) {
-            console.warn(`[agent-ws] Auth failed for agentId=${msg.agentId}: a static token cannot claim an agentId bound to a persisted token`)
-            tokenValid = false
-          }
+          entries = readTokens()
         } catch (err) {
-          console.warn(`[agent-ws] Could not read tokens to check agentId bindings; rejecting static-token handshake: ${err instanceof Error ? err.message : 'unknown error'}`)
+          console.warn(`[agent-ws] Could not read tokens to check agentId bindings; refusing static-token handshake, try again later: ${err instanceof Error ? err.message : 'unknown error'}`)
+          guard.close(WS_CLOSE_TRY_AGAIN_LATER, 'Server busy')
+          return
+        }
+        if (entries.some((t) => t.agentId === msg.agentId)) {
+          console.warn(`[agent-ws] Auth failed for agentId=${msg.agentId}: a static token cannot claim an agentId bound to a persisted token`)
           tokenValid = false
         }
       }
