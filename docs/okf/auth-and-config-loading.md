@@ -73,9 +73,9 @@ expanded, not overridden). After that import:
   only, `AGENT_TOKENS` (`server.ts:17-28#"AGENT_TOKENS not set"`) before it
   calls
   `next({ dev, hostname, port, httpServer: nextServer })` (`server.ts:36#"next({ dev, hostname, port"`).
-- Its static import of the WebSocket handler (`server.ts:8#"handleAgentConnection"`)
+- Its static import of the WebSocket handler (`server.ts:7#"handleAgentConnection"`)
   evaluates three more module-level reads: `AGENT_TOKENS`
-  (`src/lib/agent-ws-handler.ts:9-12#".filter(Boolean)"`), `AGENT_TTL_MS`
+  (`src/lib/agent-ws-handler.ts:10-13#".filter(Boolean)"`), `AGENT_TTL_MS`
   (`src/lib/agent-registry.ts:37#"AGENT_TTL_MS"`) and
   `CLAWD_MONITOR_DATA_DIR` (`src/lib/data-store.ts:5#"CLAWD_MONITOR_DATA_DIR"`).
 
@@ -151,10 +151,10 @@ removes the file; removing `password.json` restores the env password, removing
   (`src/app/api/settings/tokens/route.ts:46#"bcrypt.hash(rawToken, 10)"`);
   the raw token is returned once, in the `POST` response. A successful
   handshake with such a token stamps its `lastUsedAt`
-  (`src/lib/agent-ws-handler.ts:102#"current.lastUsedAt"`), which the `GET`
+  (`src/lib/agent-ws-handler.ts:119#"current.lastUsedAt"`), which the `GET`
   list returns and the settings page shows, and binds the token to the
   handshake's `agentId` when it has none yet
-  (`src/lib/agent-ws-handler.ts:103#"current.agentId = msg.agentId"`).
+  (`src/lib/agent-ws-handler.ts:120#"current.agentId = msg.agentId"`).
 
 ## Admin password precedence
 

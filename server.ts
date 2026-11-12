@@ -4,8 +4,8 @@ import './src/lib/env-bootstrap.js'
 import { createServer } from 'http'
 import { parse } from 'url'
 import next from 'next'
-import { WebSocketServer } from 'ws'
 import { handleAgentConnection } from './src/lib/agent-ws-handler.js'
+import { createAgentWebSocketServer } from './src/lib/agent-ws-limits.js'
 import { attachUpgradeRouter } from './src/lib/ws-upgrade.js'
 import { withPeerAddress } from './src/lib/client-ip.js'
 
@@ -47,7 +47,7 @@ app.prepare().then(() => {
     }),
   )
 
-  const wss = new WebSocketServer({ noServer: true })
+  const wss = createAgentWebSocketServer()
   wss.on('connection', handleAgentConnection)
 
   // In dev, other upgrades (HMR) are replayed on the server Next listens on;
