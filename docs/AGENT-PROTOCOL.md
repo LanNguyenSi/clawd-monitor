@@ -82,8 +82,13 @@ Server → agent on success:
 ```
 
 If two connections present the same `agentId` (with a token that is allowed to
-use it, see token binding above), the newest connection wins; the
-older socket is left to close on its own.
+use it, see token binding above), the newest connection wins. The older
+socket may not write any more: its next `snapshot` is dropped without an
+`ack` and the server closes it with code `4000` (`Replaced by a newer
+connection`); a `ping` on it is still answered. The server does not close the
+older socket at the moment the newer one connects. The reference agent
+reconnects with its backoff after a `4000`, so two agent processes that share
+an `agentId` take turns replacing each other.
 
 ## Snapshots
 
@@ -215,8 +220,8 @@ Eviction is not timer-based: it runs when `/api/agents/list` or `/api/health`
 is read, so `/api/agents/<id>/snapshot` can still return an expired entry until
 then. An agent that authenticated but never sent a snapshot is evicted on the
 first such read after it disconnects. A newer connection with the same
-`agentId` replaces the entry, and only the close of the current socket marks
-it offline.
+`agentId` replaces the entry, and only the current socket writes to it or, by
+closing, marks it offline.
 
 The state diagram shows the lifecycle of a connection and its registry entry.
 
