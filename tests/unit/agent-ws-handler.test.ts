@@ -498,6 +498,27 @@ describe('handleAgentConnection – stored token binding', () => {
     expect(store[0].agentId).toBe('agent-a-renamed')
   })
 
+  it('does not make the binding unique: an unbound token may take an agentId bound to another token', async () => {
+    await handshake(PLAIN_A, 'shared-agent')
+    const { type } = await handshake(PLAIN_B, 'shared-agent')
+
+    expect(type).toBe('auth_ok')
+    expect(store.map((t) => t.agentId)).toEqual(['shared-agent', 'shared-agent'])
+  })
+
+  it('refuses a token whose stored agentId is the empty string (fail closed)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    store = [{ id: 'tok-a', name: 'agent-a', tokenHash: hashA, createdAt: 'c', agentId: '' }]
+
+    const { type, ws } = await handshake(PLAIN_A, 'agent-a')
+    warn.mockRestore()
+
+    expect(type).toBe('auth_error')
+    expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+    expect(mockRegistry.register).not.toHaveBeenCalled()
+    expect(store[0].agentId).toBe('')
+  })
+
   it('lets only the first of two racing handshakes bind an unbound token', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const wsFirst = makeMockWs()

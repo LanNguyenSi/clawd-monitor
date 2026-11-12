@@ -67,10 +67,13 @@ Agent → server:
   so its holder can connect as any `agentId`, including one bound to a
   persisted token. Keep `AGENT_TOKENS` for a single trusted host or small
   setup and use per-agent tokens from the settings page where hosts should not
-  be able to claim each other's identity. Binding is trust on first use: a
-  persisted token that has not been used yet can still be presented for any
-  `agentId` that is not bound to another token, and two tokens may be bound to
-  the same `agentId` (needed to rotate a token before revoking the old one).
+  be able to claim each other's identity. Binding is per token and trust on
+  first use, not unique per `agentId`: several tokens may bind the same
+  `agentId` (needed to rotate a token: create the new one, connect, then revoke
+  the old one). A persisted token that has not been used yet can therefore take
+  any `agentId`, including one bound to another token and currently online.
+  `GET /api/settings/tokens` returns the bound `agentId` of each token (absent
+  while unbound) so an operator can check what each token bound to.
 
 Server → agent on success:
 

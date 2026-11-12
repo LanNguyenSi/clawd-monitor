@@ -11,6 +11,7 @@ interface TokenEntry {
   name: string
   createdAt: string
   lastUsedAt?: string
+  agentId?: string
 }
 
 function revokeConfirmMessage(name: string): string {

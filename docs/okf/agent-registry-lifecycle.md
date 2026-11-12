@@ -84,8 +84,9 @@ those constants are read (after the `.env` files were loaded).
    `auth_error` and closes the socket with code 1008
    (`src/lib/agent-ws-handler.ts:124#"ws.close(1008"`). A `tokens.json` read
    that throws (the file is corrupt, empty, unreadable or holds an entry that is
-   not an object with string `id`, `name`, `tokenHash` and `createdAt`; only a
-   missing file reads as no tokens) is handled the same way: `auth_error`, close 1008, and
+   not an object with string `id`, `name`, `tokenHash` and `createdAt` and, when
+   present, a string `lastUsedAt` and `agentId`; only a missing file reads as no
+   tokens) is handled the same way: `auth_error`, close 1008, and
    a warning that carries only the error message, naming the file, so the
    client learns nothing about the store and the operator sees the cause
    (`src/lib/agent-ws-handler.ts:58-62#"ws.close(1008, 'Invalid token')"`).
@@ -133,9 +134,11 @@ any `agentId`
 `src/lib/agent-ws-handler.ts:113-116#"needsBinding"`). Binding is trust on
 first use and not unique: two tokens may bind the same `agentId` (a token is
 rotated by creating the new one before revoking the old), and revoking a token
-drops its binding with the entry. The settings API passes only `id`, `name`,
-`createdAt` and `lastUsedAt` through, never `agentId` or the hash
-(`src/app/api/settings/tokens/route.ts:24#"id, name, createdAt, lastUsedAt"`).
+drops its binding with the entry. An entry whose stored `agentId` is the empty
+string matches no handshake (the schema requires a non-empty `agentId`), so
+such a token is unusable. The settings API passes `id`, `name`, `createdAt`,
+`lastUsedAt` and `agentId` through, never the hash
+(`src/app/api/settings/tokens/route.ts:24-26#"id, name, createdAt, lastUsedAt, agentId"`).
 
 ## Newest connection wins
 
