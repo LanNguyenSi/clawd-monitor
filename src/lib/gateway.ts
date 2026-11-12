@@ -5,7 +5,38 @@
 import { GatewayUrlError, isPrivateHost } from './gateway-policy'
 import { pinnedFetch } from './pinned-fetch'
 
-const DEFAULT_GATEWAY_URL = process.env.NEXT_PUBLIC_DEFAULT_GATEWAY_URL ?? 'http://localhost:9500'
+const FALLBACK_GATEWAY_URL = 'http://localhost:9500'
+
+/**
+ * Name of the deprecated variable. Next.js inlines a literal
+ * `process.env.NEXT_PUBLIC_*` at build time, which would freeze it to the build
+ * environment (unset in the Docker image). The key is passed through a
+ * variable so the lookup stays a runtime read.
+ */
+const DEPRECATED_GATEWAY_URL_VAR = 'NEXT_PUBLIC_DEFAULT_GATEWAY_URL'
+
+/**
+ * Operator default gateway URL, read from the environment of the running
+ * process (not frozen at build time):
+ * `DEFAULT_GATEWAY_URL` wins, then the deprecated
+ * `NEXT_PUBLIC_DEFAULT_GATEWAY_URL`, then http://localhost:9500. An empty or
+ * whitespace-only value counts as unset.
+ */
+export function resolveDefaultGatewayUrl(): string {
+  const env = process.env
+  for (const name of ['DEFAULT_GATEWAY_URL', DEPRECATED_GATEWAY_URL_VAR]) {
+    const value = env[name]?.trim()
+    if (value) return value
+  }
+  return FALLBACK_GATEWAY_URL
+}
+
+/**
+ * The default, resolved once when this module loads (like the token and the
+ * allowlist below). gatewayFetch and the stream/logs route both use this one
+ * value.
+ */
+export const DEFAULT_GATEWAY_URL = resolveDefaultGatewayUrl()
 const DEFAULT_GATEWAY_TOKEN = process.env.DEFAULT_GATEWAY_TOKEN ?? ''
 
 /**

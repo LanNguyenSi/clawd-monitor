@@ -11,6 +11,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Build Next.js app + compile custom server
 RUN npm run build
+# Drop devDependencies after the build: the runner copies this node_modules and
+# only needs what `node dist/server.js` and `next` load at runtime.
+RUN npm prune --omit=dev
 
 # Stage 3: runner
 FROM node:22-slim AS runner

@@ -12,7 +12,7 @@ dashboard and also accepts agent WebSocket connections. Two data paths coexist:
 2. **Server-side routes (no agent selected):** the Gateway topic routes under
    `/api/proxy/*` (`sessions`, `cron`, `heartbeat`, `memory` and the generic
    `[...path]` proxy) and `/api/stream/logs?source=openclaw` call the default
-   OpenClaw Gateway (`NEXT_PUBLIC_DEFAULT_GATEWAY_URL`, default
+   OpenClaw Gateway (`DEFAULT_GATEWAY_URL`, default
    `http://localhost:9500`). `/api/stream/metrics` reads `/proc` on the
    clawd-monitor host; the docker and system log sources run `docker logs`,
    `journalctl` or `tail` there; `alert-history`, `docker`, `github` and
@@ -105,7 +105,7 @@ Instances stored in localStorage as `{ name, gatewayUrl, token }[]`. Switcher in
 **Update:** the instance switcher and `src/lib/instance.ts` were removed in 0.3.0
 (the navbar carries the agent switcher instead), and the browser fetcher sends no `x-gateway-url` /
 `x-gateway-token` headers. The direct-proxy routes therefore use
-`NEXT_PUBLIC_DEFAULT_GATEWAY_URL` and `DEFAULT_GATEWAY_TOKEN` for requests from
+`DEFAULT_GATEWAY_URL` and `DEFAULT_GATEWAY_TOKEN` for requests from
 the dashboard. To monitor several hosts, connect one agent per host.
 
 ### ADR-005: Widget Registry Pattern
