@@ -51,9 +51,11 @@ async function mountGrid(editMode?: boolean) {
 const removeButton = (title: string) =>
   host.ownerDocument.querySelector<HTMLButtonElement>(`button[aria-label="Remove ${title} widget"]`)
 const stored = () => JSON.parse(localStorage.getItem(LAYOUT_STORAGE_KEY) as string)
-const notice = () => host.ownerDocument.querySelector('[role="status"]')
+// The live region is always mounted; the notice is its content.
+const notice = () => host.ownerDocument.querySelector('[role="status"]')?.firstElementChild ?? null
 const undoButton = () =>
   Array.from(host.ownerDocument.querySelectorAll('button')).find((b) => b.textContent === 'Undo')
+const blurActive = () => (document.activeElement as HTMLElement | null)?.blur()
 const headings = () => Array.from(host.querySelectorAll('h2')).map((h) => h.textContent)
 
 beforeEach(() => {
@@ -76,6 +78,8 @@ describe('WidgetGrid lock mode', () => {
     expect(removeButton('Cron Jobs')).toBeNull()
     expect(grid.props?.isDraggable).toBe(false)
     expect(grid.props?.isResizable).toBe(false)
+    expect(host.querySelector('[data-testid="drag-dots"]')).toBeNull()
+    expect(host.querySelector('.cursor-grab')).toBeNull()
   })
 
   it('shows remove buttons and allows dragging in edit mode', async () => {
@@ -83,6 +87,8 @@ describe('WidgetGrid lock mode', () => {
     expect(removeButton('CPU + RAM')).not.toBeNull()
     expect(removeButton('Cron Jobs')).not.toBeNull()
     expect(grid.props?.isDraggable).toBe(true)
+    expect(host.querySelectorAll('[data-testid="drag-dots"]')).toHaveLength(2)
+    expect(host.querySelectorAll('.cursor-grab')).toHaveLength(2)
   })
 
   it('switches from locked to editable when the prop changes', async () => {
@@ -104,7 +110,7 @@ describe('WidgetGrid undo after remove', () => {
     expect(stored().xxs.map((l: { i: string }) => l.i)).toEqual(['cron'])
     const n = notice()
     expect(n).not.toBeNull()
-    expect(n?.getAttribute('aria-live')).toBe('polite')
+    expect(host.ownerDocument.querySelector('[role="status"]')?.getAttribute('aria-live')).toBe('polite')
     expect(n?.textContent).toContain('CPU + RAM removed')
 
     await act(async () => undoButton()!.click())
@@ -123,11 +129,22 @@ describe('WidgetGrid undo after remove', () => {
     expect(stored().lg.filter((l: { i: string }) => l.i === 'cron')).toHaveLength(1)
   })
 
-  it('expires after the timeout and then cannot be undone', async () => {
+  it('keeps one live region mounted before and after a removal', async () => {
+    await mountGrid(true)
+    const region = document.querySelector('[role="status"][data-undo-notice]')
+    expect(region).not.toBeNull()
+    expect(region?.textContent).toBe('')
+    await act(async () => removeButton('CPU + RAM')!.click())
+    expect(document.querySelectorAll('[role="status"]')).toHaveLength(1)
+    expect(document.querySelector('[role="status"]')).toBe(region)
+    expect(region?.textContent).toContain('CPU + RAM removed')
+  })
+
+  it('expires after the timeout once focus has left, and then cannot be undone', async () => {
     vi.useFakeTimers()
     await mountGrid(true)
     await act(async () => removeButton('CPU + RAM')!.click())
-    expect(notice()).not.toBeNull()
+    await act(async () => blurActive())
     await act(async () => {
       vi.advanceTimersByTime(UNDO_NOTICE_MS - 1)
     })
@@ -139,14 +156,99 @@ describe('WidgetGrid undo after remove', () => {
     expect(stored().lg.map((l: { i: string }) => l.i)).toEqual(['cron'])
   })
 
+  it('does not expire while focus is inside the notice, and resumes after blur', async () => {
+    vi.useFakeTimers()
+    await mountGrid(true)
+    await act(async () => removeButton('CPU + RAM')!.click())
+    expect(document.activeElement).toBe(undoButton())
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_NOTICE_MS * 3)
+    })
+    expect(notice()).not.toBeNull()
+    await act(async () => blurActive())
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_NOTICE_MS + 1)
+    })
+    expect(notice()).toBeNull()
+  })
+
+  it('does not expire while the pointer is over the notice, and resumes on leave', async () => {
+    vi.useFakeTimers()
+    await mountGrid(true)
+    await act(async () => removeButton('CPU + RAM')!.click())
+    await act(async () => blurActive())
+    const box = undoButton()!.parentElement!
+    await act(async () => {
+      box.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_NOTICE_MS * 3)
+    })
+    expect(notice()).not.toBeNull()
+    await act(async () => {
+      box.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }))
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_NOTICE_MS + 1)
+    })
+    expect(notice()).toBeNull()
+  })
+
+  it('restarts the timer when a second widget is removed', async () => {
+    vi.useFakeTimers()
+    await mountGrid(true)
+    await act(async () => removeButton('CPU + RAM')!.click())
+    await act(async () => blurActive())
+    await act(async () => {
+      vi.advanceTimersByTime(5000)
+    })
+    await act(async () => removeButton('Cron Jobs')!.click())
+    await act(async () => blurActive())
+    await act(async () => {
+      vi.advanceTimersByTime(5000)
+    })
+    expect(notice()?.textContent).toContain('Cron Jobs removed')
+    await act(async () => {
+      vi.advanceTimersByTime(3001)
+    })
+    expect(notice()).toBeNull()
+  })
+
   it('dismisses on Escape without restoring', async () => {
     await mountGrid(true)
     await act(async () => removeButton('CPU + RAM')!.click())
     await act(async () => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     })
     expect(notice()).toBeNull()
     expect(headings()).toEqual(['Cron Jobs'])
+  })
+
+  it('leaves Escape to an open modal dialog or a handler that already used it', async () => {
+    await mountGrid(true)
+    await act(async () => removeButton('CPU + RAM')!.click())
+    const dialog = document.createElement('div')
+    dialog.setAttribute('aria-modal', 'true')
+    document.body.appendChild(dialog)
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(notice()).not.toBeNull()
+    dialog.remove()
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    })
+    expect(notice()).toBeNull()
+
+    // Registered before the notice mounts, so it runs first on document.
+    const prevent = (e: Event) => e.preventDefault()
+    document.addEventListener('keydown', prevent)
+    await act(async () => removeButton('Cron Jobs')!.click())
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    })
+    document.removeEventListener('keydown', prevent)
+    expect(notice()).not.toBeNull()
   })
 
   it('keeps only the latest removal undoable', async () => {
@@ -156,5 +258,66 @@ describe('WidgetGrid undo after remove', () => {
     expect(notice()?.textContent).toContain('Cron Jobs removed')
     await act(async () => undoButton()!.click())
     expect(headings()).toEqual(['Cron Jobs'])
+  })
+})
+
+describe('WidgetGrid focus handling around the notice', () => {
+  it('moves focus to Undo after a remove', async () => {
+    await mountGrid(true)
+    await act(async () => removeButton('CPU + RAM')!.click())
+    expect(document.activeElement).toBe(undoButton())
+  })
+
+  it('moves focus to the restored widget remove button after Undo', async () => {
+    await mountGrid(true)
+    await act(async () => removeButton('CPU + RAM')!.click())
+    await act(async () => undoButton()!.click())
+    expect(document.activeElement).toBe(removeButton('CPU + RAM'))
+  })
+
+  it('moves focus to the first widget remove button after Escape', async () => {
+    await mountGrid(true)
+    await act(async () => removeButton('CPU + RAM')!.click())
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(document.activeElement).toBe(removeButton('Cron Jobs'))
+  })
+
+  it('moves focus off the body to the first remove button after expiry', async () => {
+    vi.useFakeTimers()
+    await mountGrid(true)
+    await act(async () => removeButton('CPU + RAM')!.click())
+    await act(async () => blurActive())
+    expect(document.activeElement).toBe(document.body)
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_NOTICE_MS + 1)
+    })
+    expect(document.activeElement).toBe(removeButton('Cron Jobs'))
+  })
+
+  it('does not take focus from another element when the notice expires', async () => {
+    vi.useFakeTimers()
+    await mountGrid(true)
+    await act(async () => removeButton('CPU + RAM')!.click())
+    const other = document.createElement('input')
+    document.body.appendChild(other)
+    await act(async () => other.focus())
+    await act(async () => {
+      vi.advanceTimersByTime(UNDO_NOTICE_MS + 1)
+    })
+    expect(notice()).toBeNull()
+    expect(document.activeElement).toBe(other)
+    other.remove()
+  })
+
+  it('falls back to the grid container when no remove button is left', async () => {
+    await mountGrid(true)
+    await act(async () => removeButton('CPU + RAM')!.click())
+    await act(async () => removeButton('Cron Jobs')!.click())
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(document.activeElement).toBe(host.firstElementChild)
   })
 })

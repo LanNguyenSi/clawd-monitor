@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { Responsive, WidthProvider } from 'react-grid-layout'
 import type { Layout } from 'react-grid-layout'
 import { GridItem } from './GridItem'
@@ -46,14 +46,34 @@ interface Props {
 interface RemovedWidget {
   id: string
   title: string
-  /** The widget's layout item on every breakpoint that had one. */
-  items: Record<string, Layout>
+  /** The widget's layout item and list index on every breakpoint that had one. */
+  items: Record<string, { item: Layout; index: number }>
+  key: number
 }
+
+type PendingFocus = { kind: 'widget'; title: string } | { kind: 'grid' }
 
 export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
   const [layouts, setLayouts] = useState<ResponsiveLayouts>({})
   const [mounted, setMounted] = useState(false)
   const [removed, setRemoved] = useState<RemovedWidget | null>(null)
+  const removalCount = useRef(0)
+  const gridRef = useRef<HTMLDivElement>(null)
+  const pendingFocus = useRef<PendingFocus | null>(null)
+
+  // Move focus once the DOM reflects the state change that asked for it.
+  useEffect(() => {
+    const target = pendingFocus.current
+    if (!target) return
+    pendingFocus.current = null
+    const root = gridRef.current
+    if (!root) return
+    const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>('button[aria-label^="Remove "]'))
+    const button = target.kind === 'widget'
+      ? buttons.find((b) => b.getAttribute('aria-label') === `Remove ${target.title} widget`)
+      : buttons[0]
+    ;(button ?? root).focus()
+  })
 
   useEffect(() => {
     const validIds = new Set(WIDGET_REGISTRY.map((w) => w.id))
@@ -69,28 +89,40 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
     onLayoutChange?.(current.map((l) => l.i))
   }, [onLayoutChange])
 
-  const dismissRemoved = useCallback(() => setRemoved(null), [])
+  const dismissRemoved = useCallback(() => {
+    // When focus sits in the notice (or nowhere), hand it to the first widget's
+    // remove button so it does not fall back to the page.
+    const active = document.activeElement
+    if (!active || active === document.body || active.closest('[data-undo-notice]')) {
+      pendingFocus.current = { kind: 'grid' }
+    }
+    setRemoved(null)
+  }, [])
 
   const handleRemove = (id: string, title: string) => {
-    const items: Record<string, Layout> = {}
+    const items: RemovedWidget['items'] = {}
     for (const [bp, list] of Object.entries(layouts)) {
-      const item = list.find((l) => l.i === id)
-      if (item) items[bp] = item
+      const index = list.findIndex((l) => l.i === id)
+      if (index >= 0) items[bp] = { item: list[index], index }
     }
     const next = removeWidget(layouts, id)
     setLayouts(next)
     saveLayouts(localStorage, next)
     onLayoutChange?.(widgetIdsOf(next))
-    setRemoved({ id, title, items })
+    removalCount.current += 1
+    setRemoved({ id, title, items, key: removalCount.current })
   }
 
   const handleUndo = () => {
     if (!removed) return
     const next: ResponsiveLayouts = { ...layouts }
-    for (const [bp, item] of Object.entries(removed.items)) {
-      const list = next[bp] ?? []
-      if (!list.some((l) => l.i === removed.id)) next[bp] = [...list, item]
+    for (const [bp, { item, index }] of Object.entries(removed.items)) {
+      // Back at its old index, so vertical compaction keeps the old order.
+      const list = [...(next[bp] ?? [])]
+      list.splice(Math.min(index, list.length), 0, item)
+      next[bp] = list
     }
+    pendingFocus.current = { kind: 'widget', title: removed.title }
     setLayouts(next)
     saveLayouts(localStorage, next)
     onLayoutChange?.(widgetIdsOf(next))
@@ -102,7 +134,7 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
   const colsMap = { lg: cols, md: Math.min(cols, 4), sm: 2, xs: 1, xxs: 1 }
 
   return (
-    <>
+    <div ref={gridRef} tabIndex={-1} className="outline-none">
     <ResponsiveGrid
       className="react-grid-layout"
       layouts={layouts}
@@ -141,13 +173,11 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
         )
       })}
     </ResponsiveGrid>
-    {removed && (
-      <UndoNotice
-        message={`${removed.title} removed`}
-        onUndo={handleUndo}
-        onDismiss={dismissRemoved}
-      />
-    )}
-    </>
+    <UndoNotice
+      notice={removed ? { key: removed.key, message: `${removed.title} removed` } : null}
+      onUndo={handleUndo}
+      onDismiss={dismissRemoved}
+    />
+    </div>
   )
 }
