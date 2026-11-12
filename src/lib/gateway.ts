@@ -16,7 +16,8 @@ const FALLBACK_GATEWAY_URL = 'http://localhost:9500'
 const DEPRECATED_GATEWAY_URL_VAR = 'NEXT_PUBLIC_DEFAULT_GATEWAY_URL'
 
 /**
- * Operator default gateway URL, read from the environment at call time:
+ * Operator default gateway URL, read from the environment of the running
+ * process (not frozen at build time):
  * `DEFAULT_GATEWAY_URL` wins, then the deprecated
  * `NEXT_PUBLIC_DEFAULT_GATEWAY_URL`, then http://localhost:9500. An empty or
  * whitespace-only value counts as unset.
@@ -30,7 +31,12 @@ export function resolveDefaultGatewayUrl(): string {
   return FALLBACK_GATEWAY_URL
 }
 
-const DEFAULT_GATEWAY_URL = resolveDefaultGatewayUrl()
+/**
+ * The default, resolved once when this module loads (like the token and the
+ * allowlist below). gatewayFetch and the stream/logs route both use this one
+ * value.
+ */
+export const DEFAULT_GATEWAY_URL = resolveDefaultGatewayUrl()
 const DEFAULT_GATEWAY_TOKEN = process.env.DEFAULT_GATEWAY_TOKEN ?? ''
 
 /**

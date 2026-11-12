@@ -92,7 +92,9 @@ The route-graph-only variables (`DEFAULT_GATEWAY_TOKEN` in
 `src/app/api/proxy/alert-history/route.ts:8#"CLAWD_DIR"`, `GITHUB_TOKEN` in
 `src/app/api/proxy/github/route.ts:84#"process.env.GITHUB_TOKEN"`) are read
 by the routes at request time. The default gateway URL
-(`src/lib/gateway.ts:24#"resolveDefaultGatewayUrl"`) is read at runtime too:
+(`src/lib/gateway.ts:24#"resolveDefaultGatewayUrl"`) is resolved once when
+`gateway.ts` loads in the running server (the stream/logs route uses the same
+exported value), never frozen at build time:
 `DEFAULT_GATEWAY_URL` first, then the deprecated
 `NEXT_PUBLIC_DEFAULT_GATEWAY_URL`, then `http://localhost:9500`, an empty value
 counting as unset. The deprecated name is looked up through a variable key
