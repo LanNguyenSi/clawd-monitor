@@ -63,10 +63,26 @@ Agent → server:
   a token removes its binding with it; a new token for the same agent starts
   unbound. Use one token per agent: an agent that shared one persisted token
   across several `agentId`s is refused for all but the first.
-- Static tokens are not bound. A token from `AGENT_TOKENS` is shared by design,
-  so its holder can connect as any `agentId`, including one bound to a
-  persisted token. Keep `AGENT_TOKENS` for a single trusted host or small
-  setup and use per-agent tokens from the settings page where hosts should not
+- Static tokens are not bound, but they cannot take a bound `agentId`. A token
+  from `AGENT_TOKENS` is shared by design, so its holder can connect as any
+  `agentId` except one that a persisted token is bound to: that handshake gets
+  the same `auth_error` ("Invalid token") and close code 1008 as an invalid
+  token, and the registry is not touched. The server reads `tokens.json` on
+  every static-token handshake for this check, so a binding created a moment
+  ago counts at once; a missing file means "no persisted tokens" and checks
+  nothing. If `tokens.json` exists but cannot be read or parsed, the static
+  handshake is refused (fail closed, the reason is in the server log) but
+  retryably: the socket is closed with `1013` (`Server busy`) and no
+  `auth_error`, because `auth_error` makes the reference agent stop for good
+  and a transient broken file must not stop every static agent permanently.
+  The agents reconnect with their backoff and are accepted again once the file
+  is fixed. The first handshake of any persisted token with the `agentId` of a
+  static-token agent binds that token to it, after which that static agent is
+  refused (the log names the `agentId`, and `GET /api/settings/tokens` shows
+  the token); fix: revoke that token, or give the static agent its own token.
+  An agent that shares its `agentId` with a settings-page token needs a
+  distinct `agentId`, or its own token. Keep `AGENT_TOKENS` for a single
+  trusted host or small setup and use per-agent tokens from the settings page where hosts should not
   be able to claim each other's identity. Binding is per token and trust on
   first use, not unique per `agentId`: several tokens may bind the same
   `agentId` (needed to rotate a token: create the new one, connect, then revoke
@@ -82,8 +98,14 @@ Server → agent on success:
 ```
 
 If two connections present the same `agentId` (with a token that is allowed to
-use it, see token binding above), the newest connection wins; the
-older socket is left to close on its own.
+use it, see token binding above), the newest connection wins. The older
+socket may not write any more: its next `snapshot` is dropped without an
+`ack` and the server closes it with code `4000` (`Replaced by a newer
+connection`); a `ping` on it is still answered. The server does not close the
+older socket at the moment the newer one connects. The reference agent
+reconnects after a `4000` (it resets its delay to 1 s on every `auth_ok`), so two
+agent processes that share an `agentId` take turns replacing each other, about
+once per snapshot interval plus the 1 s reconnect delay.
 
 ## Snapshots
 
@@ -178,10 +200,13 @@ these refusals are temporary, so the agent reconnects with its backoff.
 | Time to authenticate | 10 s after connecting | Close `1008` (`Authentication timeout`); a socket that authenticated is not affected |
 | Sockets waiting to authenticate | 32, all clients together; 4 per client key and 16 per IPv6 /48 | The next socket is closed at once with `1013` (`Server busy`) |
 | Persisted-token handshakes per client IP | 10 per 15 minutes | Close `1008` (`Too many attempts`) before the token store is read; a successful handshake clears the IP's count |
+| Replaced by a newer connection | A newer connection of the same `agentId` authenticated | Close `4000` (`Replaced by a newer connection`), sent on the replaced socket's next `snapshot` (never when the newer one registers); not fatal, the agent reconnects |
 
 - The handshake limit counts only tokens that need the token store and a
-  bcrypt compare. A token from `AGENT_TOKENS` is matched first, costs nothing,
-  and is never refused or counted for it; a successful persisted-token
+  bcrypt compare. A token from `AGENT_TOKENS` is matched first, costs one
+  synchronous read and parse of `tokens.json` per handshake (the agentId
+  binding check above, not rate-limited), and is never refused or counted for
+  it by this limit; a successful persisted-token
   handshake clears the failures of that client.
 - The client IP is derived as for the login limit: the TCP peer address, or
   with `TRUSTED_PROXY_HOPS=N` the N-th `X-Forwarded-For` address from the
@@ -215,8 +240,8 @@ Eviction is not timer-based: it runs when `/api/agents/list` or `/api/health`
 is read, so `/api/agents/<id>/snapshot` can still return an expired entry until
 then. An agent that authenticated but never sent a snapshot is evicted on the
 first such read after it disconnects. A newer connection with the same
-`agentId` replaces the entry, and only the close of the current socket marks
-it offline.
+`agentId` replaces the entry, and only the current socket writes to it or, by
+closing, marks it offline.
 
 The state diagram shows the lifecycle of a connection and its registry entry.
 
@@ -229,6 +254,7 @@ stateDiagram-v2
   Offline --> Online: re-auth
   Online --> Online: snapshot or ping
   Online --> Offline: socket closes
+  Online --> Closed: replaced (next snapshot, 4000)
   Offline --> Evicted: list or health read after AGENT_TTL_MS since last snapshot
   Closed --> [*]
   Evicted --> [*]

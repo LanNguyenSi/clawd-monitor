@@ -71,14 +71,26 @@ class AgentRegistry {
     // The disconnect handler checks ws !== entry.ws and skips stale sockets.
     // Calling terminate/close/removeAllListeners on the old WS can interfere
     // with the new connection in the same Node.js event loop.
+    // The old socket cannot write any more, though: update() ignores a socket
+    // that is not entry.ws, and the handler closes it on its next snapshot.
   }
 
-  update(agentId: string, snapshot: AgentSnapshot) {
+  /**
+   * Store a snapshot for the agent, but only when `ws` is the socket that
+   * currently owns the entry. A socket that a newer connection replaced keeps
+   * its closure over the agentId, so without this check it would keep
+   * overwriting the current connection's data. Returns false when nothing was
+   * stored (unknown agent or replaced socket); the caller then closes the
+   * replaced socket. The socket is a required argument so a call site cannot
+   * skip the check.
+   */
+  update(ws: WebSocket, agentId: string, snapshot: AgentSnapshot): boolean {
     const entry = this.agents.get(agentId)
-    if (!entry) return
+    if (!entry || entry.ws !== ws) return false
     entry.lastSnapshot = snapshot
     entry.lastSnapshotAt = Date.now()
     entry.online = true
+    return true
   }
 
   disconnect(agentId: string, ws?: WebSocket) {
