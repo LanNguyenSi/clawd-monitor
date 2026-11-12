@@ -275,16 +275,28 @@ describe('WidgetGrid focus handling around the notice', () => {
     expect(document.activeElement).toBe(removeButton('CPU + RAM'))
   })
 
-  it('moves focus to the first widget remove button after Escape', async () => {
+  it('moves focus to the first widget remove button after Escape from inside the notice', async () => {
     await mountGrid(true)
     await act(async () => removeButton('CPU + RAM')!.click())
+    expect(document.activeElement).toBe(undoButton())
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     })
     expect(document.activeElement).toBe(removeButton('Cron Jobs'))
   })
 
-  it('moves focus off the body to the first remove button after expiry', async () => {
+  it('does not move focus on Escape when focus is elsewhere', async () => {
+    await mountGrid(true)
+    await act(async () => removeButton('CPU + RAM')!.click())
+    await act(async () => blurActive())
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+    expect(notice()).toBeNull()
+    expect(document.activeElement).toBe(document.body)
+  })
+
+  it('leaves focus alone on auto-expiry, even when it is on the body', async () => {
     vi.useFakeTimers()
     await mountGrid(true)
     await act(async () => removeButton('CPU + RAM')!.click())
@@ -293,7 +305,8 @@ describe('WidgetGrid focus handling around the notice', () => {
     await act(async () => {
       vi.advanceTimersByTime(UNDO_NOTICE_MS + 1)
     })
-    expect(document.activeElement).toBe(removeButton('Cron Jobs'))
+    expect(notice()).toBeNull()
+    expect(document.activeElement).toBe(document.body)
   })
 
   it('does not take focus from another element when the notice expires', async () => {

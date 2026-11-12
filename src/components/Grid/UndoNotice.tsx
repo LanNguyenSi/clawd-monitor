@@ -14,10 +14,10 @@ export interface UndoNoticeContent {
 interface Props {
   notice: UndoNoticeContent | null
   onUndo: () => void
-  onDismiss: () => void
+  onDismiss: (reason: 'escape' | 'expired') => void
 }
 
-function NoticeBox({ message, onUndo, onDismiss }: { message: string; onUndo: () => void; onDismiss: () => void }) {
+function NoticeBox({ message, onUndo, onDismiss }: { message: string; onUndo: () => void; onDismiss: Props['onDismiss'] }) {
   // The timer pauses while the pointer is over the notice or focus is inside it.
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
@@ -25,12 +25,12 @@ function NoticeBox({ message, onUndo, onDismiss }: { message: string; onUndo: ()
   const undoRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
-    undoRef.current?.focus()
+    undoRef.current?.focus({ preventScroll: true })
   }, [])
 
   useEffect(() => {
     if (paused) return
-    const timer = setTimeout(onDismiss, UNDO_NOTICE_MS)
+    const timer = setTimeout(() => onDismiss('expired'), UNDO_NOTICE_MS)
     return () => clearTimeout(timer)
   }, [paused, onDismiss])
 
@@ -39,7 +39,7 @@ function NoticeBox({ message, onUndo, onDismiss }: { message: string; onUndo: ()
       if (e.key !== 'Escape' || e.defaultPrevented) return
       // Leave Escape to an open dialog.
       if (document.querySelector('[aria-modal="true"]')) return
-      onDismiss()
+      onDismiss('escape')
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)

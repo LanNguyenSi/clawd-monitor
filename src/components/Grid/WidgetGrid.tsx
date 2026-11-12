@@ -46,8 +46,8 @@ interface Props {
 interface RemovedWidget {
   id: string
   title: string
-  /** The widget's layout item and list index on every breakpoint that had one. */
-  items: Record<string, { item: Layout; index: number }>
+  /** Every breakpoint's full layout as the user saw it before the remove. */
+  before: ResponsiveLayouts
   key: number
 }
 
@@ -60,6 +60,9 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
   const removalCount = useRef(0)
   const gridRef = useRef<HTMLDivElement>(null)
   const pendingFocus = useRef<PendingFocus | null>(null)
+  // Set by a drag or resize after the remove: the saved snapshot is then out of
+  // date and Undo only splices the widget back in.
+  const editedSinceRemove = useRef(false)
 
   // Move focus once the DOM reflects the state change that asked for it.
   useEffect(() => {
@@ -72,7 +75,8 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
     const button = target.kind === 'widget'
       ? buttons.find((b) => b.getAttribute('aria-label') === `Remove ${target.title} widget`)
       : buttons[0]
-    ;(button ?? root).focus()
+    if (target.kind === 'widget' && button) button.focus()
+    else (button ?? root).focus({ preventScroll: true })
   })
 
   useEffect(() => {
@@ -89,37 +93,48 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
     onLayoutChange?.(current.map((l) => l.i))
   }, [onLayoutChange])
 
-  const dismissRemoved = useCallback(() => {
-    // When focus sits in the notice (or nowhere), hand it to the first widget's
-    // remove button so it does not fall back to the page.
-    const active = document.activeElement
-    if (!active || active === document.body || active.closest('[data-undo-notice]')) {
+  const dismissRemoved = useCallback((reason: 'escape' | 'expired') => {
+    // Escape with focus inside the notice would drop focus to the page: hand it
+    // to the first widget's remove button. Expiry never touches focus.
+    if (reason === 'escape' && document.activeElement?.closest('[data-undo-notice]')) {
       pendingFocus.current = { kind: 'grid' }
     }
     setRemoved(null)
   }, [])
 
+  const markEdited = useCallback(() => {
+    editedSinceRemove.current = true
+  }, [])
+
   const handleRemove = (id: string, title: string) => {
-    const items: RemovedWidget['items'] = {}
-    for (const [bp, list] of Object.entries(layouts)) {
-      const index = list.findIndex((l) => l.i === id)
-      if (index >= 0) items[bp] = { item: list[index], index }
-    }
     const next = removeWidget(layouts, id)
     setLayouts(next)
     saveLayouts(localStorage, next)
     onLayoutChange?.(widgetIdsOf(next))
     removalCount.current += 1
-    setRemoved({ id, title, items, key: removalCount.current })
+    editedSinceRemove.current = false
+    setRemoved({ id, title, before: layouts, key: removalCount.current })
   }
 
   const handleUndo = () => {
     if (!removed) return
     const next: ResponsiveLayouts = { ...layouts }
-    for (const [bp, { item, index }] of Object.entries(removed.items)) {
-      // Back at its old index, so vertical compaction keeps the old order.
-      const list = [...(next[bp] ?? [])]
-      list.splice(Math.min(index, list.length), 0, item)
+    for (const [bp, snapshot] of Object.entries(removed.before)) {
+      const current = next[bp]
+      if (!current) continue
+      if (!editedSinceRemove.current) {
+        // Nothing moved since the remove: put the layout back exactly as it was
+        // (keeping only widgets that still exist).
+        const present = new Set(current.map((l) => l.i))
+        next[bp] = snapshot.filter((l) => l.i === removed.id || present.has(l.i))
+        continue
+      }
+      // The user dragged or resized meanwhile: keep their layout and splice the
+      // widget back at its old list index.
+      const index = snapshot.findIndex((l) => l.i === removed.id)
+      if (index < 0 || current.some((l) => l.i === removed.id)) continue
+      const list = [...current]
+      list.splice(Math.min(index, list.length), 0, snapshot[index])
       next[bp] = list
     }
     pendingFocus.current = { kind: 'widget', title: removed.title }
@@ -141,6 +156,8 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
       cols={colsMap}
       rowHeight={150}
       breakpoints={{ lg: 1200, md: 768, sm: 480, xs: 320, xxs: 0 }}
+      onDragStop={markEdited}
+      onResizeStop={markEdited}
       onLayoutChange={(current, all) => handleLayoutChange(current, all as ResponsiveLayouts)}
       draggableHandle=".cursor-grab"
       isResizable={editMode}
