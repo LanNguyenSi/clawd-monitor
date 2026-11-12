@@ -3,7 +3,7 @@ type: invariant
 title: Agent registry lifecycle, from WebSocket handshake to TTL eviction
 description: How a clawd-monitor-agent connection becomes an AgentRegistry entry (auth message first, static then persisted token check, newest connection wins), when an entry goes offline (only via its current socket), when it is evicted (lazily, only inside getAll), and what token revocation does and does not affect.
 tags: [agents, websocket, registry, tokens, ttl]
-timestamp: 2026-11-12T08:46:57Z
+timestamp: 2026-11-12T12:36:23Z
 sources:
   - server.ts
   - src/lib/ws-upgrade.ts
@@ -141,7 +141,7 @@ as an invalid token, registry untouched) when any entry's `agentId` equals the
 handshake's; a missing file reads as no entries, an unreadable or corrupt one
 refuses the handshake too (fail closed) but retryably, with close 1013 and no
 `auth_error`, so the reference agent reconnects instead of stopping
-(`src/lib/agent-ws-handler.ts:97#"if (staticMatch)"`). A match against a persisted
+(`src/lib/agent-ws-handler.ts:97-128#"if (staticMatch)"`). A match against a persisted
 token is bound: the handler re-reads `tokens.json` after the bcrypt
 comparison, patches only the matched id and rewrites the file with no await
 in between, so a token created or revoked during the comparison is neither lost
@@ -174,7 +174,7 @@ and `online: true`, carrying over `lastSnapshot` and `lastSnapshotAt` from
 any previous entry
 (`src/lib/agent-registry.ts:61-66#"online: true"`). The old socket is left
 open on purpose
-(`src/lib/agent-registry.ts:70-71#"skips stale sockets"`). When it later
+(`src/lib/agent-registry.ts:70-75#"skips stale sockets"`). When it later
 closes, `disconnect(agentId, ws)` sees that it is no longer the entry's
 socket and does nothing
 (`src/lib/agent-registry.ts:96-100#"entry.online = false"`), so a reconnect
@@ -194,7 +194,7 @@ connection of the real agent could overwrite fresh data.
 The replaced socket is dropped, not left silently connected. When the
 handler's `registry.update()` returns `false`, the handler sends no `ack`,
 logs a warning and closes that socket with code 4000
-(`src/lib/agent-ws-handler.ts:210#"REPLACED_CLOSE_CODE"`). The close
+(`src/lib/agent-ws-handler.ts:208-212#"REPLACED_CLOSE_CODE"`). The close
 happens on the replaced socket's own next `snapshot`, never inside
 `register()`, which keeps its rule of not touching the old socket (event
 loop interference with the new connection). An agent that sees 4000 has been
