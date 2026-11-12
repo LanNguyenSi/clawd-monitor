@@ -102,8 +102,13 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
     setRemoved(null)
   }, [])
 
-  const markEdited = useCallback(() => {
-    editedSinceRemove.current = true
+  // react-grid-layout calls onDragStop on every mouseup on a drag handle, also
+  // for a plain click without movement; only a real move or resize counts.
+  const markEdited = useCallback((_layout: Layout[], oldItem?: Layout, newItem?: Layout) => {
+    if (!oldItem || !newItem) return
+    if (oldItem.x !== newItem.x || oldItem.y !== newItem.y || oldItem.w !== newItem.w || oldItem.h !== newItem.h) {
+      editedSinceRemove.current = true
+    }
   }, [])
 
   const handleRemove = (id: string, title: string) => {

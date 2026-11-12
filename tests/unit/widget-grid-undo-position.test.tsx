@@ -105,10 +105,11 @@ describe('Undo with the real grid', () => {
     ])
     await remove('CPU + RAM')
     // Simulate dragging heartbeat to the right edge.
+    const old = stored().find((l) => l.i === 'heartbeat')
     const moved = stored().map((l) => (l.i === 'heartbeat' ? { ...l, x: 3 } : l))
     await act(async () => {
       grid.props!.onLayoutChange(moved, { lg: moved })
-      grid.props!.onDragStop()
+      grid.props!.onDragStop(moved, old, moved.find((l) => l.i === 'heartbeat'))
     })
     await act(async () => {})
     expect(pos().heartbeat).toEqual([3, 0])
@@ -126,14 +127,52 @@ describe('Undo with the real grid', () => {
       { i: 'alert-history', x: 0, y: 4, w: 1, h: 2 },
     ])
     await remove('CPU + RAM')
+    const old = stored().find((l) => l.i === 'cron')
     const resized = stored().map((l) => (l.i === 'cron' ? { ...l, w: 2 } : l))
     await act(async () => {
       grid.props!.onLayoutChange(resized, { lg: resized })
-      grid.props!.onResizeStop()
+      grid.props!.onResizeStop(resized, old, resized.find((l) => l.i === 'cron'))
     })
     await act(async () => {})
     await undo()
     expect(stored().find((l) => l.i === 'cron')?.w).toBe(2)
     expect(stored().filter((l) => l.i === 'metrics')).toHaveLength(1)
+  })
+
+  it('a click on a drag handle without movement keeps the snapshot restore', async () => {
+    await mount([
+      { i: 'heartbeat', x: 0, y: 0, w: 1, h: 1 },
+      { i: 'cron', x: 1, y: 0, w: 1, h: 2 },
+      { i: 'metrics', x: 0, y: 2, w: 2, h: 2 },
+      { i: 'alert-history', x: 0, y: 4, w: 1, h: 2 },
+    ])
+    const before = pos()
+    await remove('CPU + RAM')
+    const now = stored()
+    const hb = now.find((l) => l.i === 'heartbeat')!
+    await act(async () => {
+      grid.props!.onDragStop(now, hb, { ...hb })
+    })
+    await undo()
+    expect(pos()).toEqual(before)
+  })
+
+  it('does not bring back a widget that is no longer in the layout at Undo time', async () => {
+    await mount([
+      { i: 'heartbeat', x: 0, y: 0, w: 1, h: 1 },
+      { i: 'cron', x: 1, y: 0, w: 1, h: 2 },
+      { i: 'metrics', x: 0, y: 2, w: 2, h: 2 },
+      { i: 'alert-history', x: 0, y: 4, w: 1, h: 2 },
+    ])
+    await remove('CPU + RAM')
+    const withoutCron = stored().filter((l) => l.i !== 'cron')
+    await act(async () => {
+      grid.props!.onLayoutChange(withoutCron, { lg: withoutCron })
+    })
+    await act(async () => {})
+    await undo()
+    const ids = stored().map((l) => l.i)
+    expect(ids).not.toContain('cron')
+    expect(ids.filter((i) => i === 'metrics')).toHaveLength(1)
   })
 })
