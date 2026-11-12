@@ -54,7 +54,11 @@ const mockRegistry = registry as typeof registry & {
 
 class MockWs extends EventEmitter {
   send = vi.fn()
-  close = vi.fn()
+  // Like a real socket, a closed one ends with a 'close' event; the handler's
+  // unauthenticated-socket accounting depends on it.
+  close = vi.fn(() => {
+    queueMicrotask(() => this.emit('close'))
+  })
 }
 
 function makeMockWs(): MockWs {

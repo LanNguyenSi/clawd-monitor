@@ -34,6 +34,16 @@ export const AGENT_WS_AUTH_TIMEOUT_MS = 10_000
 /** Sockets that may be connected and not yet authenticated, all clients together. */
 export const AGENT_WS_MAX_UNAUTHENTICATED = 32
 
+/**
+ * Of those, the most one client key may hold (the peer address, or the one the
+ * trusted proxy saw; an IPv6 client is keyed by its /64). Without it a single
+ * address could fill every slot and keep legitimate agents out.
+ */
+export const AGENT_WS_MAX_UNAUTHENTICATED_PER_KEY = 4
+
+/** Same for the /48 around an IPv6 client, which holds many /64 keys. */
+export const AGENT_WS_MAX_UNAUTHENTICATED_PER_PARENT = 16
+
 /** After the server asks an unauthenticated socket to close, it is destroyed if it has not closed by then. */
 export const AGENT_WS_CLOSE_GRACE_MS = 2000
 
@@ -64,10 +74,30 @@ export function createAgentWebSocketServer(): WebSocketServer {
 }
 
 let unauthenticated = 0
+// Counted sockets per client key and per IPv6 /48 parent (the strings cannot collide).
+const unauthenticatedByKey = new Map<string, number>()
 
 /** Sockets currently counted against AGENT_WS_MAX_UNAUTHENTICATED. */
 export function unauthenticatedSocketCount(): number {
   return unauthenticated
+}
+
+/** Counted sockets of one client key or /48 parent. */
+export function unauthenticatedKeyCount(key: string): number {
+  return unauthenticatedByKey.get(key) ?? 0
+}
+
+function keyHasRoom(client: ClientKeys): boolean {
+  if (unauthenticatedKeyCount(client.key) >= AGENT_WS_MAX_UNAUTHENTICATED_PER_KEY) return false
+  return client.parent === undefined || unauthenticatedKeyCount(client.parent) < AGENT_WS_MAX_UNAUTHENTICATED_PER_PARENT
+}
+
+function adjustKeys(client: ClientKeys, delta: 1 | -1): void {
+  for (const k of client.parent === undefined ? [client.key] : [client.key, client.parent]) {
+    const n = unauthenticatedKeyCount(k) + delta
+    if (n > 0) unauthenticatedByKey.set(k, n)
+    else unauthenticatedByKey.delete(k)
+  }
 }
 
 /**
@@ -122,17 +152,26 @@ export interface PreAuthGuard {
   admitHandshake(): boolean
   /** The socket authenticated: stop the deadline, free the slot, clear the IP's failures if it was charged. */
   authenticated(): void
+  /**
+   * Register the processing of one message. The slot of a socket that is gone
+   * (or authenticated) is given back only when every tracked message has
+   * settled, so the cap also bounds the bcrypt compares still running for
+   * sockets that already closed. Returns the promise it was given.
+   */
+  track<T>(work: Promise<T>): Promise<T>
 }
 
 /**
  * Count a new socket as unauthenticated. Returns null, after closing the
  * socket with 1013, when AGENT_WS_MAX_UNAUTHENTICATED sockets are already
- * waiting. Otherwise starts the authentication deadline; the slot is given
- * back exactly once, by whichever of authentication, close, error or the
- * deadline comes first.
+ * waiting or its client key (or IPv6 /48) holds its share. Otherwise starts
+ * the authentication deadline. The slot, global and per client, is given back
+ * exactly once: after the first of authentication, close, error or the
+ * deadline, and once every message tracked with track() has settled.
  */
 export function admitUnauthenticated(ws: WebSocket, req: IncomingMessage): PreAuthGuard | null {
-  if (unauthenticated >= AGENT_WS_MAX_UNAUTHENTICATED) {
+  const client = upgradeClientKeys(req)
+  if (unauthenticated >= AGENT_WS_MAX_UNAUTHENTICATED || !keyHasRoom(client)) {
     // A socket without an error listener would crash the process on an error event.
     ws.on('error', () => {})
     const cancelReap = closeAndReap(ws, WS_CLOSE_TRY_AGAIN_LATER, 'Server busy')
@@ -141,29 +180,34 @@ export function admitUnauthenticated(ws: WebSocket, req: IncomingMessage): PreAu
   }
 
   unauthenticated += 1
+  adjustKeys(client, 1)
   let held = true
+  let done = false // closed, rejected or authenticated: no new work is started for the slot
+  let inFlight = 0
   let gone = false
-  let client: ClientKeys | null = null
   let charged = false
   let cancelReap: (() => void) | null = null
 
-  const release = () => {
-    if (!held) return
+  const releaseIfIdle = () => {
+    if (!held || !done || inFlight > 0) return
     held = false
     unauthenticated -= 1
+    adjustKeys(client, -1)
   }
   const finish = () => {
     gone = true
+    done = true
     clearTimeout(deadline)
     cancelReap?.()
-    release()
+    releaseIfIdle()
   }
   const reject = (code: number, reason: string) => {
     if (gone) return
     gone = true
+    done = true
     clearTimeout(deadline)
-    release()
     cancelReap = closeAndReap(ws, code, reason)
+    releaseIfIdle()
   }
   // finish() and reject() read `deadline`; neither runs before this line.
   const deadline = setTimeout(() => reject(WS_CLOSE_POLICY, 'Authentication timeout'), AGENT_WS_AUTH_TIMEOUT_MS)
@@ -180,7 +224,6 @@ export function admitUnauthenticated(ws: WebSocket, req: IncomingMessage): PreAu
       return true
     },
     admitHandshake() {
-      client ??= upgradeClientKeys(req)
       const gate = agentHandshakeLimiter.acquire(client.key, client.parent)
       if (!gate.allowed) {
         reject(WS_CLOSE_POLICY, 'Too many attempts')
@@ -189,10 +232,19 @@ export function admitUnauthenticated(ws: WebSocket, req: IncomingMessage): PreAu
       charged = true
       return true
     },
+    track(work) {
+      inFlight += 1
+      void work.finally(() => {
+        inFlight -= 1
+        releaseIfIdle()
+      })
+      return work
+    },
     authenticated() {
       clearTimeout(deadline)
-      release()
-      if (charged && client) {
+      // The slot is given back when the message that authenticated has settled.
+      done = true
+      if (charged) {
         agentHandshakeLimiter.reset(client.key, client.parent)
         agentHandshakeLimiter.recordSuccess(client.key, client.parent)
       }

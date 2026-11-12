@@ -28,7 +28,7 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
   const guard = admitUnauthenticated(ws, req)
   if (!guard) return
 
-  ws.on('message', async (raw: Buffer | string) => {
+  const onMessage = async (raw: Buffer | string) => {
     // Before authentication a message is size-checked on the raw bytes, before
     // it is parsed, and ignored once the socket was rejected or timed out.
     if (!authenticated && (guard.gone || guard.tooLarge(raw))) return
@@ -74,8 +74,13 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
           return
         }
         for (const entry of entries) {
+          // A socket that closed (or timed out) while bcrypt ran is not worth
+          // another compare: each one is ~100 ms of event loop.
+          if (guard.gone) return
           try {
             if (await bcrypt.compare(msg.token, entry.tokenHash)) {
+              // Do not bind or stamp a token for a socket that is gone.
+              if (guard.gone) return
               tokenValid = true
               matched = entry
               break
@@ -137,9 +142,6 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
         return
       }
 
-      // The socket may have been closed or timed out while bcrypt ran.
-      if (guard.gone) return
-
       agentId = msg.agentId
       authenticated = true
       guard.authenticated()
@@ -163,6 +165,11 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
     } else if (msg.type === 'ping') {
       send(ws, { type: 'pong' })
     }
+  }
+  // The guard keeps the unauthenticated slot until the work of each message,
+  // bcrypt included, has settled.
+  ws.on('message', (raw: Buffer | string) => {
+    void guard.track(onMessage(raw))
   })
 
   ws.on('close', () => {

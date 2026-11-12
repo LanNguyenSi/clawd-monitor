@@ -29,10 +29,11 @@ vi.mock('@/lib/agent-registry', () => ({
   },
 }))
 
-import { readTokens } from '@/lib/data-store'
+import { readTokens, writeTokens } from '@/lib/data-store'
 import { registry } from '@/lib/agent-registry'
 
 const mockReadTokens = vi.mocked(readTokens)
+const mockWriteTokens = vi.mocked(writeTokens)
 const mockRegister = vi.mocked(registry.register)
 
 type Handler = (ws: WebSocket, req: IncomingMessage) => void
@@ -40,9 +41,14 @@ type Limits = typeof import('@/lib/agent-ws-limits')
 
 const STATIC_TOKEN = 'static-env-token'
 
+// When set, a closed mock ends with a 'close' event like a real socket does.
+let autoClose = false
+
 class MockWs extends EventEmitter {
   send = vi.fn()
-  close = vi.fn()
+  close = vi.fn<(code?: number, reason?: string) => void>(() => {
+    if (autoClose) queueMicrotask(() => this.emit('close'))
+  })
   terminate = vi.fn()
 }
 
@@ -71,9 +77,9 @@ async function load(env: Record<string, string> = {}) {
 }
 
 /** Open a socket and send one message; resolves once the handler had a chance to answer. */
-async function connect(peer = '10.0.0.1', forwarded?: string): Promise<MockWs> {
+async function connect(peer: string | null = '10.0.0.1', forwarded?: string): Promise<MockWs> {
   const ws = new MockWs()
-  handle(asWs(ws), reqFrom(peer, forwarded))
+  handle(asWs(ws), reqFrom(peer ?? undefined, forwarded))
   return ws
 }
 
@@ -82,9 +88,16 @@ async function authenticate(ws: MockWs, token = STATIC_TOKEN) {
   await vi.waitFor(() => expect(ws.send).toHaveBeenCalled(), { timeout: 5000 })
 }
 
+/** Let pending handler promises settle (the slot of a finished message is given back then). */
+async function flush() {
+  if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(0)
+  else await new Promise<void>((r) => setTimeout(r, 0))
+}
+
 const sentTypes = (ws: MockWs) => ws.send.mock.calls.map((c) => JSON.parse(c[0] as string).type)
 
 beforeEach(() => {
+  autoClose = false
   vi.clearAllMocks()
   mockReadTokens.mockReturnValue([])
 })
@@ -247,12 +260,13 @@ describe('authentication deadline', () => {
 })
 
 describe('cap on unauthenticated sockets', () => {
-  /** n sockets that stay unauthenticated. */
-  async function fill(n: number, peer = '10.0.0.1') {
+  /** n sockets that stay unauthenticated, four to a client address (the per-client cap). */
+  async function fill(n: number) {
     const out: MockWs[] = []
-    for (let i = 0; i < n; i++) out.push(await connect(peer))
+    for (let i = 0; i < n; i++) out.push(await connect(`10.0.${Math.floor(i / 4)}.1`))
     return out
   }
+  const FRESH = '10.250.0.1'
 
   it('refuses the socket after the cap with 1013 and does not count it', async () => {
     await load()
@@ -260,13 +274,15 @@ describe('cap on unauthenticated sockets', () => {
     expect(limits.unauthenticatedSocketCount()).toBe(limits.AGENT_WS_MAX_UNAUTHENTICATED)
     held.forEach((w) => expect(w.close).not.toHaveBeenCalled())
 
-    const extra = await connect()
+    const extra = await connect(FRESH)
     expect(extra.close).toHaveBeenCalledWith(limits.WS_CLOSE_TRY_AGAIN_LATER, expect.any(String))
     expect(limits.unauthenticatedSocketCount()).toBe(limits.AGENT_WS_MAX_UNAUTHENTICATED)
+    expect(limits.unauthenticatedKeyCount(FRESH)).toBe(0)
     // a refused socket is not served: its messages do nothing, an error event does not throw
     extra.emit('message', authWith(STATIC_TOKEN))
     expect(() => extra.emit('error', new Error('boom'))).not.toThrow()
     extra.emit('close')
+    await flush()
     expect(limits.unauthenticatedSocketCount()).toBe(limits.AGENT_WS_MAX_UNAUTHENTICATED)
     expect(extra.send).not.toHaveBeenCalled()
     expect(mockRegister).not.toHaveBeenCalled()
@@ -276,8 +292,9 @@ describe('cap on unauthenticated sockets', () => {
     await load()
     const held = await fill(limits.AGENT_WS_MAX_UNAUTHENTICATED)
     await authenticate(held[0])
+    await flush()
     expect(limits.unauthenticatedSocketCount()).toBe(limits.AGENT_WS_MAX_UNAUTHENTICATED - 1)
-    const next = await connect()
+    const next = await connect(FRESH)
     expect(next.close).not.toHaveBeenCalled()
     expect(limits.unauthenticatedSocketCount()).toBe(limits.AGENT_WS_MAX_UNAUTHENTICATED)
   })
@@ -288,20 +305,24 @@ describe('cap on unauthenticated sockets', () => {
     await authenticate(held[0])
     held[0].emit('close')
     held[0].emit('error', new Error('late'))
+    await flush()
     expect(limits.unauthenticatedSocketCount()).toBe(1)
+    expect(limits.unauthenticatedKeyCount('10.0.0.1')).toBe(1)
   })
 
   it('frees a slot when a failed handshake ends in a close', async () => {
     await load()
     const held = await fill(limits.AGENT_WS_MAX_UNAUTHENTICATED - 1)
-    const bad = await connect()
+    const bad = await connect(FRESH)
     await authenticate(bad, 'wrong')
     expect(sentTypes(bad)).toEqual(['auth_error'])
     expect(bad.close).toHaveBeenCalledWith(1008, expect.any(String))
+    await flush()
     expect(limits.unauthenticatedSocketCount()).toBe(limits.AGENT_WS_MAX_UNAUTHENTICATED)
     bad.emit('close')
+    await flush()
     expect(limits.unauthenticatedSocketCount()).toBe(held.length)
-    expect((await connect()).close).not.toHaveBeenCalled()
+    expect((await connect(FRESH)).close).not.toHaveBeenCalled()
   })
 
   it('frees a slot when the client closes', async () => {
@@ -309,17 +330,19 @@ describe('cap on unauthenticated sockets', () => {
     const held = await fill(limits.AGENT_WS_MAX_UNAUTHENTICATED)
     held[3].emit('close')
     held[3].emit('close')
+    await flush()
     expect(limits.unauthenticatedSocketCount()).toBe(limits.AGENT_WS_MAX_UNAUTHENTICATED - 1)
-    expect((await connect()).close).not.toHaveBeenCalled()
-    expect((await connect()).close).toHaveBeenCalledWith(limits.WS_CLOSE_TRY_AGAIN_LATER, expect.any(String))
+    expect((await connect(FRESH)).close).not.toHaveBeenCalled()
+    expect((await connect('10.250.0.2')).close).toHaveBeenCalledWith(limits.WS_CLOSE_TRY_AGAIN_LATER, expect.any(String))
   })
 
   it('frees a slot when the socket errors', async () => {
     await load()
     const held = await fill(limits.AGENT_WS_MAX_UNAUTHENTICATED)
     held[0].emit('error', new Error('ECONNRESET'))
+    await flush()
     expect(limits.unauthenticatedSocketCount()).toBe(limits.AGENT_WS_MAX_UNAUTHENTICATED - 1)
-    expect((await connect()).close).not.toHaveBeenCalled()
+    expect((await connect(FRESH)).close).not.toHaveBeenCalled()
   })
 
   it('frees a slot when the deadline closes the socket, without waiting for the close handshake', async () => {
@@ -329,7 +352,7 @@ describe('cap on unauthenticated sockets', () => {
     vi.advanceTimersByTime(limits.AGENT_WS_AUTH_TIMEOUT_MS)
     held.forEach((w) => expect(w.close).toHaveBeenCalledWith(limits.WS_CLOSE_POLICY, 'Authentication timeout'))
     expect(limits.unauthenticatedSocketCount()).toBe(0)
-    expect((await connect()).close).not.toHaveBeenCalled()
+    expect((await connect(FRESH)).close).not.toHaveBeenCalled()
     // the late close events of the timed-out sockets do not free a slot a second time
     held.forEach((w) => w.emit('close'))
     expect(limits.unauthenticatedSocketCount()).toBe(1)
@@ -339,20 +362,268 @@ describe('cap on unauthenticated sockets', () => {
     await load()
     const held = await fill(limits.AGENT_WS_MAX_UNAUTHENTICATED)
     held[0].emit('message', Buffer.alloc(limits.AGENT_WS_PREAUTH_MAX_MESSAGE_BYTES + 1, 0x20))
+    await flush()
     expect(limits.unauthenticatedSocketCount()).toBe(limits.AGENT_WS_MAX_UNAUTHENTICATED - 1)
   })
 
   it('frees a slot when the IP budget refuses a handshake', async () => {
     await load()
-    const held = await fill(limits.AGENT_WS_MAX_UNAUTHENTICATED, '10.9.9.9')
-    // 10.9.9.9 is used up by failures
-    for (let i = 0; i < limits.AGENT_WS_HANDSHAKE_MAX_ATTEMPTS; i++) held[i].emit('message', authWith('wrong'))
-    await vi.waitFor(() => expect(mockReadTokens).toHaveBeenCalledTimes(limits.AGENT_WS_HANDSHAKE_MAX_ATTEMPTS))
-    await vi.waitFor(() => expect(held[limits.AGENT_WS_HANDSHAKE_MAX_ATTEMPTS - 1].send).toHaveBeenCalled())
-    const before = limits.unauthenticatedSocketCount()
-    held[limits.AGENT_WS_HANDSHAKE_MAX_ATTEMPTS].emit('message', authWith('wrong'))
-    expect(held[limits.AGENT_WS_HANDSHAKE_MAX_ATTEMPTS].close).toHaveBeenCalledWith(limits.WS_CLOSE_POLICY, 'Too many attempts')
-    expect(limits.unauthenticatedSocketCount()).toBe(before - 1)
+    autoClose = true
+    for (let i = 0; i < limits.AGENT_WS_HANDSHAKE_MAX_ATTEMPTS; i++) {
+      await authenticate(await connect('10.9.9.9'), 'wrong')
+      await flush()
+    }
+    expect(limits.unauthenticatedSocketCount()).toBe(0)
+    const refused = await connect('10.9.9.9')
+    expect(limits.unauthenticatedSocketCount()).toBe(1)
+    refused.emit('message', authWith('wrong'))
+    expect(refused.close).toHaveBeenCalledWith(limits.WS_CLOSE_POLICY, 'Too many attempts')
+    await flush()
+    expect(limits.unauthenticatedSocketCount()).toBe(0)
+    expect(limits.unauthenticatedKeyCount('10.9.9.9')).toBe(0)
+  })
+})
+
+describe('cap per client', () => {
+  const PEER = '10.1.1.1'
+  const MAX = () => limits.AGENT_WS_MAX_UNAUTHENTICATED_PER_KEY
+
+  /** The key is full of sockets that stay unauthenticated. */
+  async function fillKey(peer = PEER) {
+    const out: MockWs[] = []
+    for (let i = 0; i < MAX(); i++) out.push(await connect(peer))
+    return out
+  }
+  const refused = (w: MockWs) => w.close.mock.calls.some((c) => c[0] === limits.WS_CLOSE_TRY_AGAIN_LATER)
+
+  it('refuses the socket after one client key holds its share, and lets other clients in', async () => {
+    await load()
+    const held = await fillKey()
+    expect(limits.unauthenticatedKeyCount(PEER)).toBe(MAX())
+    const extra = await connect(PEER)
+    expect(refused(extra)).toBe(true)
+    // the refused socket is not counted, globally or per key
+    expect(limits.unauthenticatedKeyCount(PEER)).toBe(MAX())
+    expect(limits.unauthenticatedSocketCount()).toBe(MAX())
+    held.forEach((w) => expect(w.close).not.toHaveBeenCalled())
+    expect(refused(await connect('10.1.1.2'))).toBe(false)
+  })
+
+  it('keeps legitimate clients out of the way of one address holding sockets', async () => {
+    await load()
+    // one address makes many attempts; only its share is held, the rest is refused
+    for (let i = 0; i < 20; i++) await connect(PEER)
+    expect(limits.unauthenticatedSocketCount()).toBe(MAX())
+    for (let i = 0; i < limits.AGENT_WS_MAX_UNAUTHENTICATED - MAX(); i++) {
+      expect(refused(await connect(`10.2.${i}.1`))).toBe(false)
+    }
+  })
+
+  it('counts a client without a peer address as one shared key', async () => {
+    await load()
+    for (let i = 0; i < MAX(); i++) expect(refused(await connect(null))).toBe(false)
+    expect(refused(await connect(null))).toBe(true)
+    expect(limits.unauthenticatedKeyCount('unknown')).toBe(MAX())
+  })
+
+  it('counts an IPv6 client by /64 and caps the /48 around it', async () => {
+    await load()
+    const inSame64 = (n: number) => `2001:db8:1:1::${n + 1}`
+    for (let i = 0; i < MAX(); i++) expect(refused(await connect(inSame64(i)))).toBe(false)
+    expect(refused(await connect(inSame64(9)))).toBe(true)
+    expect(limits.unauthenticatedKeyCount('2001:db8:1:1::/64')).toBe(MAX())
+    expect(limits.unauthenticatedKeyCount('2001:db8:1::/48')).toBe(MAX())
+
+    // other /64s of the same /48 fill the parent budget
+    const parentMax = limits.AGENT_WS_MAX_UNAUTHENTICATED_PER_PARENT
+    for (let i = 0; i < parentMax - MAX(); i++) expect(refused(await connect(`2001:db8:1:${100 + i}::1`))).toBe(false)
+    expect(limits.unauthenticatedKeyCount('2001:db8:1::/48')).toBe(parentMax)
+    expect(refused(await connect('2001:db8:1:999::1'))).toBe(true)
+    // another /48 is not affected
+    expect(refused(await connect('2001:db8:2:1::1'))).toBe(false)
+  })
+
+  it('keys on the address the trusted proxy saw, not on forgeable header entries', async () => {
+    await load({ TRUSTED_PROXY_HOPS: '1' })
+    for (let i = 0; i < MAX(); i++) expect(refused(await connect('10.0.0.1', `198.51.100.${i}, 203.0.113.7`))).toBe(false)
+    expect(refused(await connect('10.0.0.1', '198.51.100.99, 203.0.113.7'))).toBe(true)
+    expect(refused(await connect('10.0.0.1', '203.0.113.8'))).toBe(false)
+    expect(limits.unauthenticatedKeyCount('203.0.113.7')).toBe(MAX())
+  })
+
+  async function expectFreedAfter(trigger: (held: MockWs[]) => Promise<void> | void, peer = PEER) {
+    const held = await fillKey(peer)
+    await trigger(held)
+    await flush()
+    expect(limits.unauthenticatedKeyCount(peer)).toBe(MAX() - 1)
+    expect(refused(await connect(peer))).toBe(false)
+    expect(refused(await connect(peer))).toBe(true)
+  }
+
+  it('frees the client slot when a socket authenticates', async () => {
+    await load()
+    await expectFreedAfter((held) => authenticate(held[0]))
+  })
+
+  it('frees the client slot when the socket closes, once', async () => {
+    await load()
+    await expectFreedAfter((held) => {
+      held[0].emit('close')
+      held[0].emit('close')
+    })
+  })
+
+  it('frees the client slot when the socket errors', async () => {
+    await load()
+    await expectFreedAfter((held) => {
+      held[0].emit('error', new Error('ECONNRESET'))
+    })
+  })
+
+  it('frees the client slot when the deadline closes the socket', async () => {
+    await load()
+    vi.useFakeTimers()
+    const held = await fillKey()
+    vi.advanceTimersByTime(limits.AGENT_WS_AUTH_TIMEOUT_MS)
+    expect(held.every((w) => w.close.mock.calls.length === 1)).toBe(true)
+    expect(limits.unauthenticatedKeyCount(PEER)).toBe(0)
+  })
+
+  it('frees the client slot when a pre-auth message is too big', async () => {
+    await load()
+    await expectFreedAfter((held) => {
+      held[0].emit('message', Buffer.alloc(limits.AGENT_WS_PREAUTH_MAX_MESSAGE_BYTES + 1, 0x20))
+    })
+  })
+
+  it('frees the client slot when the budget refuses a handshake', async () => {
+    await load()
+    autoClose = true
+    for (let i = 0; i < limits.AGENT_WS_HANDSHAKE_MAX_ATTEMPTS; i++) {
+      await authenticate(await connect(PEER), 'wrong')
+      await flush()
+    }
+    await expectFreedAfter((held) => {
+      held[0].emit('message', authWith('wrong'))
+    })
+  })
+
+  it('frees the client slot of the /64 and /48 of an IPv6 client on every path', async () => {
+    await load()
+    const peer = '2001:db8:7:7::5'
+    const held = await fillKey(peer)
+    await authenticate(held[0])
+    held[1].emit('close')
+    held[2].emit('error', new Error('x'))
+    held[3].emit('message', Buffer.alloc(limits.AGENT_WS_PREAUTH_MAX_MESSAGE_BYTES + 1, 0x20))
+    await flush()
+    expect(limits.unauthenticatedKeyCount('2001:db8:7:7::/64')).toBe(0)
+    expect(limits.unauthenticatedKeyCount('2001:db8:7::/48')).toBe(0)
+  })
+})
+
+describe('abandoned handshakes', () => {
+  /** bcrypt.compare calls that wait for the test to resolve them. */
+  function pendingCompares() {
+    const resolvers: Array<(ok: boolean) => void> = []
+    const spy = vi.spyOn(bcrypt, 'compare').mockImplementation(
+      () => new Promise<boolean>((resolve) => resolvers.push(resolve)) as never,
+    )
+    return { spy, resolvers }
+  }
+  const entries = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ id: `t${i}`, name: `n${i}`, tokenHash: `h${i}`, createdAt: new Date().toISOString() }))
+
+  it('stops comparing once the socket closed, and keeps the slot until the running compare settles', async () => {
+    await load()
+    mockReadTokens.mockReturnValue(entries(5))
+    const { spy, resolvers } = pendingCompares()
+    try {
+      const ws = await connect('10.3.3.3')
+      ws.emit('message', authWith('wrong-token'))
+      await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
+
+      ws.emit('close')
+      await flush()
+      // the socket is gone, the compare is still running: the slot is still taken
+      expect(limits.unauthenticatedSocketCount()).toBe(1)
+      expect(limits.unauthenticatedKeyCount('10.3.3.3')).toBe(1)
+
+      resolvers[0](false)
+      await vi.waitFor(() => expect(limits.unauthenticatedSocketCount()).toBe(0))
+      expect(limits.unauthenticatedKeyCount('10.3.3.3')).toBe(0)
+      // none of the four remaining entries was compared
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(ws.send).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('stops comparing once the deadline passed', async () => {
+    await load()
+    mockReadTokens.mockReturnValue(entries(5))
+    const { spy, resolvers } = pendingCompares()
+    try {
+      vi.useFakeTimers()
+      const ws = await connect('10.3.3.3')
+      ws.emit('message', authWith('wrong-token'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(spy).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(limits.AGENT_WS_AUTH_TIMEOUT_MS)
+      expect(ws.close).toHaveBeenCalledWith(limits.WS_CLOSE_POLICY, 'Authentication timeout')
+      expect(limits.unauthenticatedSocketCount()).toBe(1)
+      resolvers[0](false)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(limits.unauthenticatedSocketCount()).toBe(0)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('does not bind, stamp or register a token that matched after the socket closed', async () => {
+    await load()
+    mockReadTokens.mockReturnValue(entries(3))
+    const { spy, resolvers } = pendingCompares()
+    try {
+      const ws = await connect('10.3.3.3')
+      ws.emit('message', authWith('persisted-token'))
+      await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(1))
+      ws.emit('close')
+      resolvers[0](true)
+      await vi.waitFor(() => expect(limits.unauthenticatedSocketCount()).toBe(0))
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(mockWriteTokens).not.toHaveBeenCalled()
+      expect(mockRegister).not.toHaveBeenCalled()
+      expect(mockReadTokens).toHaveBeenCalledTimes(1)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('bounds the compares running for closed sockets: refused sockets start none', async () => {
+    await load()
+    mockReadTokens.mockReturnValue(entries(5))
+    const { spy } = pendingCompares()
+    try {
+      const sockets: MockWs[] = []
+      for (let i = 0; i < limits.AGENT_WS_MAX_UNAUTHENTICATED_PER_KEY; i++) {
+        const ws = await connect('10.3.3.3')
+        ws.emit('message', authWith(`wrong-${i}`))
+        sockets.push(ws)
+      }
+      await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(limits.AGENT_WS_MAX_UNAUTHENTICATED_PER_KEY))
+      sockets.forEach((w) => w.emit('close'))
+      // all four are closed but still comparing, so the client cannot open more handshakes
+      const again = await connect('10.3.3.3')
+      again.emit('message', authWith('wrong-again'))
+      await flush()
+      expect(again.close).toHaveBeenCalledWith(limits.WS_CLOSE_TRY_AGAIN_LATER, expect.any(String))
+      expect(spy).toHaveBeenCalledTimes(limits.AGENT_WS_MAX_UNAUTHENTICATED_PER_KEY)
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
 
@@ -364,9 +635,14 @@ describe('per-IP handshake budget', () => {
     mockReadTokens.mockReturnValue([{ id: 't1', name: 'n', tokenHash: hash, createdAt: new Date().toISOString() }])
   }
 
+  beforeEach(() => {
+    autoClose = true
+  })
+
   async function fail(peer: string, forwarded?: string) {
     const ws = await connect(peer, forwarded)
     await authenticate(ws, 'wrong-token')
+    await flush()
     return ws
   }
 

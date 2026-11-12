@@ -70,17 +70,21 @@ those constants are read (after the `.env` files were loaded).
    replayed on Next's server so HMR keeps its socket
    (`server.ts:62#"nextServer.emit"`).
 2. Before that, a socket is held to limits in `src/lib/agent-ws-limits.ts`
-   until it authenticates: at most 32 such sockets at once, the next is closed
-   with 1013 (`src/lib/agent-ws-limits.ts:135#"AGENT_WS_MAX_UNAUTHENTICATED"`);
+   until it authenticates: at most 32 such sockets at once, 4 per client key
+   and 16 per IPv6 /48, the next is closed with 1013
+   (`src/lib/agent-ws-limits.ts:174#"AGENT_WS_MAX_UNAUTHENTICATED"`). A slot
+   is given back once the socket authenticated, closed, errored, timed out or
+   was rejected and the work for its messages (a token compare in progress)
+   has settled; 
    a deadline of 10 s closes a silent one with 1008
-   (`src/lib/agent-ws-limits.ts:169#"AGENT_WS_AUTH_TIMEOUT_MS"`); a frame over
+   (`src/lib/agent-ws-limits.ts:213#"AGENT_WS_AUTH_TIMEOUT_MS"`); a frame over
    8 KiB closes it with 1009 before any parse
    (`src/lib/agent-ws-handler.ts:34#"guard.tooLarge(raw)"`); and a handshake
    that needs the token store is charged to the client IP first, 10 per 15
    minutes, over which the socket is closed with 1008 before the store is read
    (`src/lib/agent-ws-handler.ts:62#"guard.admitHandshake()"`). These refusals
    send no `auth_error`. The server as a whole refuses any frame over 1 MiB
-   (`src/lib/agent-ws-limits.ts:63#"maxPayload"`).
+   (`src/lib/agent-ws-limits.ts:73#"maxPayload"`).
 3. Every frame within those limits is JSON-parsed and validated against
    `wsMessageSchema`
    (`auth`, `snapshot` or `ping`). A frame that is not JSON is dropped
@@ -93,10 +97,10 @@ those constants are read (after the `.env` files were loaded).
    (`src/lib/agent-ws-handler.ts:50-52#"ws.close()"`).
 5. The token is checked against the `AGENT_TOKENS` list first (exact string
    match), then with `bcrypt.compare` against every `tokenHash` in
-   `tokens.json`
-   (`src/lib/agent-ws-handler.ts:78-80#"tokenValid = true"`). A miss sends
+   `tokens.json`, and stops at the next entry once the socket is gone
+   (`src/lib/agent-ws-handler.ts:82-86#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket with code 1008
-   (`src/lib/agent-ws-handler.ts:124#"ws.close(1008"`). A `tokens.json` read
+   (`src/lib/agent-ws-handler.ts:141#"ws.close(1008"`). A `tokens.json` read
    that throws (the file is corrupt, empty, unreadable or holds an entry that is
    not an object with string `id`, `name`, `tokenHash` and `createdAt` and, when
    present, a string `lastUsedAt` and `agentId`; only a missing file reads as no
@@ -107,7 +111,7 @@ those constants are read (after the `.env` files were loaded).
 6. On success the handler calls `registry.register()` with the agent's
    self-reported `agentId`, `name`, `version`, `gatewayUrl` and
    `gatewayToken`, then sends `auth_ok`
-   (`src/lib/agent-ws-handler.ts:128-139#"auth_ok"`). The handshake does not
+   (`src/lib/agent-ws-handler.ts:145-157#"auth_ok"`). The handshake does not
    validate `gatewayUrl` (the documented agent protocol sends a loopback
    URL); the only consumer that fetches it, the logs route, does so through
    `remoteGatewayFetch`, which applies the full URL rule (https, host and port
@@ -117,10 +121,10 @@ those constants are read (after the `.env` files were loaded).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored
-(`src/lib/agent-ws-handler.ts:144-149#"type: 'pong'"`). A snapshot is stored
+(`src/lib/agent-ws-handler.ts:162-167#"type: 'pong'"`). A snapshot is stored
 under the connection's own `agentId`, not the `agentId` field inside the
 snapshot payload
-(`src/lib/agent-ws-handler.ts:145#"registry.update(agentId, msg.data)"`).
+(`src/lib/agent-ws-handler.ts:163#"registry.update(agentId, msg.data)"`).
 
 ## Persisted tokens are bound to an agent on first use
 
@@ -138,14 +142,14 @@ entry without `agentId` records the handshake's `agentId` in that write
 (existing tokens bind on their next handshake); an entry with another
 `agentId` is rejected with the same `auth_error` and close 1008 as an invalid
 token, and the registry is not touched
-(`src/lib/agent-ws-handler.ts:92#"current.agentId !== msg.agentId"`).
+(`src/lib/agent-ws-handler.ts:109#"current.agentId !== msg.agentId"`).
 The same write stamps `lastUsedAt`
-(`src/lib/agent-ws-handler.ts:102#"current.lastUsedAt"`). A failed write does
+(`src/lib/agent-ws-handler.ts:119#"current.lastUsedAt"`). A failed write does
 not fail the handshake of an already bound token, but a failed write of a new
 binding does (fail closed), because the token would otherwise stay usable for
 any `agentId`
-(`src/lib/agent-ws-handler.ts:107#"best effort"`,
-`src/lib/agent-ws-handler.ts:113-116#"needsBinding"`). Binding is trust on
+(`src/lib/agent-ws-handler.ts:124#"best effort"`,
+`src/lib/agent-ws-handler.ts:118-120#"needsBinding"`). Binding is trust on
 first use and not unique: two tokens may bind the same `agentId` (a token is
 rotated by creating the new one before revoking the old), and revoking a token
 drops its binding with the entry. An entry whose stored `agentId` is the empty
@@ -176,7 +180,7 @@ never sends snapshots keeps `lastSnapshotAt` at its last snapshot (or `0`).
 ## Offline and eviction
 
 An entry goes offline only through `disconnect()` from the socket's `close`
-handler (`src/lib/agent-ws-handler.ts:154#"registry.disconnect(agentId, ws)"`).
+handler (`src/lib/agent-ws-handler.ts:177#"registry.disconnect(agentId, ws)"`).
 There is no server-side idle timeout: an entry whose socket stays open is
 online indefinitely, whether or not it sends snapshots.
 

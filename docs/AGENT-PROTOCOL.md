@@ -176,7 +176,7 @@ these refusals are temporary, so the agent reconnects with its backoff.
 | Message size before authentication | 8 KiB | Close `1009` (`Message too big`), the message is not parsed |
 | Message size at any time | 1 MiB | ws closes the socket with `1009`; the reference agent's largest snapshot is about 360 KiB in the worst case, typically a tenth of that |
 | Time to authenticate | 10 s after connecting | Close `1008` (`Authentication timeout`); a socket that authenticated is not affected |
-| Sockets waiting to authenticate | 32, all clients together | The next socket is closed at once with `1013` (`Server busy`) |
+| Sockets waiting to authenticate | 32, all clients together; 4 per client key and 16 per IPv6 /48 | The next socket is closed at once with `1013` (`Server busy`) |
 | Persisted-token handshakes per client IP | 10 per 15 minutes | Close `1008` (`Too many attempts`) before the token store is read; a successful handshake clears the IP's count |
 
 - The handshake limit counts only tokens that need the token store and a
@@ -187,8 +187,13 @@ these refusals are temporary, so the agent reconnects with its backoff.
   with `TRUSTED_PROXY_HOPS=N` the N-th `X-Forwarded-For` address from the
   right (see `docs/configuration.md`, "Login rate limit"). IPv6 clients count
   by /64 and also against their /48 (50 handshakes).
-- Several agents behind one address share that address's count. State is in
-  memory, so a restart clears it.
+- Several agents behind one address share that address's handshake count and
+  its 4 waiting sockets: when more than 4 agents behind one address connect in
+  the same instant, the surplus sees `1013` and succeeds on its backoff retry.
+  A waiting socket counts until the work for its messages has finished, which
+  includes a token compare still running after the socket closed. Many
+  addresses together can still fill the 32 slots; agents then wait and retry.
+  State is in memory, so a restart clears it.
 - An invalid token still gets `auth_error` ("Invalid token") and close `1008`,
   as described under [Handshake](#handshake).
 
