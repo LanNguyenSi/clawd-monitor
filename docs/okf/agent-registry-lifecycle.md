@@ -3,7 +3,7 @@ type: invariant
 title: Agent registry lifecycle, from WebSocket handshake to TTL eviction
 description: How a clawd-monitor-agent connection becomes an AgentRegistry entry (auth message first, static then persisted token check, newest connection wins), when an entry goes offline (only via its current socket), when it is evicted (lazily, only inside getAll), and what token revocation does and does not affect.
 tags: [agents, websocket, registry, tokens, ttl]
-timestamp: 2026-11-04T05:44:46Z
+timestamp: 2026-11-12T08:46:57Z
 sources:
   - server.ts
   - src/lib/ws-upgrade.ts
@@ -92,14 +92,14 @@ those constants are read (after the `.env` files were loaded).
    without a reply
    (`src/lib/agent-ws-handler.ts:45-46#"return"`); a JSON frame that fails
    the schema gets `{type:'error'}` and the socket stays open
-   (`src/lib/agent-ws-handler.ts:40-42#"Invalid message format"`).
+   (`src/lib/agent-ws-handler.ts:41#"Invalid message format"`).
 4. Before authentication, any valid non-`auth` message gets `auth_error`
    and the socket is closed
    (`src/lib/agent-ws-handler.ts:50-52#"ws.close()"`).
 5. The token is checked against the `AGENT_TOKENS` list first (exact string
    match), then with `bcrypt.compare` against every `tokenHash` in
    `tokens.json`, and stops at the next entry once the socket is gone
-   (`src/lib/agent-ws-handler.ts:82-86#"tokenValid = true"`). A miss sends
+   (`src/lib/agent-ws-handler.ts:79-84#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket with code 1008
    (`src/lib/agent-ws-handler.ts:141#"guard.close(1008"`). A `tokens.json` read
    that throws (the file is corrupt, empty, unreadable or holds an entry that is
@@ -108,7 +108,7 @@ those constants are read (after the `.env` files were loaded).
    tokens) is handled the same way: `auth_error`, close 1008, and
    a warning that carries only the error message, naming the file, so the
    client learns nothing about the store and the operator sees the cause
-   (`src/lib/agent-ws-handler.ts:70-74#"guard.close(1008, 'Invalid token')"`).
+   (`src/lib/agent-ws-handler.ts:70-73#"guard.close(1008, 'Invalid token')"`).
 6. On success the handler calls `registry.register()` with the agent's
    self-reported `agentId`, `name`, `version`, `gatewayUrl` and
    `gatewayToken`, then sends `auth_ok`
@@ -150,14 +150,14 @@ not fail the handshake of an already bound token, but a failed write of a new
 binding does (fail closed), because the token would otherwise stay usable for
 any `agentId`
 (`src/lib/agent-ws-handler.ts:124#"best effort"`,
-`src/lib/agent-ws-handler.ts:118-120#"needsBinding"`). Binding is trust on
+`src/lib/agent-ws-handler.ts:130#"needsBinding"`). Binding is trust on
 first use and not unique: two tokens may bind the same `agentId` (a token is
 rotated by creating the new one before revoking the old), and revoking a token
 drops its binding with the entry. An entry whose stored `agentId` is the empty
 string matches no handshake (the schema requires a non-empty `agentId`), so
 such a token is unusable. The settings API passes `id`, `name`, `createdAt`,
 `lastUsedAt` and `agentId` through, never the hash
-(`src/app/api/settings/tokens/route.ts:24-26#"id, name, createdAt, lastUsedAt, agentId"`).
+(`src/app/api/settings/tokens/route.ts:24#"stored.map"`).
 
 ## Newest connection wins
 
