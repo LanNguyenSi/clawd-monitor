@@ -102,8 +102,8 @@ Under Docker the environment is already complete at process start: the runtime s
 (`Dockerfile:47-52#"COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist"`),
 and both compose files pass the environment through `environment:` and
 `env_file:` so it is in `process.env` when the process starts
-(`docker-compose.yml:16-24#"path: .env.runtime"`,
-`docker-compose.traefik.yml:6-21#"path: .env.runtime"`). Both set
+(`docker-compose.yml:16-31#"path: .env.runtime"`,
+`docker-compose.traefik.yml:6-27#"path: .env.runtime"`). Both set
 `CLAWD_MONITOR_DATA_DIR=/data` explicitly
 (`docker-compose.yml:18#"CLAWD_MONITOR_DATA_DIR=/data"`).
 

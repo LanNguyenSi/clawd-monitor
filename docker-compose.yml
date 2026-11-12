@@ -16,6 +16,13 @@ services:
     environment:
       - NODE_ENV=production
       - CLAWD_MONITOR_DATA_DIR=/data
+      # The container is wired to 3000 by the port mapping below and the
+      # healthcheck, so PORT/HOSTNAME are pinned here (compose environment:
+      # wins over env_file): a PORT or HOSTNAME in .env must not move the
+      # listener away from what the mapping reaches. They apply only outside
+      # Docker; to change the published port, change the mapping above.
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
     volumes:
       - clawd_monitor_data:/data
     env_file:
