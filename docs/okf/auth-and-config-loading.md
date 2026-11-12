@@ -141,14 +141,16 @@ removes the file; removing `password.json` restores the env password, removing
 `tokens.json` drops every UI-created token.
 
 - `password.json` holds `{hash}` once the password was changed in the UI
-  (`src/lib/data-store.ts:146#"'password.json'"`).
+  (`src/lib/data-store.ts:148#"'password.json'"`).
 - `tokens.json` holds the agent tokens created in the settings UI, each as
   a bcrypt hash with cost 10
   (`src/app/api/settings/tokens/route.ts:46#"bcrypt.hash(rawToken, 10)"`);
   the raw token is returned once, in the `POST` response. A successful
   handshake with such a token stamps its `lastUsedAt`
-  (`src/lib/agent-ws-handler.ts:93#"current.lastUsedAt"`), which the `GET`
-  list returns and the settings page shows.
+  (`src/lib/agent-ws-handler.ts:102#"current.lastUsedAt"`), which the `GET`
+  list returns and the settings page shows, and binds the token to the
+  handshake's `agentId` when it has none yet
+  (`src/lib/agent-ws-handler.ts:103#"current.agentId = msg.agentId"`).
 
 ## Admin password precedence
 

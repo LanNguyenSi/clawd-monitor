@@ -22,7 +22,7 @@ the root `README.md`; these docs point to them instead of duplicating them.
 ## Invariants
 
 - [Agent registry lifecycle](agent-registry-lifecycle.md), the WebSocket
-  handshake order, tokens not bound to an `agentId`, newest connection wins,
+  handshake order, persisted tokens bound to an `agentId` on first use, newest connection wins,
   offline marking by the current socket only, lazy TTL eviction inside
   `getAll()`, and token revocation affecting new connections only.
 

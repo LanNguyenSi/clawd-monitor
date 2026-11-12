@@ -21,8 +21,8 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     return tokenStoreUnavailable(err)
   }
-  const tokens = stored.map(({ id, name, createdAt, lastUsedAt }) => ({
-    id, name, createdAt, lastUsedAt
+  const tokens = stored.map(({ id, name, createdAt, lastUsedAt, agentId }) => ({
+    id, name, createdAt, lastUsedAt, agentId
   }))
 
   return NextResponse.json({ tokens })

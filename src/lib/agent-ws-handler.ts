@@ -89,12 +89,31 @@ export function handleAgentConnection(ws: WebSocket, _req: IncomingMessage) {
         const current = fresh.find((t) => t.id === matched!.id)
         if (!current) {
           tokenValid = false
+        } else if (current.agentId !== undefined && current.agentId !== msg.agentId) {
+          // A stored token is bound to the first agentId that used it. Another
+          // agentId is answered like an invalid token, so the client learns
+          // nothing about the binding; the server log names the mismatch (never
+          // the token). The binding is read from the fresh copy, so two
+          // handshakes racing on one unbound token cannot both bind.
+          console.warn(`[agent-ws] Auth failed for agentId=${msg.agentId}: token "${current.name}" (${current.id}) is bound to another agentId`)
+          tokenValid = false
         } else {
+          const needsBinding = current.agentId === undefined
           current.lastUsedAt = new Date().toISOString()
+          if (needsBinding) current.agentId = msg.agentId
           try {
             writeTokens(fresh)
-          } catch {
-            // best effort: a read-only data dir must not fail the handshake
+          } catch (err) {
+            // The lastUsedAt stamp is best effort: a read-only data dir must
+            // not fail the handshake of an already bound token. A binding
+            // that could not be persisted is different: it would silently
+            // leave the token usable for any agentId (and for a different one
+            // on every restart), so that handshake fails closed. The agent
+            // retries once the data dir is writable.
+            if (needsBinding) {
+              console.warn(`[agent-ws] Could not bind token "${current.name}" (${current.id}) to agentId=${msg.agentId}; rejecting handshake: ${err instanceof Error ? err.message : 'unknown error'}`)
+              tokenValid = false
+            }
           }
         }
       }

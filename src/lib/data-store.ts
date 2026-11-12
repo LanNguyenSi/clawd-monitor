@@ -113,6 +113,7 @@ export interface TokenEntry {
   tokenHash: string   // bcrypt hash of the actual token
   createdAt: string
   lastUsedAt?: string  // ISO timestamp, set on each successful agent handshake with this token
+  agentId?: string     // the agentId this token is bound to; set on its first successful handshake, never changed
 }
 
 export function readTokens(): TokenEntry[] {
@@ -129,6 +130,7 @@ export function readTokens(): TokenEntry[] {
       if (typeof entry[field] !== 'string') throw bad(field)
     }
     if (entry.lastUsedAt !== undefined && typeof entry.lastUsedAt !== 'string') throw bad('lastUsedAt')
+    if (entry.agentId !== undefined && typeof entry.agentId !== 'string') throw bad('agentId')
   })
   return tokens
 }

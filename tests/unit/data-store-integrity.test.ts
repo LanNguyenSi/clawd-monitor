@@ -212,6 +212,8 @@ describe('readDataFile – missing, empty, invalid, valid and unreadable files',
       ['name missing', [{ ...VALID_TOKEN, name: undefined }]],
       ['createdAt not a string', [{ ...VALID_TOKEN, createdAt: 1 }]],
       ['lastUsedAt not a string', [{ ...VALID_TOKEN, lastUsedAt: 1 }]],
+      ['agentId not a string', [{ ...VALID_TOKEN, agentId: 1 }]],
+      ['agentId null', [{ ...VALID_TOKEN, agentId: null }]],
     ]
     for (const [label, body] of cases) {
       fs.writeFileSync(file('tokens.json'), JSON.stringify(body))
@@ -220,8 +222,8 @@ describe('readDataFile – missing, empty, invalid, valid and unreadable files',
     }
   })
 
-  it('tokens.json entries of the right shape are returned, with or without lastUsedAt', () => {
-    const list = [VALID_TOKEN, { ...VALID_TOKEN, id: 't2', lastUsedAt: '2026-10-27T00:00:00.000Z' }]
+  it('tokens.json entries of the right shape are returned, with or without lastUsedAt and agentId', () => {
+    const list = [VALID_TOKEN, { ...VALID_TOKEN, id: 't2', lastUsedAt: '2026-10-27T00:00:00.000Z', agentId: 'a1' }]
     fs.writeFileSync(file('tokens.json'), JSON.stringify(list))
     expect(mod.readTokens()).toEqual(list)
   })
@@ -561,7 +563,9 @@ describe('agent handshake with an unusable tokens.json (real store)', () => {
     })))
     await vi.waitFor(() => expect(ws.send).toHaveBeenCalled(), { timeout: 5000 })
     expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_ok')
-    expect(JSON.parse(fs.readFileSync(file('tokens.json'), 'utf-8'))[0].lastUsedAt).toEqual(expect.any(String))
+    const stored = JSON.parse(fs.readFileSync(file('tokens.json'), 'utf-8'))[0]
+    expect(stored.lastUsedAt).toEqual(expect.any(String))
+    expect(stored.agentId).toBe('a1')
     expect(dirEntries()).toEqual(['tokens.json'])
   })
 })

@@ -150,9 +150,10 @@ are stored as bcrypt hashes in `tokens.json` (file mode 0600) under
 `CLAWD_MONITOR_DATA_DIR`; a successful handshake with one of them stamps its
 `lastUsedAt`, shown in Settings. Tokens are checked at connect time only, so revoking
 a token stops new connections but does not close an open one (restart the
-server to drop it). A token is not bound to an `agentId`: the newest
-connection for an `agentId` replaces the registry entry, including its gateway
-URL.
+server to drop it). A token from Settings is bound to the `agentId` of its
+first handshake and refused for any other; static `AGENT_TOKENS` are not bound.
+The newest connection for an `agentId` replaces the registry entry, including
+its gateway URL.
 
 ### Outbound requests
 

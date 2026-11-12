@@ -300,7 +300,10 @@ describe('handleAgentConnection – valid bcrypt persisted token', () => {
     expect(new Date(written[0].lastUsedAt as string).toISOString()).toBe(written[0].lastUsedAt)
   })
 
-  it('still sends auth_ok when persisting lastUsedAt fails', async () => {
+  it('still sends auth_ok when persisting lastUsedAt fails for an already bound token', async () => {
+    mockReadTokens.mockReturnValue([
+      { id: 'tok-1', name: 'test-token', tokenHash: bcryptHash, createdAt: new Date().toISOString(), agentId: AUTH_MSG.agentId },
+    ])
     mockWriteTokens.mockImplementationOnce(() => { throw new Error('EROFS') })
     const ws = makeMockWs()
     handleAgentConnection(ws as unknown as WebSocket, fakeReq)
@@ -385,6 +388,230 @@ describe('handleAgentConnection – valid bcrypt persisted token', () => {
     const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
     expect(sent.type).toBe('auth_error')
     expect(ws.close).toHaveBeenCalledOnce()
+  })
+})
+
+// ── token-to-agentId binding ──────────────────────────────────────────────────
+//
+// A stored token is bound to the first agentId that uses it. These tests run
+// against a small in-memory tokens.json so that a write by one handshake is
+// visible to the next read, as on disk.
+
+describe('handleAgentConnection – stored token binding', () => {
+  const PLAIN_A = 'binding-token-a'
+  const PLAIN_B = 'binding-token-b'
+  let hashA: string
+  let hashB: string
+  let store: Array<Record<string, unknown>>
+  let handleAgentConnection: (ws: WebSocket, req: IncomingMessage) => void
+
+  beforeAll(async () => {
+    hashA = await bcrypt.hash(PLAIN_A, 4)
+    hashB = await bcrypt.hash(PLAIN_B, 4)
+    vi.stubEnv('AGENT_TOKENS', '')
+    vi.resetModules()
+    const mod = await import('@/lib/agent-ws-handler')
+    handleAgentConnection = mod.handleAgentConnection
+  })
+
+  afterAll(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+    mockReadTokens.mockReset()
+    mockWriteTokens.mockReset()
+    mockReadTokens.mockReturnValue([])
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    store = [
+      { id: 'tok-a', name: 'agent-a', tokenHash: hashA, createdAt: 'c' },
+      { id: 'tok-b', name: 'agent-b', tokenHash: hashB, createdAt: 'c' },
+    ]
+    mockReadTokens.mockImplementation(() => structuredClone(store) as never)
+    mockWriteTokens.mockImplementation((tokens) => { store = structuredClone(tokens) as never })
+  })
+
+  async function handshake(token: string, agentId: string): Promise<{ ws: MockWs; type: string }> {
+    const ws = makeMockWs()
+    handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+    await emitAndWait(ws, { ...AUTH_MSG, token, agentId })
+    return { ws, type: JSON.parse(ws.send.mock.calls[0][0] as string).type }
+  }
+
+  it('binds an unbound token to the agentId of its first handshake and persists it', async () => {
+    const { type } = await handshake(PLAIN_A, 'agent-a')
+
+    expect(type).toBe('auth_ok')
+    expect(store.find((t) => t.id === 'tok-a')?.agentId).toBe('agent-a')
+    expect(store.find((t) => t.id === 'tok-b')?.agentId).toBeUndefined()
+    expect(mockWriteTokens).toHaveBeenCalledOnce()
+  })
+
+  it('lets the bound agentId reconnect and keeps the binding', async () => {
+    await handshake(PLAIN_A, 'agent-a')
+    const { type, ws } = await handshake(PLAIN_A, 'agent-a')
+
+    expect(type).toBe('auth_ok')
+    expect(ws.close).not.toHaveBeenCalled()
+    expect(store.find((t) => t.id === 'tok-a')?.agentId).toBe('agent-a')
+    expect(mockRegistry.register).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects a bound token presented with another agentId and leaves the registry alone', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await handshake(PLAIN_A, 'agent-a')
+    mockRegistry.register.mockClear()
+    mockWriteTokens.mockClear()
+
+    const { type, ws } = await handshake(PLAIN_A, 'victim-agent')
+    const logged = warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
+    warn.mockRestore()
+
+    expect(type).toBe('auth_error')
+    expect(JSON.parse(ws.send.mock.calls[0][0] as string).message).toBe('Invalid token')
+    expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+    expect(mockRegistry.register).not.toHaveBeenCalled()
+    expect(mockWriteTokens).not.toHaveBeenCalled()
+    expect(store.find((t) => t.id === 'tok-a')?.agentId).toBe('agent-a')
+    expect(logged).toContain('bound to another agentId')
+    expect(logged).not.toContain(PLAIN_A)
+  })
+
+  it('binds each token separately: a second token may take another agentId', async () => {
+    await handshake(PLAIN_A, 'agent-a')
+    const { type } = await handshake(PLAIN_B, 'agent-b')
+
+    expect(type).toBe('auth_ok')
+    expect(store.map((t) => t.agentId)).toEqual(['agent-a', 'agent-b'])
+  })
+
+  it('binds a recreated token fresh after the bound one was revoked', async () => {
+    store = [{ id: 'tok-a', name: 'agent-a', tokenHash: hashA, createdAt: 'c', agentId: 'agent-a' }]
+    const { type } = await handshake(PLAIN_A, 'agent-a')
+    expect(type).toBe('auth_ok')
+
+    // revoke, then create a new token for the same agent: it starts unbound
+    store = [{ id: 'tok-a2', name: 'agent-a again', tokenHash: hashA, createdAt: 'c' }]
+    const again = await handshake(PLAIN_A, 'agent-a-renamed')
+    expect(again.type).toBe('auth_ok')
+    expect(store[0].agentId).toBe('agent-a-renamed')
+  })
+
+  it('does not make the binding unique: an unbound token may take an agentId bound to another token', async () => {
+    await handshake(PLAIN_A, 'shared-agent')
+    const { type } = await handshake(PLAIN_B, 'shared-agent')
+
+    expect(type).toBe('auth_ok')
+    expect(store.map((t) => t.agentId)).toEqual(['shared-agent', 'shared-agent'])
+  })
+
+  it('refuses a token whose stored agentId is the empty string (fail closed)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    store = [{ id: 'tok-a', name: 'agent-a', tokenHash: hashA, createdAt: 'c', agentId: '' }]
+
+    const { type, ws } = await handshake(PLAIN_A, 'agent-a')
+    warn.mockRestore()
+
+    expect(type).toBe('auth_error')
+    expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+    expect(mockRegistry.register).not.toHaveBeenCalled()
+    expect(store[0].agentId).toBe('')
+  })
+
+  it('lets only the first of two racing handshakes bind an unbound token', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const wsFirst = makeMockWs()
+    const wsSecond = makeMockWs()
+    handleAgentConnection(wsFirst as unknown as WebSocket, fakeReq)
+    handleAgentConnection(wsSecond as unknown as WebSocket, fakeReq)
+    wsFirst.emit('message', Buffer.from(JSON.stringify({ ...AUTH_MSG, token: PLAIN_A, agentId: 'first' })))
+    wsSecond.emit('message', Buffer.from(JSON.stringify({ ...AUTH_MSG, token: PLAIN_A, agentId: 'second' })))
+    await vi.waitFor(() => {
+      expect(wsFirst.send).toHaveBeenCalled()
+      expect(wsSecond.send).toHaveBeenCalled()
+    }, { timeout: 5000 })
+    warn.mockRestore()
+
+    const types = [wsFirst, wsSecond].map((w) => JSON.parse(w.send.mock.calls[0][0] as string).type)
+    expect(types.filter((t) => t === 'auth_ok')).toHaveLength(1)
+    expect(types.filter((t) => t === 'auth_error')).toHaveLength(1)
+    expect(mockRegistry.register).toHaveBeenCalledOnce()
+    expect(store[0].agentId).toBe(mockRegistry.register.mock.calls[0][1].agentId)
+  })
+
+  it('keeps a binding written by another handshake during the bcrypt wait (fresh read decides)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // The first read (before bcrypt) sees the token unbound; by the second read
+    // another handshake has bound it to a different agentId.
+    mockReadTokens
+      .mockReturnValueOnce([{ id: 'tok-a', name: 'agent-a', tokenHash: hashA, createdAt: 'c' }])
+      .mockReturnValueOnce([{ id: 'tok-a', name: 'agent-a', tokenHash: hashA, createdAt: 'c', agentId: 'other' }])
+
+    const { type } = await handshake(PLAIN_A, 'agent-a')
+    warn.mockRestore()
+
+    expect(type).toBe('auth_error')
+    expect(mockWriteTokens).not.toHaveBeenCalled()
+    expect(mockRegistry.register).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when the binding cannot be persisted, and names the cause in the log only', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mockWriteTokens.mockImplementationOnce(() => { throw new Error('EROFS') })
+
+    const { type, ws } = await handshake(PLAIN_A, 'agent-a')
+    const logged = warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
+    warn.mockRestore()
+
+    expect(type).toBe('auth_error')
+    expect(JSON.parse(ws.send.mock.calls[0][0] as string).message).toBe('Invalid token')
+    expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+    expect(mockRegistry.register).not.toHaveBeenCalled()
+    expect(logged).toContain('Could not bind token')
+    expect(logged).toContain('EROFS')
+    expect(logged).not.toContain(PLAIN_A)
+  })
+
+  it('still accepts an already bound token when only the lastUsedAt write fails', async () => {
+    store = [{ id: 'tok-a', name: 'agent-a', tokenHash: hashA, createdAt: 'c', agentId: 'agent-a' }]
+    mockWriteTokens.mockImplementationOnce(() => { throw new Error('EROFS') })
+
+    const { type } = await handshake(PLAIN_A, 'agent-a')
+
+    expect(type).toBe('auth_ok')
+    expect(mockRegistry.register).toHaveBeenCalledOnce()
+  })
+})
+
+describe('handleAgentConnection – static token is not bound', () => {
+  const STATIC_TOKEN = 'static-shared-token'
+  let handleAgentConnection: (ws: WebSocket, req: IncomingMessage) => void
+
+  beforeAll(async () => {
+    vi.stubEnv('AGENT_TOKENS', STATIC_TOKEN)
+    vi.resetModules()
+    const mod = await import('@/lib/agent-ws-handler')
+    handleAgentConnection = mod.handleAgentConnection
+  })
+
+  afterAll(() => { vi.unstubAllEnvs(); vi.resetModules() })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockReadTokens.mockReturnValue([])
+  })
+
+  it('accepts one static token for several agentIds and never writes the store', async () => {
+    for (const agentId of ['host-1', 'host-2', 'host-1']) {
+      const ws = makeMockWs()
+      handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+      await emitAndWait(ws, { ...AUTH_MSG, token: STATIC_TOKEN, agentId })
+      expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_ok')
+    }
+
+    expect(mockRegistry.register).toHaveBeenCalledTimes(3)
+    expect(mockWriteTokens).not.toHaveBeenCalled()
   })
 })
 

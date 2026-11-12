@@ -88,6 +88,22 @@ describe('GET /api/settings/tokens', () => {
     expect(json.tokens[0].tokenHash).toBeUndefined()
   })
 
+  it('returns agentId for a bound token and omits it for an unbound one, never tokenHash', async () => {
+    authMock.mockReturnValue(true)
+    writeTokens([
+      { id: 'tok-1', name: 'bound', tokenHash: '$2b$10$deadbeefdeadbeefdeadbe', createdAt: '2026-01-01T00:00:00Z', agentId: 'agent-a' },
+      { id: 'tok-2', name: 'unbound', tokenHash: '$2b$10$deadbeefdeadbeefdeadbe', createdAt: '2026-01-01T00:00:00Z' },
+    ])
+    const res = await GET(makeGetRequest())
+    const json = await res.json()
+    expect(json.tokens).toEqual([
+      { id: 'tok-1', name: 'bound', createdAt: '2026-01-01T00:00:00Z', agentId: 'agent-a' },
+      { id: 'tok-2', name: 'unbound', createdAt: '2026-01-01T00:00:00Z' },
+    ])
+    expect(Object.keys(json.tokens[1])).not.toContain('agentId')
+    expect(JSON.stringify(json)).not.toContain('tokenHash')
+  })
+
   it('returns an empty list when no tokens exist', async () => {
     authMock.mockReturnValue(true)
     const res = await GET(makeGetRequest())
