@@ -42,7 +42,7 @@ single one of those files states.
 ## One registry for two module graphs
 
 The registry is a singleton stored on `globalThis`
-(`src/lib/agent-registry.ts:106-111#"export const registry = globalForRegistry.agentRegistry"`).
+(`src/lib/agent-registry.ts:121-126#"export const registry = globalForRegistry.agentRegistry"`).
 The custom server (`server.ts`, run by `tsx` or compiled by `tsc`) and the
 Next.js-compiled API routes load `agent-registry.ts` as separate module
 instances; the `globalThis` slot is what makes the WebSocket handler and the
@@ -145,17 +145,17 @@ such a token is unusable. The settings API passes `id`, `name`, `createdAt`,
 `register()` overwrites the map entry for the `agentId` with the new socket
 and `online: true`, carrying over `lastSnapshot` and `lastSnapshotAt` from
 any previous entry
-(`src/lib/agent-registry.ts:46-51#"online: true"`). The old socket is left
+(`src/lib/agent-registry.ts:61-66#"online: true"`). The old socket is left
 open on purpose
-(`src/lib/agent-registry.ts:55-56#"skips stale sockets"`). When it later
+(`src/lib/agent-registry.ts:70-71#"skips stale sockets"`). When it later
 closes, `disconnect(agentId, ws)` sees that it is no longer the entry's
 socket and does nothing
-(`src/lib/agent-registry.ts:69-73#"entry.online = false"`), so a reconnect
+(`src/lib/agent-registry.ts:84-88#"entry.online = false"`), so a reconnect
 is never marked offline by the stale socket's close. Regression-pinned by
 `tests/unit/agent-registry.test.ts:174#"does NOT mark the agent offline when called with a stale (replaced) ws"`.
 
 A `snapshot` sets `online: true` again
-(`src/lib/agent-registry.ts:61-66#"entry.online = true"`). A `ping` only
+(`src/lib/agent-registry.ts:76-81#"entry.online = true"`). A `ping` only
 answers `pong` and touches no registry field, so an agent that pings but
 never sends snapshots keeps `lastSnapshotAt` at its last snapshot (or `0`).
 
@@ -168,10 +168,10 @@ online indefinitely, whether or not it sends snapshots.
 
 Eviction is lazy. `cleanup()` deletes an entry when it is offline and
 `now - lastSnapshotAt > AGENT_TTL_MS`
-(`src/lib/agent-registry.ts:99#"now - entry.lastSnapshotAt > AGENT_TTL_MS"`),
+(`src/lib/agent-registry.ts:114#"now - entry.lastSnapshotAt > AGENT_TTL_MS"`),
 with `AGENT_TTL_MS` defaulting to 300000 ms
 (`src/lib/agent-registry.ts:22#"AGENT_TTL_MS"`). Only `getAll()` calls it
-(`src/lib/agent-registry.ts:76-77#"this.cleanup()"`), and only two routes
+(`src/lib/agent-registry.ts:91-92#"this.cleanup()"`), and only two routes
 call `getAll()`: `GET /api/agents/list`
 (`src/app/api/agents/list/route.ts:11#"registry.getAll()"`) and the
 unauthenticated `GET /api/health`
@@ -179,7 +179,7 @@ unauthenticated `GET /api/health`
 
 - Until one of those two routes is requested, an expired entry stays in the
   map, and `getAgent()` (no cleanup) still returns it
-  (`src/lib/agent-registry.ts:81-84#"return toPublicEntry(entry)"`), so
+  (`src/lib/agent-registry.ts:96-99#"return toPublicEntry(entry)"`), so
   `GET /api/agents/<id>/snapshot` answers with the stale snapshot and
   `online: false`
   (`src/app/api/agents/[agentId]/snapshot/route.ts:16-23#"online: agent.online"`).
@@ -196,7 +196,7 @@ The route calls `registry.remove()`
 (`src/app/api/agents/[agentId]/route.ts:17#"registry.remove(agentId)"`), which
 deletes an offline entry, refuses an online one with 409 and answers 404 for
 an unknown id
-(`src/lib/agent-registry.ts:88#"remove(agentId: string)"`). The switcher
+(`src/lib/agent-registry.ts:103#"remove(agentId: string)"`). The switcher
 keeps the entry in its list on any failure other than 404, so a removed agent
 does not reappear on the next 5-second poll unless it reconnects.
 

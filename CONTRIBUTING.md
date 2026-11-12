@@ -23,6 +23,7 @@ how `.env.local` and shell values interact.
 - Build must pass: `npm run build`
 - Type check must pass: `npm run type-check`
 - Test files must type-check: `npm run type-check:tests`
+- Lint must pass: `npm run lint`
 - Tests must pass with coverage: `npm run test:coverage` (CI enforces the
   thresholds in `vitest.config.ts`)
 - One PR per feature/fix

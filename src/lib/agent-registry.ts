@@ -19,7 +19,22 @@ export interface AgentEntry {
 
 export type AgentEntryPublic = Omit<AgentEntry, 'ws' | 'token' | 'gatewayToken'>
 
-const AGENT_TTL_MS = parseInt(process.env.AGENT_TTL_MS ?? '300000')
+export const DEFAULT_AGENT_TTL_MS = 300000
+
+export function parseAgentTtlMs(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_AGENT_TTL_MS
+  const trimmed = raw.trim()
+  if (/^\d+$/.test(trimmed)) {
+    const value = Number(trimmed)
+    if (value > 0) return value
+  }
+  console.warn(
+    `agent-registry: invalid AGENT_TTL_MS ${JSON.stringify(raw)}, using the default ${DEFAULT_AGENT_TTL_MS} ms`,
+  )
+  return DEFAULT_AGENT_TTL_MS
+}
+
+const AGENT_TTL_MS = parseAgentTtlMs(process.env.AGENT_TTL_MS)
 
 function toPublicEntry(entry: AgentEntry): AgentEntryPublic {
   return {
