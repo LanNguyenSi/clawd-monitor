@@ -50,6 +50,15 @@
   },
   "overrides": {
     "postcss": "$postcss",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.3",
+    "eslint": {
+      "minimatch": "11.0.4"
+    },
+    "@eslint/config-array": {
+      "minimatch": "11.0.4"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "11.0.4"
+    }
   }
 }
