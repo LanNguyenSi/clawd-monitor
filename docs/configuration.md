@@ -305,7 +305,7 @@ Both compose files give the `app` service the same three settings.
 
 **Healthcheck.** Every 30 s Docker runs a `node -e` fetch of
 `http://127.0.0.1:$PORT/api/health` inside the container (`PORT` is 3000 from
-the Dockerfile). The check passes on a 2xx answer and fails on any other
+the Dockerfile and pinned by both compose files). The check passes on a 2xx answer and fails on any other
 status, a refused connection, or no answer within 4 s (the fetch aborts itself
 before Docker's 5 s timeout). `GET /api/health` needs no login and returns
 `{"status":"ok","uptime":...,"agents":{...}}`. The check uses `node` because the
