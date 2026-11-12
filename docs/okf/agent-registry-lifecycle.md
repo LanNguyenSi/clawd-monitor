@@ -82,7 +82,7 @@ those constants are read (after the `.env` files were loaded).
    `tokens.json`
    (`src/lib/agent-ws-handler.ts:66-68#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket with code 1008
-   (`src/lib/agent-ws-handler.ts:105#"ws.close(1008"`). A `tokens.json` read
+   (`src/lib/agent-ws-handler.ts:124#"ws.close(1008"`). A `tokens.json` read
    that throws (the file is corrupt, empty, unreadable or holds an entry that is
    not an object with string `id`, `name`, `tokenHash` and `createdAt`; only a
    missing file reads as no tokens) is handled the same way: `auth_error`, close 1008, and
@@ -92,7 +92,7 @@ those constants are read (after the `.env` files were loaded).
 5. On success the handler calls `registry.register()` with the agent's
    self-reported `agentId`, `name`, `version`, `gatewayUrl` and
    `gatewayToken`, then sends `auth_ok`
-   (`src/lib/agent-ws-handler.ts:109-120#"auth_ok"`). The handshake does not
+   (`src/lib/agent-ws-handler.ts:128-139#"auth_ok"`). The handshake does not
    validate `gatewayUrl` (the documented agent protocol sends a loopback
    URL); the only consumer that fetches it, the logs route, does so through
    `remoteGatewayFetch`, which applies the full URL rule (https, host and port
@@ -102,29 +102,39 @@ those constants are read (after the `.env` files were loaded).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored
-(`src/lib/agent-ws-handler.ts:125-130#"type: 'pong'"`). A snapshot is stored
+(`src/lib/agent-ws-handler.ts:144-149#"type: 'pong'"`). A snapshot is stored
 under the connection's own `agentId`, not the `agentId` field inside the
 snapshot payload
-(`src/lib/agent-ws-handler.ts:126#"registry.update(agentId, msg.data)"`).
+(`src/lib/agent-ws-handler.ts:145#"registry.update(agentId, msg.data)"`).
 
-## Tokens are not bound to an agent
+## Persisted tokens are bound to an agent on first use
 
-Neither token source carries an `agentId`: a `TokenEntry` holds `id`,
-`name`, `tokenHash`, `createdAt` and an optional `lastUsedAt`
-(`src/lib/data-store.ts:115#"lastUsedAt?: string"`), and the handshake
-only asks whether the token is valid. Any valid token can therefore register
-any `agentId`, including one another agent is using. A match against a
-persisted token stamps that entry's `lastUsedAt`: the handler re-reads
-`tokens.json` after the bcrypt comparison, patches only the matched id and
-rewrites the file with no await in between, so a token created or revoked
-during the comparison is neither lost nor restored. If the matched id is
-no longer in the fresh read, or the re-read itself fails, the handshake is
-rejected with `auth_error` (fail closed). A failed write does not fail the
-handshake
-(`src/lib/agent-ws-handler.ts:93-94#"current.lastUsedAt"`,
-`src/lib/agent-ws-handler.ts:97#"best effort"`). A static
-`AGENT_TOKENS` match has no entry and stamps nothing. The settings API passes
-the stored value through
+A `TokenEntry` holds `id`, `name`, `tokenHash`, `createdAt`, an optional
+`lastUsedAt` and an optional `agentId`
+(`src/lib/data-store.ts:115-116#"agentId?: string"`). A static `AGENT_TOKENS`
+match carries no entry, so it is not bound: its holder can register any
+`agentId`, including one another agent is using. A match against a persisted
+token is bound: the handler re-reads `tokens.json` after the bcrypt
+comparison, patches only the matched id and rewrites the file with no await
+in between, so a token created or revoked during the comparison is neither lost
+nor restored. If the matched id is no longer in the fresh read, or the re-read
+itself fails, the handshake is rejected with `auth_error` (fail closed). An
+entry without `agentId` records the handshake's `agentId` in that write
+(existing tokens bind on their next handshake); an entry with another
+`agentId` is rejected with the same `auth_error` and close 1008 as an invalid
+token, and the registry is not touched
+(`src/lib/agent-ws-handler.ts:92#"current.agentId !== msg.agentId"`).
+The same write stamps `lastUsedAt`
+(`src/lib/agent-ws-handler.ts:102#"current.lastUsedAt"`). A failed write does
+not fail the handshake of an already bound token, but a failed write of a new
+binding does (fail closed), because the token would otherwise stay usable for
+any `agentId`
+(`src/lib/agent-ws-handler.ts:107#"best effort"`,
+`src/lib/agent-ws-handler.ts:113-116#"needsBinding"`). Binding is trust on
+first use and not unique: two tokens may bind the same `agentId` (a token is
+rotated by creating the new one before revoking the old), and revoking a token
+drops its binding with the entry. The settings API passes only `id`, `name`,
+`createdAt` and `lastUsedAt` through, never `agentId` or the hash
 (`src/app/api/settings/tokens/route.ts:24#"id, name, createdAt, lastUsedAt"`).
 
 ## Newest connection wins
@@ -149,7 +159,7 @@ never sends snapshots keeps `lastSnapshotAt` at its last snapshot (or `0`).
 ## Offline and eviction
 
 An entry goes offline only through `disconnect()` from the socket's `close`
-handler (`src/lib/agent-ws-handler.ts:135#"registry.disconnect(agentId, ws)"`).
+handler (`src/lib/agent-ws-handler.ts:154#"registry.disconnect(agentId, ws)"`).
 There is no server-side idle timeout: an entry whose socket stays open is
 online indefinitely, whether or not it sends snapshots.
 

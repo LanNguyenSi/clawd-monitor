@@ -9,7 +9,7 @@ ADMIN_PASSWORD=             # plaintext, or use ADMIN_PASSWORD_HASH (bcrypt)
 JWT_SECRET=                 # random 32+ char string
 
 # Optional
-AGENT_TOKENS=token1,token2  # static tokens (also manageable via Settings UI)
+AGENT_TOKENS=token1,token2  # static tokens, shared and not bound to an agentId: a holder can connect as any agent (per-agent tokens from the Settings UI are bound to one agentId on first use, see docs/AGENT-PROTOCOL.md)
 AGENT_TTL_MS=300000         # offline-agent TTL in ms (default 5min)
 NEXT_PUBLIC_DEFAULT_GATEWAY_URL=http://localhost:9500
 DEFAULT_GATEWAY_TOKEN=      # default OpenClaw API token

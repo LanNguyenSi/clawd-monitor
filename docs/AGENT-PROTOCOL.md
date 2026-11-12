@@ -50,6 +50,27 @@ Agent → server:
   list (exact match) first, then against persisted Settings-UI tokens
   (bcrypt-compared; a match updates that token's `lastUsedAt`). An invalid token yields `auth_error` ("Invalid token") and
   the socket is closed.
+- Token binding: a persisted (Settings-UI) token is bound to one `agentId`. The
+  first successful handshake with a token records its `agentId` in
+  `tokens.json`; from then on that token is accepted only for that `agentId`.
+  A handshake that presents the token with another `agentId` gets the same
+  `auth_error` ("Invalid token") and close code 1008 as an invalid token, and
+  the existing registry entry of that other agent is not touched; the server
+  log names the token and the mismatch, never the token value. Tokens created
+  before the binding existed bind on their next handshake. If the binding
+  cannot be written (a read-only data directory), the handshake is refused the
+  same way and the agent has to retry once the directory is writable. Revoking
+  a token removes its binding with it; a new token for the same agent starts
+  unbound. Use one token per agent: an agent that shared one persisted token
+  across several `agentId`s is refused for all but the first.
+- Static tokens are not bound. A token from `AGENT_TOKENS` is shared by design,
+  so its holder can connect as any `agentId`, including one bound to a
+  persisted token. Keep `AGENT_TOKENS` for a single trusted host or small
+  setup and use per-agent tokens from the settings page where hosts should not
+  be able to claim each other's identity. Binding is trust on first use: a
+  persisted token that has not been used yet can still be presented for any
+  `agentId` that is not bound to another token, and two tokens may be bound to
+  the same `agentId` (needed to rotate a token before revoking the old one).
 
 Server → agent on success:
 
@@ -57,7 +78,8 @@ Server → agent on success:
 { "type": "auth_ok" }
 ```
 
-If two connections present the same `agentId`, the newest connection wins; the
+If two connections present the same `agentId` (with a token that is allowed to
+use it, see token binding above), the newest connection wins; the
 older socket is left to close on its own.
 
 ## Snapshots
