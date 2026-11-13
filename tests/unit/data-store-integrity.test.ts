@@ -510,7 +510,7 @@ describe('agent handshake with an unusable tokens.json (real store)', () => {
     close = vi.fn()
   }
 
-  it('rejects with 1008, logs the reason where an operator sees it, and leaves the file as it is', async () => {
+  it('refuses retryably (1013, no auth_error), logs the reason where an operator sees it, and leaves the file as it is', async () => {
     vi.stubEnv('AGENT_TOKENS', '')
     const CORRUPT = '[{"id":"t1","tokenHash":'
     fs.writeFileSync(file('tokens.json'), CORRUPT)
@@ -523,8 +523,8 @@ describe('agent handshake with an unusable tokens.json (real store)', () => {
     })))
     await vi.waitFor(() => expect(ws.close).toHaveBeenCalled(), { timeout: 5000 })
 
-    expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
-    expect(JSON.parse(ws.send.mock.calls[0][0] as string)).toEqual({ type: 'auth_error', message: 'Invalid token' })
+    expect(ws.close).toHaveBeenCalledWith(1013, 'Server busy')
+    expect(ws.send).not.toHaveBeenCalled()
     const logged = warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
     expect(logged).toContain('Could not read tokens')
     expect(logged).toContain('tokens.json')
@@ -533,7 +533,7 @@ describe('agent handshake with an unusable tokens.json (real store)', () => {
     expect(fs.readFileSync(file('tokens.json'), 'utf-8')).toBe(CORRUPT)
   })
 
-  it('a list holding a null entry rejects with 1008 and logs, instead of throwing out of the handler with the socket open', async () => {
+  it('a list holding a null entry is refused retryably (1013) and logs, instead of throwing out of the handler with the socket open', async () => {
     vi.stubEnv('AGENT_TOKENS', '')
     const hash = await bcrypt.hash('good-token', 4)
     const BODY = JSON.stringify([null, { id: 't1', name: 'n', tokenHash: hash, createdAt: 'c' }])
@@ -546,7 +546,8 @@ describe('agent handshake with an unusable tokens.json (real store)', () => {
       type: 'auth', token: 'good-token', agentId: 'a1', name: 'A', version: '1',
     })))
     await vi.waitFor(() => expect(ws.close).toHaveBeenCalled(), { timeout: 5000 })
-    expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
+    expect(ws.close).toHaveBeenCalledWith(1013, 'Server busy')
+    expect(ws.send).not.toHaveBeenCalled()
     expect(String(warn.mock.calls[0][0])).toContain('entry 0')
     expect(fs.readFileSync(file('tokens.json'), 'utf-8')).toBe(BODY)
   })
