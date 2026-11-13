@@ -58,7 +58,10 @@ Agent → server:
   stop for good and a transient broken file must not stop every
   persisted-token agent permanently. The same applies when the re-read after
   the token matched fails. The agents reconnect with their backoff and are
-  accepted again once the file is fixed.
+  accepted again once the file is fixed. Each such refusal still counts
+  against the persisted-token handshake budget of the client address, so
+  after a long outage an address can see `Too many attempts` for up to the
+  length of that window after the fix.
 - Token binding: a persisted (Settings-UI) token is bound to one `agentId`. The
   first successful handshake with a token records its `agentId` in
   `tokens.json`; from then on that token is accepted only for that `agentId`.

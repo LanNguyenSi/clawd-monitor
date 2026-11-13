@@ -109,7 +109,7 @@ those constants are read (after the `.env` files were loaded).
    tokens) is not a verdict on the token and is refused retryably: close 1013
    (`Server busy`), no `auth_error` (which would make the reference agent stop
    for good), and a warning that carries only the error message, naming the
-   file, so the client learns nothing about the store and the operator sees the
+   file, so the client learns only that the handshake should be retried, not why, and the operator sees the
    cause (`src/lib/agent-ws-handler.ts:80-82#"WS_CLOSE_TRY_AGAIN_LATER"`).
 6. On success the handler calls `registry.register()` with the agent's
    self-reported `agentId`, `name`, `version`, `gatewayUrl` and
