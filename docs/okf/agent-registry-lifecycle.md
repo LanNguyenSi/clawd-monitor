@@ -100,20 +100,21 @@ those constants are read (after the `.env` files were loaded).
 5. The token is checked against the `AGENT_TOKENS` list first (exact string
    match), then with `bcrypt.compare` against every `tokenHash` in
    `tokens.json`, and stops at the next entry once the socket is gone
-   (`src/lib/agent-ws-handler.ts:86-91#"tokenValid = true"`). A miss sends
+   (`src/lib/agent-ws-handler.ts:90-95#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket with code 1008
-   (`src/lib/agent-ws-handler.ts:179#"guard.close(1008"`). A `tokens.json` read
+   (`src/lib/agent-ws-handler.ts:187#"guard.close(1008"`). A `tokens.json` read
    that throws (the file is corrupt, empty, unreadable or holds an entry that is
    not an object with string `id`, `name`, `tokenHash` and `createdAt` and, when
    present, a string `lastUsedAt` and `agentId`; only a missing file reads as no
-   tokens) is handled the same way: `auth_error`, close 1008, and
-   a warning that carries only the error message, naming the file, so the
-   client learns nothing about the store and the operator sees the cause
-   (`src/lib/agent-ws-handler.ts:76-79#"guard.close(1008, 'Invalid token')"`).
+   tokens) is not a verdict on the token and is refused retryably: close 1013
+   (`Server busy`), no `auth_error` (which would make the reference agent stop
+   for good), and a warning that carries only the error message, naming the
+   file, so the client learns only that the handshake should be retried, not why, and the operator sees the
+   cause (`src/lib/agent-ws-handler.ts:80-82#"WS_CLOSE_TRY_AGAIN_LATER"`).
 6. On success the handler calls `registry.register()` with the agent's
    self-reported `agentId`, `name`, `version`, `gatewayUrl` and
    `gatewayToken`, then sends `auth_ok`
-   (`src/lib/agent-ws-handler.ts:186-197#"auth_ok"`). The handshake does not
+   (`src/lib/agent-ws-handler.ts:194-205#"auth_ok"`). The handshake does not
    validate `gatewayUrl` (the documented agent protocol sends a loopback
    URL); the only consumer that fetches it, the logs route, does so through
    `remoteGatewayFetch`, which applies the full URL rule (https, host and port
@@ -123,11 +124,11 @@ those constants are read (after the `.env` files were loaded).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored
-(`src/lib/agent-ws-handler.ts:200-216#"type: 'pong'"`). A snapshot is stored
+(`src/lib/agent-ws-handler.ts:208-224#"type: 'pong'"`). A snapshot is stored
 under the connection's own `agentId`, not the `agentId` field inside the
 snapshot payload, and only when the connection still owns the entry (see
 "Newest connection wins")
-(`src/lib/agent-ws-handler.ts:208#"registry.update(ws, agentId, msg.data)"`).
+(`src/lib/agent-ws-handler.ts:216#"registry.update(ws, agentId, msg.data)"`).
 
 ## Persisted tokens are bound to an agent on first use
 
@@ -141,24 +142,24 @@ as an invalid token, registry untouched) when any entry's `agentId` equals the
 handshake's; a missing file reads as no entries, an unreadable or corrupt one
 refuses the handshake too (fail closed) but retryably, with close 1013 and no
 `auth_error`, so the reference agent reconnects instead of stopping
-(`src/lib/agent-ws-handler.ts:97-128#"if (staticMatch)"`). A match against a persisted
+(`src/lib/agent-ws-handler.ts:101-132#"if (staticMatch)"`). A match against a persisted
 token is bound: the handler re-reads `tokens.json` after the bcrypt
 comparison, patches only the matched id and rewrites the file with no await
 in between, so a token created or revoked during the comparison is neither lost
 nor restored. If the matched id is no longer in the fresh read, or the re-read
-itself fails, the handshake is rejected with `auth_error` (fail closed). An
+itself fails, the handshake is refused retryably (close 1013, no `auth_error`). An
 entry without `agentId` records the handshake's `agentId` in that write
 (existing tokens bind on their next handshake); an entry with another
 `agentId` is rejected with the same `auth_error` and close 1008 as an invalid
 token, and the registry is not touched
-(`src/lib/agent-ws-handler.ts:147#"current.agentId !== msg.agentId"`).
+(`src/lib/agent-ws-handler.ts:155#"current.agentId !== msg.agentId"`).
 The same write stamps `lastUsedAt`
-(`src/lib/agent-ws-handler.ts:157#"current.lastUsedAt"`). A failed write does
+(`src/lib/agent-ws-handler.ts:165#"current.lastUsedAt"`). A failed write does
 not fail the handshake of an already bound token, but a failed write of a new
 binding does (fail closed), because the token would otherwise stay usable for
 any `agentId`
-(`src/lib/agent-ws-handler.ts:162#"best effort"`,
-`src/lib/agent-ws-handler.ts:168#"needsBinding"`). Binding is trust on
+(`src/lib/agent-ws-handler.ts:170#"best effort"`,
+`src/lib/agent-ws-handler.ts:176#"needsBinding"`). Binding is trust on
 first use and not unique: two tokens may bind the same `agentId` (a token is
 rotated by creating the new one before revoking the old), and revoking a token
 drops its binding with the entry. An entry whose stored `agentId` is the empty
@@ -194,7 +195,7 @@ connection of the real agent could overwrite fresh data.
 The replaced socket is dropped, not left silently connected. When the
 handler's `registry.update()` returns `false`, the handler sends no `ack`,
 logs a warning and closes that socket with code 4000
-(`src/lib/agent-ws-handler.ts:208-212#"REPLACED_CLOSE_CODE"`). The close
+(`src/lib/agent-ws-handler.ts:216-220#"REPLACED_CLOSE_CODE"`). The close
 happens on the replaced socket's own next `snapshot`, never inside
 `register()`, which keeps its rule of not touching the old socket (event
 loop interference with the new connection). An agent that sees 4000 has been
@@ -216,7 +217,7 @@ never sends snapshots keeps `lastSnapshotAt` at its last snapshot (or `0`).
 ## Offline and eviction
 
 An entry goes offline only through `disconnect()` from the socket's `close`
-handler (`src/lib/agent-ws-handler.ts:226#"registry.disconnect(agentId, ws)"`).
+handler (`src/lib/agent-ws-handler.ts:234#"registry.disconnect(agentId, ws)"`).
 There is no server-side idle timeout: an entry whose socket stays open is
 online indefinitely, whether or not it sends snapshots.
 

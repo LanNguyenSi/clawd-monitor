@@ -78,6 +78,17 @@ async function emitAndWait(ws: MockWs, payload: object): Promise<void> {
   )
 }
 
+/** Emit a raw WS message and wait until the socket was closed (a refusal without a frame). */
+async function emitAndWaitClose(ws: MockWs, payload: object): Promise<void> {
+  ws.emit('message', Buffer.from(JSON.stringify(payload)))
+  await vi.waitFor(
+    () => {
+      expect(ws.close).toHaveBeenCalled()
+    },
+    { timeout: 5000 },
+  )
+}
+
 const AUTH_MSG = {
   type: 'auth' as const,
   token: 'will-be-overridden',
@@ -139,7 +150,7 @@ describe('handleAgentConnection – invalid token (no static, no persisted)', ()
       })
       const ws = makeMockWs()
       handleAgentConnection(ws as unknown as WebSocket, fakeReq)
-      await emitAndWait(ws, { ...AUTH_MSG, token: 'secret-token-value-123' })
+      await emitAndWaitClose(ws, { ...AUTH_MSG, token: 'secret-token-value-123' })
 
       const logged = warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
       expect(logged).toContain('Could not read tokens')
@@ -150,7 +161,7 @@ describe('handleAgentConnection – invalid token (no static, no persisted)', ()
     }
   })
 
-  it('sends auth_error and closes with 1008 when the token store read throws', async () => {
+  it('refuses retryably (close 1013, no auth_error) when the token store read throws', async () => {
     mockReadTokens.mockImplementationOnce(() => {
       throw new Error('corrupt tokens.json')
     })
@@ -166,18 +177,29 @@ describe('handleAgentConnection – invalid token (no static, no persisted)', ()
     }
     process.on('unhandledRejection', onUnhandledRejection)
     try {
-      await emitAndWait(ws, { ...AUTH_MSG, token: 'not-a-static-token' })
+      await emitAndWaitClose(ws, { ...AUTH_MSG, token: 'not-a-static-token' })
       await new Promise<void>((resolve) => setTimeout(resolve, 50))
     } finally {
       process.off('unhandledRejection', onUnhandledRejection)
     }
     expect(rejections).toHaveLength(0)
 
-    const sent = JSON.parse(ws.send.mock.calls[0][0] as string)
-    expect(sent.type).toBe('auth_error')
-    expect(ws.close).toHaveBeenCalledWith(1008, expect.any(String))
+    // auth_error would make the reference agent stop for good; 1013 makes it retry
+    expect(ws.send).not.toHaveBeenCalled()
+    expect(ws.close).toHaveBeenCalledOnce()
+    expect(ws.close).toHaveBeenCalledWith(1013, 'Server busy')
     expect(mockRegistry.register).not.toHaveBeenCalled()
     expect(mockWriteTokens).not.toHaveBeenCalled()
+  })
+
+  it('treats an unreadable store differently from an empty one: an empty store is a real auth failure', async () => {
+    mockReadTokens.mockReturnValueOnce([])
+    const ws = makeMockWs()
+    handleAgentConnection(ws as unknown as WebSocket, fakeReq)
+    await emitAndWait(ws, { ...AUTH_MSG, token: 'not-a-static-token' })
+
+    expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_error')
+    expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid token')
   })
 
   it('sends auth_error when a snapshot is received before auth', async () => {
@@ -356,17 +378,35 @@ describe('handleAgentConnection – valid bcrypt persisted token', () => {
     const ws = makeMockWs()
     handleAgentConnection(ws as unknown as WebSocket, fakeReq)
 
-    await emitAndWait(ws, { ...AUTH_MSG, token: BCRYPT_PLAINTEXT })
+    await emitAndWaitClose(ws, { ...AUTH_MSG, token: BCRYPT_PLAINTEXT })
 
-    expect(JSON.parse(ws.send.mock.calls[0][0] as string).type).toBe('auth_error')
+    expect(ws.send).not.toHaveBeenCalled()
     expect(ws.close).toHaveBeenCalledOnce()
-    expect(ws.close).toHaveBeenCalledWith(1008, expect.any(String))
+    expect(ws.close).toHaveBeenCalledWith(1013, 'Server busy')
     expect(mockWriteTokens).not.toHaveBeenCalled()
     expect(mockRegistry.register).not.toHaveBeenCalled()
     const logged = warn.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
     warn.mockRestore()
     expect(logged).toContain('Could not re-read tokens')
     expect(logged).toContain('EIO')
+    expect(logged).not.toContain(BCRYPT_PLAINTEXT)
+  })
+
+  it('accepts the same agent on the next handshake once the store is readable again', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const entry = { id: 'tok-1', name: 'test-token', tokenHash: bcryptHash, createdAt: new Date().toISOString() }
+    mockReadTokens.mockImplementationOnce(() => { throw new Error('EACCES') })
+    const refused = makeMockWs()
+    handleAgentConnection(refused as unknown as WebSocket, fakeReq)
+    refused.emit('message', Buffer.from(JSON.stringify({ ...AUTH_MSG, token: BCRYPT_PLAINTEXT })))
+    await vi.waitFor(() => expect(refused.close).toHaveBeenCalledWith(1013, 'Server busy'), { timeout: 5000 })
+    expect(refused.send).not.toHaveBeenCalled()
+
+    mockReadTokens.mockReturnValue([entry])
+    const ok = makeMockWs()
+    handleAgentConnection(ok as unknown as WebSocket, fakeReq)
+    await emitAndWait(ok, { ...AUTH_MSG, token: BCRYPT_PLAINTEXT })
+    expect(JSON.parse(ok.send.mock.calls[0][0] as string).type).toBe('auth_ok')
   })
 
   it('does not write tokens when the token does not match', async () => {
