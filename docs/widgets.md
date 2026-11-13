@@ -56,3 +56,20 @@ selected.
 | `e` | Toggle edit mode (drag/resize/close widgets) |
 | `t` | Toggle dark/light mode |
 | `?` | Show shortcuts |
+
+### Moving and resizing widgets with the keyboard
+
+The dashboard starts locked. After `e` (or "Edit layout") every widget card is a tab stop that
+announces itself as a "movable widget" with the widget title as its name and a visible focus
+outline; locked, the cards are not focusable. With the card itself focused (not something inside
+it, such as the remove button or a scrolling log):
+
+| Key | Action |
+|-----|--------|
+| `Arrow` keys | Move the widget by one grid cell. Widgets in the way are pushed aside and the layout is compacted upwards, exactly as after a drag. If one cell changes nothing (for example one row down against a taller widget below), the step grows to the smallest one that does, so one key press can pass a whole widget; the announcement then names it ("Heartbeat Pulse moved below Log Tail, column 1, row 7"). The card is scrolled into view afterwards. |
+| `Shift` + `Arrow` keys | Resize by one cell: right and down grow the width and height, left and up shrink them. The size stays within the widget's minimum and maximum size and inside the grid columns. |
+| `Esc` | Leave the widget (focus moves to the grid container); it does not also dismiss a pending "removed" Undo notice. `Tab` moves on to the next control as usual. |
+
+The move or resize is saved like a drag (browser `localStorage`, per screen-size layout), and a
+polite live region announces the result ("CPU + RAM moved to column 3, row 2", "Cron Jobs resized
+to 4 by 3", or why nothing moved). The global `e` shortcut keeps working while a card is focused: it locks the layout, focus moves to the grid container (not to <body>) and the live region says "Layout locked". Holding a key does not repeat an unchanged message. The keys are also listed in the `?` help.

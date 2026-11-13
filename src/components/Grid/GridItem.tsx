@@ -14,18 +14,42 @@ interface Props {
   onMouseDown?: React.MouseEventHandler
   onMouseUp?: React.MouseEventHandler
   onTouchEnd?: React.TouchEventHandler
+  /**
+   * Keys pressed on the card itself (not on something inside it). Only used in
+   * edit mode, where the card is a tab stop: Arrow moves and Shift+Arrow
+   * resizes the widget, see WidgetGrid.
+   */
+  onCardKeyDown?: React.KeyboardEventHandler<HTMLDivElement>
+  /** Id of the one element that describes the card keys (rendered once by the grid). */
+  descriptionId?: string
 }
 
 // forwardRef required by react-grid-layout
 export const GridItem = forwardRef<HTMLDivElement, Props>(function GridItem(
-  { title, children, loading, error, className, style, editMode, onRemove, onMouseDown, onMouseUp, onTouchEnd },
+  { title, children, loading, error, className, style, editMode, onRemove, onMouseDown, onMouseUp, onTouchEnd, onCardKeyDown, descriptionId },
   ref
 ) {
+  // In edit mode the card is a focusable "movable widget"; locked, it adds no
+  // tab stop and no extra semantics.
+  const cardProps = editMode
+    ? {
+        tabIndex: 0,
+        role: 'group',
+        'aria-roledescription': 'movable widget',
+        'aria-label': title,
+        'aria-describedby': descriptionId,
+        onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
+          // Keys typed inside the widget (buttons, scroll regions) are theirs.
+          if (e.target === e.currentTarget) onCardKeyDown?.(e)
+        },
+      }
+    : {}
   return (
     <div
       ref={ref}
       style={style}
-      className={`flex flex-col bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-xl overflow-hidden ${className ?? ''}`}
+      className={`flex flex-col bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-xl overflow-hidden ${editMode ? 'scroll-m-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500' : ''} ${className ?? ''}`}
+      {...cardProps}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
       onTouchEnd={onTouchEnd}
