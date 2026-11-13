@@ -1,6 +1,6 @@
 'use client'
 
-import { forwardRef } from 'react'
+import { forwardRef, useId } from 'react'
 
 interface Props {
   title: string
@@ -14,22 +14,53 @@ interface Props {
   onMouseDown?: React.MouseEventHandler
   onMouseUp?: React.MouseEventHandler
   onTouchEnd?: React.TouchEventHandler
+  /**
+   * Keys pressed on the card itself (not on something inside it). Only used in
+   * edit mode, where the card is a tab stop: Arrow moves and Shift+Arrow
+   * resizes the widget, see WidgetGrid.
+   */
+  onCardKeyDown?: React.KeyboardEventHandler<HTMLDivElement>
 }
+
+const KEYBOARD_HINT =
+  'Arrow keys move this widget by one cell. Shift plus an arrow key resizes it by one cell. Escape leaves the widget.'
 
 // forwardRef required by react-grid-layout
 export const GridItem = forwardRef<HTMLDivElement, Props>(function GridItem(
-  { title, children, loading, error, className, style, editMode, onRemove, onMouseDown, onMouseUp, onTouchEnd },
+  { title, children, loading, error, className, style, editMode, onRemove, onMouseDown, onMouseUp, onTouchEnd, onCardKeyDown },
   ref
 ) {
+  const hintId = useId()
+  // In edit mode the card is a focusable "movable widget"; locked, it adds no
+  // tab stop and no extra semantics.
+  const cardProps = editMode
+    ? {
+        tabIndex: 0,
+        role: 'group',
+        'aria-roledescription': 'movable widget',
+        'aria-label': title,
+        'aria-describedby': hintId,
+        onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
+          // Keys typed inside the widget (buttons, scroll regions) are theirs.
+          if (e.target === e.currentTarget) onCardKeyDown?.(e)
+        },
+      }
+    : {}
   return (
     <div
       ref={ref}
       style={style}
-      className={`flex flex-col bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-xl overflow-hidden ${className ?? ''}`}
+      className={`flex flex-col bg-white border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-xl overflow-hidden ${editMode ? 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500' : ''} ${className ?? ''}`}
+      {...cardProps}
       onMouseDown={onMouseDown}
       onMouseUp={onMouseUp}
       onTouchEnd={onTouchEnd}
     >
+      {editMode && (
+        <span id={hintId} className="sr-only">
+          {KEYBOARD_HINT}
+        </span>
+      )}
       {/* Title bar — drag handle only in edit mode */}
       <div className={`flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 ${editMode ? 'cursor-grab active:cursor-grabbing' : ''} shrink-0`}>
         <h2 className="text-xs font-medium text-zinc-500 dark:text-zinc-400 select-none">{title}</h2>

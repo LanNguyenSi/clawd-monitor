@@ -6,6 +6,14 @@ import type { Layout } from 'react-grid-layout'
 import { GridItem } from './GridItem'
 import { UndoNotice } from './UndoNotice'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import {
+  applyGridKey,
+  breakpointAtWidth,
+  GRID_BREAKPOINTS,
+  gridColsFor,
+  isGridKey,
+  layoutAtBreakpoint,
+} from '@/lib/grid-keyboard'
 import { WIDGET_REGISTRY } from '@/lib/widgets'
 import {
   defaultLayouts,
@@ -63,6 +71,7 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
   // Set by a drag or resize after the remove: the saved snapshot is then out of
   // date and Undo only splices the widget back in.
   const editedSinceRemove = useRef(false)
+  const [announcement, setAnnouncement] = useState<{ n: number; text: string }>({ n: 0, text: '' })
 
   // Move focus once the DOM reflects the state change that asked for it.
   useEffect(() => {
@@ -111,6 +120,27 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
     }
   }, [])
 
+  const handleCardKey = (id: string, title: string, e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      // Leave the widget; the grid container keeps the place in the tab order.
+      gridRef.current?.focus({ preventScroll: true })
+      return
+    }
+    if (!isGridKey(e.key) || e.ctrlKey || e.altKey || e.metaKey) return
+    e.preventDefault()
+    // Start from what the grid shows: the layout of the breakpoint the
+    // container width falls in, measured the way WidthProvider measures it.
+    const gridEl = gridRef.current?.querySelector<HTMLElement>('.react-grid-layout')
+    const bp = breakpointAtWidth(gridEl?.offsetWidth ?? 0)
+    const bpCols = gridColsFor(cols)[bp]
+    const result = applyGridKey(layoutAtBreakpoint(layouts, bp, bpCols), id, e.key, e.shiftKey, bpCols, title)
+    setAnnouncement((a) => ({ n: a.n + 1, text: result.message }))
+    if (!result.changed) return
+    // Same path as a pointer move: persist per breakpoint and report the ids.
+    editedSinceRemove.current = true
+    handleLayoutChange(result.layout, { ...layouts, [bp]: result.layout })
+  }
+
   const handleRemove = (id: string, title: string) => {
     const next = removeWidget(layouts, id)
     setLayouts(next)
@@ -151,7 +181,7 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
 
   if (!mounted) return null
 
-  const colsMap = { lg: cols, md: Math.min(cols, 4), sm: 2, xs: 1, xxs: 1 }
+  const colsMap = gridColsFor(cols)
 
   return (
     <div ref={gridRef} tabIndex={-1} className="outline-none">
@@ -160,7 +190,7 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
       layouts={layouts}
       cols={colsMap}
       rowHeight={150}
-      breakpoints={{ lg: 1200, md: 768, sm: 480, xs: 320, xxs: 0 }}
+      breakpoints={GRID_BREAKPOINTS}
       onDragStop={markEdited}
       onResizeStop={markEdited}
       onLayoutChange={(current, all) => handleLayoutChange(current, all as ResponsiveLayouts)}
@@ -180,6 +210,7 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
             key={id}
             title={widget.title}
             editMode={editMode}
+            onCardKeyDown={(e) => handleCardKey(id, widget.title, e)}
             onRemove={() => handleRemove(id, widget.title)}
           >
             <ErrorBoundary>
@@ -195,6 +226,10 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
         )
       })}
     </ResponsiveGrid>
+    {/* Polite live region for keyboard moves; the span is re-created per message so a repeated text is announced again. */}
+    <div aria-live="polite" aria-atomic="true" className="sr-only" data-grid-announcer="">
+      <span key={announcement.n}>{announcement.text}</span>
+    </div>
     <UndoNotice
       notice={removed ? { key: removed.key, message: `${removed.title} removed` } : null}
       onUndo={handleUndo}
