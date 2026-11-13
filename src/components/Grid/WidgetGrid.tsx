@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useId, useRef, lazy, Suspense } from 'react'
 import { Responsive, WidthProvider } from 'react-grid-layout'
 import type { Layout } from 'react-grid-layout'
 import { GridItem } from './GridItem'
@@ -61,6 +61,14 @@ interface RemovedWidget {
 
 type PendingFocus = { kind: 'widget'; title: string } | { kind: 'grid' }
 
+const CARD_KEYS_HINT =
+  'Arrow keys move this widget by one cell. Shift plus an arrow key resizes it by one cell. Escape leaves the widget.'
+
+/** Longest wait for a layout transition to end before the card is scrolled into view anyway. */
+const SCROLL_FALLBACK_MS = 400
+
+const titleOfWidget = (id: string) => WIDGET_REGISTRY.find((w) => w.id === id)?.title ?? id
+
 export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
   const [layouts, setLayouts] = useState<ResponsiveLayouts>({})
   const [mounted, setMounted] = useState(false)
@@ -72,6 +80,38 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
   // date and Undo only splices the widget back in.
   const editedSinceRemove = useRef(false)
   const [announcement, setAnnouncement] = useState<{ n: number; text: string }>({ n: 0, text: '' })
+  const lastMessage = useRef('')
+  const cancelScroll = useRef<(() => void) | null>(null)
+  // True while focus is, or just was, inside the grid; see the edit-mode effect.
+  const focusInGrid = useRef(false)
+  const wasEditMode = useRef(editMode)
+  const hintId = useId()
+
+  const announce = useCallback((text: string) => {
+    lastMessage.current = text
+    setAnnouncement((a) => ({ n: a.n + 1, text }))
+  }, [])
+
+  // Locking the layout removes the focused card's tab stop, and the browser
+  // then drops focus to <body>. Put it on the grid container instead: it keeps
+  // the keyboard user's place in the page (Tab goes on into the grid, Shift+Tab
+  // back to the toolbar) and, unlike the "Edit layout" toggle, does not move
+  // them away from what they were working on.
+  useLayoutEffect(() => {
+    const was = wasEditMode.current
+    wasEditMode.current = editMode
+    if (!was || editMode) return
+    const root = gridRef.current
+    const active = document.activeElement
+    const inGrid = Boolean(root && active && root.contains(active))
+    // Some browsers have already moved focus to <body> when the effect runs.
+    if (inGrid || (active === document.body && focusInGrid.current)) {
+      root?.focus({ preventScroll: true })
+      announce('Layout locked')
+    }
+  }, [editMode, announce])
+
+  useEffect(() => () => cancelScroll.current?.(), [])
 
   // Move focus once the DOM reflects the state change that asked for it.
   useEffect(() => {
@@ -120,9 +160,34 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
     }
   }, [])
 
+  // The grid slides a moved card with a CSS transition. Scroll once it has
+  // arrived (or after a fallback delay when no transition runs), because
+  // moving it with the arrow keys can put it far outside the visible area and
+  // the arrows are not available for scrolling.
+  const scrollIntoViewWhenSettled = (card: HTMLElement) => {
+    cancelScroll.current?.()
+    const run = () => {
+      cancel()
+      card.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    }
+    const onEnd = (event: Event) => {
+      if (event.target === card) run()
+    }
+    const cancel = () => {
+      clearTimeout(timer)
+      card.removeEventListener('transitionend', onEnd)
+      cancelScroll.current = null
+    }
+    card.addEventListener('transitionend', onEnd)
+    const timer = setTimeout(run, SCROLL_FALLBACK_MS)
+    cancelScroll.current = cancel
+  }
+
   const handleCardKey = (id: string, title: string, e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {
       // Leave the widget; the grid container keeps the place in the tab order.
+      // preventDefault: this Escape is spent, it must not also dismiss an Undo notice.
+      e.preventDefault()
       gridRef.current?.focus({ preventScroll: true })
       return
     }
@@ -133,12 +198,15 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
     const gridEl = gridRef.current?.querySelector<HTMLElement>('.react-grid-layout')
     const bp = breakpointAtWidth(gridEl?.offsetWidth ?? 0)
     const bpCols = gridColsFor(cols)[bp]
-    const result = applyGridKey(layoutAtBreakpoint(layouts, bp, bpCols), id, e.key, e.shiftKey, bpCols, title)
-    setAnnouncement((a) => ({ n: a.n + 1, text: result.message }))
+    const card = e.currentTarget
+    const result = applyGridKey(layoutAtBreakpoint(layouts, bp, bpCols), id, e.key, e.shiftKey, bpCols, title, titleOfWidget)
+    // A held key repeats: do not read out the same refusal again and again.
+    if (!(e.repeat && result.message === lastMessage.current)) announce(result.message)
     if (!result.changed) return
     // Same path as a pointer move: persist per breakpoint and report the ids.
     editedSinceRemove.current = true
     handleLayoutChange(result.layout, { ...layouts, [bp]: result.layout })
+    scrollIntoViewWhenSettled(card)
   }
 
   const handleRemove = (id: string, title: string) => {
@@ -184,7 +252,17 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
   const colsMap = gridColsFor(cols)
 
   return (
-    <div ref={gridRef} tabIndex={-1} className="outline-none">
+    <div
+      ref={gridRef}
+      tabIndex={-1}
+      className="outline-none"
+      onFocus={() => { focusInGrid.current = true }}
+      onBlur={(e) => {
+        // Focus moving to another element outside the grid ends "inside"; a blur
+        // to nowhere (relatedTarget null) may be the browser's own focus fix-up.
+        if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget as Node)) focusInGrid.current = false
+      }}
+    >
     <ResponsiveGrid
       className="react-grid-layout"
       layouts={layouts}
@@ -210,6 +288,7 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
             key={id}
             title={widget.title}
             editMode={editMode}
+            descriptionId={editMode ? hintId : undefined}
             onCardKeyDown={(e) => handleCardKey(id, widget.title, e)}
             onRemove={() => handleRemove(id, widget.title)}
           >
@@ -226,6 +305,8 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
         )
       })}
     </ResponsiveGrid>
+    {/* One description for every card (aria-describedby works on hidden elements). */}
+    {editMode && <span id={hintId} hidden>{CARD_KEYS_HINT}</span>}
     {/* Polite live region for keyboard moves; the span is re-created per message so a repeated text is announced again. */}
     <div aria-live="polite" aria-atomic="true" className="sr-only" data-grid-announcer="">
       <span key={announcement.n}>{announcement.text}</span>

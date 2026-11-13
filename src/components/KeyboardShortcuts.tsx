@@ -17,7 +17,9 @@ const SHORTCUTS = [
   { key: 'e', description: 'Toggle edit / lock layout' },
   { key: 't', description: 'Toggle dark / light mode' },
   { key: '?', description: 'Show this help' },
-  { key: 'Esc', description: 'Close this help' },
+  { key: '← ↑ → ↓', description: 'Move the focused widget (edit mode)' },
+  { key: 'Shift + ← ↑ → ↓', description: 'Resize the focused widget (edit mode)' },
+  { key: 'Esc', description: 'Close this help, or leave a focused widget' },
 ]
 
 /**
@@ -114,9 +116,9 @@ export function KeyboardShortcuts({ onRefresh, onToggleTheme, onToggleEditMode }
         </div>
         <div className="space-y-2">
           {SHORTCUTS.map((s) => (
-            <div key={s.key} className="flex items-center justify-between">
+            <div key={s.description} className="flex items-center justify-between">
               <span className="text-xs text-zinc-500 dark:text-zinc-400">{s.description}</span>
-              <kbd className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-2 py-0.5 font-mono text-zinc-700 dark:text-zinc-300">
+              <kbd className="shrink-0 whitespace-nowrap text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-2 py-0.5 font-mono text-zinc-700 dark:text-zinc-300">
                 {s.key}
               </kbd>
             </div>

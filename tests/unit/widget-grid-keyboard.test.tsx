@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createRoot, type Root } from 'react-dom/client'
 import { act } from 'react'
 import { LAYOUT_STORAGE_KEY } from '@/lib/layout-storage'
@@ -93,7 +93,15 @@ describe('widget cards as keyboard targets', () => {
       const hint = document.getElementById(el.getAttribute('aria-describedby')!)
       expect(hint?.textContent).toContain('Shift')
     }
+    // One description shared by every card, hidden so it is not read as widget content.
+    const ids = new Set(Array.from(cards).map((el) => el.getAttribute('aria-describedby')))
+    expect(ids.size).toBe(1)
+    const hints = host.querySelectorAll('span[hidden]')
+    expect(hints).toHaveLength(1)
+    expect(host.querySelector('.sr-only [id]')).toBeNull()
     expect(card('CPU + RAM').className).toContain('focus-visible:outline-2')
+    // Room around the card when it is scrolled into view, so its focus outline is not cut off.
+    expect(card('CPU + RAM').className).toContain('scroll-m-2')
   })
 
   it('add no tab stop and no semantics when locked', async () => {
@@ -102,6 +110,7 @@ describe('widget cards as keyboard targets', () => {
     expect(host.querySelector('[aria-roledescription]')).toBeNull()
     expect(host.querySelector('[role="group"]')).toBeNull()
     expect(host.querySelector('[aria-describedby]')).toBeNull()
+    expect(host.querySelector('span[hidden]')).toBeNull()
     // Keys on a locked card do nothing.
     const el = card('CPU + RAM')
     await act(async () => {
@@ -278,6 +287,26 @@ describe('announcements, focus and keys', () => {
     expect(box().metrics).toEqual([0, 0, 1, 2])
   })
 
+  it('Escape on a card is spent: it does not also dismiss a pending Undo notice', async () => {
+    await mount({ lg: THREE })
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Remove Heartbeat Pulse widget"]')!.click())
+    const notice = () => document.querySelector('[data-undo-notice]')!.textContent
+    expect(notice()).toContain('Heartbeat Pulse removed')
+    const el = card('CPU + RAM')
+    const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    await act(async () => {
+      el.focus()
+      el.dispatchEvent(ev)
+    })
+    expect(ev.defaultPrevented).toBe(true)
+    expect(notice()).toContain('Heartbeat Pulse removed')
+    // Escape from anywhere else still dismisses it.
+    await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    })
+    expect(notice()).toBe('')
+  })
+
   it('ignores other keys, modified arrows and keys from inside the widget', async () => {
     await mount({ lg: [{ i: 'metrics', x: 0, y: 0, w: 1, h: 2 }, { i: 'cron', x: 2, y: 0, w: 1, h: 2 }] })
     for (const [key, init] of [['Tab', {}], ['e', {}], ['Enter', {}], ['ArrowRight', { ctrlKey: true }], ['ArrowRight', { altKey: true }], ['ArrowRight', { metaKey: true }]] as const) {
@@ -338,5 +367,188 @@ describe('undo after a keyboard move', () => {
     await act(async () => {})
     expect(box().cron).toEqual([2, 0, 1, 2])
     expect(stored().map((l) => l.i).sort()).toEqual(['cron', 'heartbeat', 'metrics'])
+  })
+})
+
+describe('locking the layout while a card has focus', () => {
+  const rerender = async (edit: boolean) => {
+    await act(async () => root.render(<WidgetGrid cols={4} editMode={edit} onLayoutChange={onIds} />))
+  }
+
+  it('moves focus to the grid container and announces it', async () => {
+    await mount({ lg: THREE })
+    await act(async () => card('CPU + RAM').focus())
+    await rerender(false)
+    expect(document.activeElement).not.toBe(document.body)
+    expect(document.activeElement).toBe(host.firstElementChild)
+    expect(announcer().textContent).toBe('Layout locked')
+  })
+
+  it('also covers a browser that already dropped focus to the body', async () => {
+    await mount({ lg: THREE })
+    await act(async () => card('CPU + RAM').focus())
+    // What Chrome does when the focused element loses its tabindex.
+    const el = card('CPU + RAM')
+    el.addEventListener('blur', () => {})
+    await act(async () => {
+      el.blur()
+    })
+    expect(document.activeElement).toBe(document.body)
+    await rerender(false)
+    expect(document.activeElement).toBe(host.firstElementChild)
+    expect(announcer().textContent).toBe('Layout locked')
+  })
+
+  it('leaves focus alone when it is elsewhere, and does not announce', async () => {
+    await mount({ lg: THREE })
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    await act(async () => card('CPU + RAM').focus())
+    await act(async () => outside.focus())
+    await rerender(false)
+    expect(document.activeElement).toBe(outside)
+    expect(announcer().textContent).toBe('')
+    outside.remove()
+  })
+
+  it('does not steal focus from the page body after the user clicked away from the grid', async () => {
+    await mount({ lg: THREE })
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    await act(async () => card('CPU + RAM').focus())
+    await act(async () => outside.focus())
+    await act(async () => outside.blur())
+    expect(document.activeElement).toBe(document.body)
+    await rerender(false)
+    expect(document.activeElement).toBe(document.body)
+    expect(announcer().textContent).toBe('')
+    outside.remove()
+  })
+
+  it('does nothing when focus never was in the grid', async () => {
+    await mount({ lg: THREE })
+    await rerender(false)
+    expect(document.activeElement).toBe(document.body)
+    expect(announcer().textContent).toBe('')
+  })
+
+  it('does not announce when edit mode is switched on', async () => {
+    await mount({ lg: THREE }, false)
+    await rerender(true)
+    expect(announcer().textContent).toBe('')
+  })
+})
+
+describe('scrolling the moved card into view', () => {
+  const scrollIntoView = vi.fn()
+  beforeEach(() => {
+    scrollIntoView.mockClear()
+    vi.useFakeTimers()
+    Element.prototype.scrollIntoView = scrollIntoView
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+  })
+
+  it('scrolls the moved card (block nearest) when its transition ends', async () => {
+    await mount({ lg: [{ i: 'metrics', x: 0, y: 0, w: 1, h: 2 }, { i: 'cron', x: 2, y: 0, w: 1, h: 2 }] })
+    await press('CPU + RAM', 'ArrowRight')
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    const el = card('CPU + RAM')
+    await act(async () => {
+      el.dispatchEvent(new Event('transitionend', { bubbles: true }))
+    })
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView.mock.contexts[0]).toBe(el)
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' })
+    // The fallback timer is gone once it ran.
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores a transition that ended on something inside the card', async () => {
+    await mount({ lg: [{ i: 'metrics', x: 0, y: 0, w: 1, h: 2 }] })
+    await press('CPU + RAM', 'ArrowDown', { shiftKey: true })
+    const inner = card('CPU + RAM').querySelector('h2')!
+    await act(async () => {
+      inner.dispatchEvent(new Event('transitionend', { bubbles: true }))
+    })
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it('falls back to a timer when no transition runs, for a resize too', async () => {
+    await mount({ lg: [{ i: 'cron', x: 0, y: 0, w: 2, h: 2 }] })
+    await press('Cron Jobs', 'ArrowDown', { shiftKey: true })
+    await act(async () => {
+      vi.advanceTimersByTime(399)
+    })
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    await act(async () => {
+      vi.advanceTimersByTime(2)
+    })
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not scroll when the key changed nothing', async () => {
+    await mount({ lg: [{ i: 'metrics', x: 0, y: 0, w: 1, h: 2 }] })
+    await press('CPU + RAM', 'ArrowLeft')
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it('a second key replaces the pending scroll instead of adding one', async () => {
+    await mount({ lg: [{ i: 'metrics', x: 0, y: 0, w: 1, h: 2 }] })
+    await press('CPU + RAM', 'ArrowRight')
+    await press('CPU + RAM', 'ArrowRight')
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels the pending scroll when the grid unmounts', async () => {
+    await mount({ lg: [{ i: 'metrics', x: 0, y: 0, w: 1, h: 2 }] })
+    await press('CPU + RAM', 'ArrowRight')
+    await act(async () => root.render(<div />))
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    // afterEach unmounts the (now different) tree again.
+  })
+})
+
+describe('key auto-repeat', () => {
+  it('does not announce the same refusal again while the key is held, but announces real changes', async () => {
+    await mount({ lg: [{ i: 'metrics', x: 0, y: 0, w: 1, h: 2 }] })
+    await press('CPU + RAM', 'ArrowLeft')
+    const first = announcer().firstElementChild
+    expect(announcer().textContent).toContain('cannot move left')
+    await press('CPU + RAM', 'ArrowLeft', { repeat: true })
+    await press('CPU + RAM', 'ArrowLeft', { repeat: true })
+    expect(announcer().firstElementChild).toBe(first)
+    // A separate press (not a repeat) is announced again.
+    await press('CPU + RAM', 'ArrowLeft')
+    expect(announcer().firstElementChild).not.toBe(first)
+    // A held key that really moves is announced on every step.
+    await press('CPU + RAM', 'ArrowRight', { repeat: true })
+    expect(announcer().textContent).toBe('CPU + RAM moved to column 2, row 1')
+    const moved = announcer().firstElementChild
+    await press('CPU + RAM', 'ArrowRight', { repeat: true })
+    expect(announcer().textContent).toBe('CPU + RAM moved to column 3, row 1')
+    expect(announcer().firstElementChild).not.toBe(moved)
+  })
+
+  it('announces a refusal after a different message even on a repeat', async () => {
+    await mount({ lg: [{ i: 'metrics', x: 0, y: 0, w: 1, h: 2 }] })
+    await press('CPU + RAM', 'ArrowRight')
+    await press('CPU + RAM', 'ArrowLeft')
+    await press('CPU + RAM', 'ArrowLeft', { repeat: true })
+    expect(announcer().textContent).toContain('cannot move left')
   })
 })
