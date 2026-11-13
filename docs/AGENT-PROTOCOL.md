@@ -49,7 +49,16 @@ Agent → server:
 - Token validation: the token is matched against the static `AGENT_TOKENS` env
   list (exact match) first, then against persisted Settings-UI tokens
   (bcrypt-compared; a match updates that token's `lastUsedAt`). An invalid token yields `auth_error` ("Invalid token") and
-  the socket is closed.
+  the socket is closed. A missing `tokens.json` means "no persisted tokens",
+  so a token that matches no static entry is invalid. A `tokens.json` that
+  exists but cannot be read or parsed (corrupt, empty, a directory in its
+  place, wrong shape) is a store failure and not a verdict on the token: the
+  handshake is refused retryably, the socket is closed with `1013` (`Server
+  busy`) and no `auth_error`, because `auth_error` makes the reference agent
+  stop for good and a transient broken file must not stop every
+  persisted-token agent permanently. The same applies when the re-read after
+  the token matched fails. The agents reconnect with their backoff and are
+  accepted again once the file is fixed.
 - Token binding: a persisted (Settings-UI) token is bound to one `agentId`. The
   first successful handshake with a token records its `agentId` in
   `tokens.json`; from then on that token is accepted only for that `agentId`.
@@ -225,6 +234,9 @@ these refusals are temporary, so the agent reconnects with its backoff.
   outcome but success closes it); an `auth` message sent on the same socket
   meanwhile is ignored (the socket stays open and the first handshake decides
   the outcome).
+- A token store that exists but cannot be read gets close `1013` and no
+  `auth_error`, for persisted and static tokens alike (see
+  [Handshake](#handshake)).
 - An invalid token still gets `auth_error` ("Invalid token") and close `1008`,
   as described under [Handshake](#handshake).
 

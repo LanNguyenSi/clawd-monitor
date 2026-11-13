@@ -65,17 +65,21 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
         // Persisted tokens cost a store read and a bcrypt compare each: charge
         // this client's budget first, so a client over it never gets that far.
         if (!guard.admitHandshake()) return
-        // A failing store read fails closed: access is denied like for any
-        // invalid token, but the client is answered and the socket closed with
-        // 1008 instead of left open until it times out. The message stays
-        // generic so nothing about the broken store leaks to the client.
+        // A failing store read fails closed, but retryably, like the static
+        // path below: a missing tokens.json reads as an empty list (a real
+        // "no such token" below), while a file that exists but cannot be read
+        // or parsed is a temporary, operator-fixable store failure and not a
+        // verdict on the token. It is answered with close 1013 and no
+        // auth_error, because auth_error makes the reference agent stop for
+        // good and one transient broken file would then stop every
+        // persisted-token agent permanently. The server log names the reason,
+        // never the token.
         let entries: TokenEntry[]
         try {
           entries = readTokens()
         } catch (err) {
-          console.warn(`[agent-ws] Could not read tokens; rejecting handshake: ${err instanceof Error ? err.message : 'unknown error'}`)
-          send(ws, { type: 'auth_error', message: 'Invalid token' })
-          guard.close(1008, 'Invalid token')
+          console.warn(`[agent-ws] Could not read tokens; refusing handshake, try again later: ${err instanceof Error ? err.message : 'unknown error'}`)
+          guard.close(WS_CLOSE_TRY_AGAIN_LATER, 'Server busy')
           return
         }
         for (const entry of entries) {
@@ -132,14 +136,18 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
         // be stale. Re-read synchronously and patch only the matched id, with
         // no await between the read and the write, so a token created or
         // revoked meanwhile is neither lost nor resurrected.
-        // A failing read rejects the handshake (fail closed): without it a
-        // revoked token could not be told apart from a valid one. Only the
-        // write stays best effort.
-        let fresh: TokenEntry[] = []
+        // A failing read refuses the handshake (fail closed): without it a
+        // revoked token could not be told apart from a valid one. The refusal
+        // is retryable (close 1013, no auth_error), like the first read: the
+        // token itself matched and the store is only temporarily broken. Only
+        // the write stays best effort.
+        let fresh: TokenEntry[]
         try {
           fresh = readTokens()
         } catch (err) {
-          console.warn(`[agent-ws] Could not re-read tokens; rejecting handshake: ${err instanceof Error ? err.message : 'unknown error'}`)
+          console.warn(`[agent-ws] Could not re-read tokens; refusing handshake, try again later: ${err instanceof Error ? err.message : 'unknown error'}`)
+          guard.close(WS_CLOSE_TRY_AGAIN_LATER, 'Server busy')
+          return
         }
         const current = fresh.find((t) => t.id === matched!.id)
         if (!current) {

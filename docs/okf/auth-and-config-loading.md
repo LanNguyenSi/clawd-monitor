@@ -139,10 +139,10 @@ rewrites a file reads it first, so nothing is written over a damaged store:
 the settings token routes and the password routes answer 500 and log the
 error (`Token store unavailable`, `Password store unavailable`), and the login
 route does not fall back to the env password while `password.json` is
-unusable. The agent handshake treats a throwing read like an invalid token
-and logs the reason; for a static `AGENT_TOKENS` token, whose handshake also
-reads `tokens.json` to check agentId bindings, it refuses retryably (close
-1013, no `auth_error`) instead (see agent-registry-lifecycle). The operator repairs or
+unusable. The agent handshake refuses a throwing read retryably (close 1013, no
+`auth_error`) and logs the reason, for a persisted token and for a static
+`AGENT_TOKENS` token alike; only a missing file is a plain invalid token
+(see agent-registry-lifecycle). The operator repairs or
 removes the file; removing `password.json` restores the env password, removing
 `tokens.json` drops every UI-created token.
 
@@ -153,10 +153,10 @@ removes the file; removing `password.json` restores the env password, removing
   (`src/app/api/settings/tokens/route.ts:46#"bcrypt.hash(rawToken, 10)"`);
   the raw token is returned once, in the `POST` response. A successful
   handshake with such a token stamps its `lastUsedAt`
-  (`src/lib/agent-ws-handler.ts:157#"current.lastUsedAt"`), which the `GET`
+  (`src/lib/agent-ws-handler.ts:165#"current.lastUsedAt"`), which the `GET`
   list returns and the settings page shows, and binds the token to the
   handshake's `agentId` when it has none yet
-  (`src/lib/agent-ws-handler.ts:158#"current.agentId = msg.agentId"`).
+  (`src/lib/agent-ws-handler.ts:166#"current.agentId = msg.agentId"`).
 
 ## Admin password precedence
 
