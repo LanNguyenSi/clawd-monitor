@@ -315,7 +315,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
                 Token created for <span className="font-medium text-zinc-800 dark:text-zinc-200">&ldquo;{tokenName}&rdquo;</span>.
               </p>
               <p className="text-xs text-yellow-800 dark:text-yellow-500 mt-1.5">
-                ⚠ Shown once — this token won&apos;t be shown again. Copy it now and paste it at the prompt of step 1 below. Click <strong>Done</strong> when finished.
+                ⚠ Shown once: this token won&apos;t be shown again. Copy it now and paste it at the prompt of step 1 below. Click <strong>Done</strong> when finished.
               </p>
             </div>
 

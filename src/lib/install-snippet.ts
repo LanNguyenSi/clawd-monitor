@@ -4,7 +4,7 @@
  * no clipboard. Trivial to unit-test once a test runner is in the repo.
  *
  * The recipe shape (two SEPARATE copy blocks, pasted one after the
- * other — never merged into one):
+ * other, never merged into one):
  *
  *   Step 1, paste and enter the token at the prompt:
  *

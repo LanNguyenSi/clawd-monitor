@@ -368,7 +368,7 @@ function SettingsInner() {
                 <h3 className="text-sm font-medium text-indigo-700 dark:text-indigo-300">Token generated for &ldquo;{newToken.name}&rdquo;</h3>
                 <button onClick={() => setNewToken(null)} aria-label="Dismiss generated token" className="min-w-6 min-h-6 inline-flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 text-sm"><span aria-hidden="true">✕</span></button>
               </div>
-              <p className="text-xs text-yellow-800 dark:text-yellow-500">⚠ Shown once — this token won&apos;t be shown again. Copy it now and paste it at the prompt of step 1 below.</p>
+              <p className="text-xs text-yellow-800 dark:text-yellow-500">⚠ Shown once: this token won&apos;t be shown again. Copy it now and paste it at the prompt of step 1 below.</p>
 
               <div className="space-y-2">
                 <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Token</p>
