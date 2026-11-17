@@ -15,6 +15,7 @@ import { useState } from 'react'
 import { act } from 'react'
 import { mount, unmountAll, click, key, createElement as h } from './dom-helpers'
 import { AddAgentModal } from '@/components/AddAgentModal'
+import { buildInstallSnippet } from '@/lib/install-snippet'
 
 function Harness() {
   const [open, setOpen] = useState(false)
@@ -202,6 +203,41 @@ describe('AddAgentModal focus trap', () => {
     const fwdEvent = await pressTab(document.body)
     expect(document.activeElement).toBe(items[0]) // Close
     expect(fwdEvent.defaultPrevented).toBe(true)
+  })
+
+  it('each Copy button copies exactly its own text: the token, step 1 or step 2', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ token: 'tok-abc123', name: 'test-agent' }),
+      })),
+    )
+    const writeText = vi.fn<(text: string) => Promise<void>>(async () => {})
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    const { container } = await openModal()
+    const input = container.querySelector<HTMLInputElement>('#add-agent-name')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'test-agent')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await submitForm(container)
+    await act(async () => {
+      await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    })
+    const copyBtn = (label: string) =>
+      container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!
+    const copied: string[] = []
+    for (const label of ['Copy token', 'Copy step 1', 'Copy step 2']) {
+      await click(copyBtn(label))
+      copied.push(writeText.mock.calls[writeText.mock.calls.length - 1][0])
+    }
+    const { promptStep, installStep } = buildInstallSnippet({ origin: window.location.origin, name: 'test-agent' })
+    expect(copied).toEqual(['tok-abc123', promptStep, installStep])
+    expect(writeText).toHaveBeenCalledTimes(3)
+    expect(promptStep).not.toContain(installStep)
+    expect(installStep).not.toContain(promptStep)
   })
 
   it('closes on Escape and returns focus to the opener', async () => {

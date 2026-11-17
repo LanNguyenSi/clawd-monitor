@@ -54,106 +54,158 @@ describe('shellQuote', () => {
 describe('buildInstallSnippet', () => {
   const base = {
     origin: 'https://monitor.example.com',
-    token: 'abc123',
   }
 
-  it('produces a multi-line curl snippet', () => {
-    const snippet = buildInstallSnippet(base)
-    expect(snippet).toContain('curl -fsSL')
-    expect(snippet).toContain('sudo --preserve-env=CLAWD_AGENT_TOKEN bash -s --')
-    expect(snippet).toContain("--server 'wss://monitor.example.com'")
+  const TOKEN = 'SECRET_TOKEN_VALUE_9f2e61'
+
+  // Passes the token-shaped input through the helper the way the old
+  // API did (and the way a re-embedding regression would read it), so
+  // any step that embeds the token again carries this exact literal.
+  function buildWithTokenLikeInput(opts: { origin: string; name?: string }) {
+    const input = { ...opts, token: TOKEN } as Parameters<typeof buildInstallSnippet>[0]
+    return buildInstallSnippet(input)
+  }
+
+  it('returns step 1 and step 2 as two separate strings', () => {
+    const steps = buildInstallSnippet(base)
+    expect(typeof steps.promptStep).toBe('string')
+    expect(typeof steps.installStep).toBe('string')
+    // The steps must stay separate copy blocks: pasted as one block,
+    // `read -rs` would consume the curl line as the token.
+    expect(steps.promptStep).not.toContain('curl')
+    expect(steps.promptStep).not.toContain('install.sh')
+    expect(steps.installStep).not.toContain('read -rs')
+    expect(steps.installStep).not.toContain('printf')
+    expect(steps.installStep).toContain('curl -fsSL')
   })
 
-  it('hands the token to the installer through the environment of sudo', () => {
-    const snippet = buildInstallSnippet(base)
-    expect(snippet).toContain("| CLAWD_AGENT_TOKEN='abc123' sudo --preserve-env=CLAWD_AGENT_TOKEN bash -s -- \\")
+  it('step 1 is the read -rs prompt line', () => {
+    const { promptStep } = buildInstallSnippet(base)
+    expect(promptStep).toBe("printf 'Agent token: '; read -rs CLAWD_AGENT_TOKEN; echo; export CLAWD_AGENT_TOKEN")
   })
 
-  it('never puts the token, or a --token flag, on a command line', () => {
+  it('produces a multi-line curl snippet in step 2', () => {
+    const { installStep } = buildInstallSnippet(base)
+    expect(installStep).toContain('curl -fsSL')
+    expect(installStep).toContain('sudo --preserve-env=CLAWD_AGENT_TOKEN bash -s --')
+    expect(installStep).toContain("--server 'wss://monitor.example.com'")
+  })
+
+  it('ends step 2 with unset CLAWD_AGENT_TOKEN on the last line of the same logical command', () => {
     for (const name of [undefined, 'my-agent']) {
-      const snippet = buildInstallSnippet({ ...base, token: 'SECRET_TOKEN_VALUE', name })
-      expect(snippet).not.toContain('--token')
-      // Everything after `sudo` is the argv of the installer, visible in ps.
-      const argv = snippet.slice(snippet.indexOf('sudo '))
-      expect(argv).not.toContain('SECRET_TOKEN_VALUE')
-      // The token appears once, as the environment assignment before sudo.
-      expect(snippet.split('SECRET_TOKEN_VALUE')).toHaveLength(2)
-      expect(snippet).toContain("CLAWD_AGENT_TOKEN='SECRET_TOKEN_VALUE' sudo")
+      const lines = buildInstallSnippet({ ...base, name }).installStep.split('\n')
+      const last = lines[lines.length - 1]
+      expect(last.endsWith('; unset CLAWD_AGENT_TOKEN')).toBe(true)
+      // Never its own line: sudo would read a separate pasted line as a password.
+      expect(lines.filter((l) => l.trim() === 'unset CLAWD_AGENT_TOKEN')).toHaveLength(0)
+      expect(lines.filter((l) => l.includes('unset'))).toHaveLength(1)
+      // Every earlier line continues the command with a backslash.
+      for (const l of lines.slice(0, -1)) expect(l).toMatch(/\\$/)
     }
   })
 
-  it('quotes a token with shell metacharacters in the environment assignment', () => {
-    const snippet = buildInstallSnippet({ ...base, token: "a'b; rm -rf /" })
-    expect(snippet).toContain("CLAWD_AGENT_TOKEN='a'\\''b; rm -rf /' sudo")
+  it('never embeds the token in either step', () => {
+    for (const name of [undefined, 'my-agent']) {
+      const steps = buildWithTokenLikeInput({ ...base, name })
+      expect(steps.promptStep).not.toContain(TOKEN)
+      expect(steps.installStep).not.toContain(TOKEN)
+      expect(steps.promptStep).not.toContain(shellQuote(TOKEN))
+      expect(steps.installStep).not.toContain(shellQuote(TOKEN))
+      // No environment assignment and no --token flag either.
+      expect(steps.installStep).not.toContain(`CLAWD_AGENT_TOKEN=${TOKEN}`)
+      expect(steps.installStep).not.toContain(`CLAWD_AGENT_TOKEN='${TOKEN}'`)
+      expect(steps.installStep).not.toContain('--token')
+      expect(steps.promptStep).not.toContain('--token')
+    }
   })
 
   it('omits --name when name is not provided', () => {
-    const snippet = buildInstallSnippet(base)
-    expect(snippet).not.toContain('--name')
+    const { installStep } = buildInstallSnippet(base)
+    expect(installStep).not.toContain('--name')
   })
 
   it('omits --name when name is blank', () => {
-    const snippet = buildInstallSnippet({ ...base, name: '   ' })
-    expect(snippet).not.toContain('--name')
+    const { installStep } = buildInstallSnippet({ ...base, name: '   ' })
+    expect(installStep).not.toContain('--name')
   })
 
   it('includes --name when a name is supplied', () => {
-    const snippet = buildInstallSnippet({ ...base, name: 'my-agent' })
-    expect(snippet).toContain("--name 'my-agent'")
+    const { installStep } = buildInstallSnippet({ ...base, name: 'my-agent' })
+    expect(installStep).toContain("--name 'my-agent'")
+  })
+
+  it('trims surrounding whitespace from the name', () => {
+    const { installStep } = buildInstallSnippet({ ...base, name: '  box  ' })
+    expect(installStep).toContain("--name 'box'")
   })
 
   it('quotes a name containing an apostrophe', () => {
-    const snippet = buildInstallSnippet({ ...base, name: "worker's box" })
-    expect(snippet).toContain("--name 'worker'\\''s box'")
+    const { installStep } = buildInstallSnippet({ ...base, name: "worker's box" })
+    expect(installStep).toContain("--name 'worker'\\''s box'")
+  })
+
+  it('quotes a name with shell metacharacters', () => {
+    const { installStep } = buildInstallSnippet({ ...base, name: 'box; rm -rf /' })
+    expect(installStep).toContain("--name 'box; rm -rf /'")
   })
 
   it('adds a continuation backslash before --name line', () => {
-    const snippet = buildInstallSnippet({ ...base, name: 'agent-01' })
-    const lines = snippet.split('\n')
+    const lines = buildInstallSnippet({ ...base, name: 'agent-01' }).installStep.split('\n')
     const serverLine = lines.find((l) => l.includes('--server'))
     expect(serverLine).toMatch(/\\$/)
-    expect(lines[lines.length - 1]).toBe("      --name 'agent-01'")
+    expect(lines[lines.length - 1]).toBe("      --name 'agent-01'; unset CLAWD_AGENT_TOKEN")
   })
 
-  it('ends on the --server line without a trailing backslash when there is no name', () => {
-    const lines = buildInstallSnippet(base).split('\n')
+  it('ends the pipeline on the --server line without a trailing backslash when there is no name', () => {
+    const lines = buildInstallSnippet(base).installStep.split('\n')
     expect(lines).toHaveLength(3)
-    expect(lines[lines.length - 1]).not.toMatch(/\\$/)
+    expect(lines[2]).not.toMatch(/\\$/)
   })
 
   it('converts http origin to ws:// in snippet', () => {
-    const snippet = buildInstallSnippet({ ...base, origin: 'http://192.168.1.10:9500' })
-    expect(snippet).toContain("--server 'ws://192.168.1.10:9500'")
+    const { installStep } = buildInstallSnippet({ origin: 'http://192.168.1.10:9500' })
+    expect(installStep).toContain("--server 'ws://192.168.1.10:9500'")
   })
 
-  // Runs the generated text through real bash with a stub `curl` (emits an
-  // "installer" that prints what it received) and a stub `sudo` (checks that
-  // the variable is passed through and runs the command). Nothing is installed.
-  it.skipIf(process.platform === 'win32')('evaluated by bash, the installer receives the token in its environment and not in its argv', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'clawd-snippet-'))
-    try {
-      writeFileSync(
-        join(dir, 'curl'),
-        '#!/bin/bash\ncat <<\'SCRIPT\'\nprintf "env=%s\\n" "${CLAWD_AGENT_TOKEN-unset}"\nprintf "argv=%s\\n" "$*"\nSCRIPT\n',
-      )
-      writeFileSync(
-        join(dir, 'sudo'),
-        '#!/bin/bash\nif [ "$1" != "--preserve-env=CLAWD_AGENT_TOKEN" ]; then echo "sudo did not preserve the variable: $*" >&2; exit 9; fi\nshift\nexec "$@"\n',
-      )
-      chmodSync(join(dir, 'curl'), 0o755)
-      chmodSync(join(dir, 'sudo'), 0o755)
-      const snippet = buildInstallSnippet({ ...base, token: 'tok-from-env-1', name: "worker's box" })
-      const r = spawnSync('bash', ['-c', snippet], {
-        env: { ...process.env, PATH: `${dir}:/usr/bin:/bin` },
-        encoding: 'utf-8',
-        timeout: 20_000,
-      })
-      expect(r.status, r.stderr).toBe(0)
-      expect(r.stdout).toContain('env=tok-from-env-1\n')
-      expect(r.stdout).toContain("argv=--server wss://monitor.example.com --name worker's box\n")
-      expect(r.stdout).not.toMatch(/argv=.*tok-from-env-1/)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
+  // Runs the generated steps through real bash the way the operator
+  // uses them: paste step 1 and type the token (fed on stdin), then
+  // paste step 2. Stub `curl` emits an "installer" that prints what it
+  // received; stub `sudo` checks the variable is passed through and
+  // runs the command. Nothing is installed.
+  it.skipIf(process.platform === 'win32')(
+    'evaluated by bash, the installer receives the token in its environment and not in its argv, and step 2 leaves no token in the shell',
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), 'clawd-snippet-'))
+      try {
+        writeFileSync(
+          join(dir, 'curl'),
+          '#!/bin/bash\ncat <<\'SCRIPT\'\nprintf "env=%s\\n" "${CLAWD_AGENT_TOKEN-unset}"\nprintf "argv=%s\\n" "$*"\nSCRIPT\n',
+        )
+        writeFileSync(
+          join(dir, 'sudo'),
+          '#!/bin/bash\nif [ "$1" != "--preserve-env=CLAWD_AGENT_TOKEN" ]; then echo "sudo did not preserve the variable: $*" >&2; exit 9; fi\nshift\nexec "$@"\n',
+        )
+        chmodSync(join(dir, 'curl'), 0o755)
+        chmodSync(join(dir, 'sudo'), 0o755)
+        const steps = buildInstallSnippet({ ...base, name: "worker's box" })
+        const script = `${steps.promptStep}\n${steps.installStep}\nprintf "token_after=${'${CLAWD_AGENT_TOKEN-cleared}'}\\n"\n`
+        const r = spawnSync('bash', ['-c', script], {
+          input: 'tok-from-env-1\n',
+          env: { ...process.env, PATH: `${dir}:/usr/bin:/bin` },
+          encoding: 'utf-8',
+          timeout: 20_000,
+        })
+        expect(r.status, r.stderr).toBe(0)
+        // Step 1 put the typed token into the environment; step 2's
+        // sudo --preserve-env handed it to the installer.
+        expect(r.stdout).toContain('env=tok-from-env-1\n')
+        expect(r.stdout).toContain("argv=--server wss://monitor.example.com --name worker's box\n")
+        expect(r.stdout).not.toMatch(/argv=.*tok-from-env-1/)
+        // Step 2's trailing unset cleared the variable from the shell.
+        expect(r.stdout).toContain('token_after=cleared\n')
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    },
+  )
 })
