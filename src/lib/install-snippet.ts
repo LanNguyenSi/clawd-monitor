@@ -15,8 +15,7 @@
  *     curl -fsSL https://raw.githubusercontent.com/LanNguyenSi/clawd-monitor-agent/master/install.sh \
  *       | sudo --preserve-env=CLAWD_AGENT_TOKEN bash -s -- \
  *           --server <ws-or-wss URL> \
- *           --name <name>
- *     unset CLAWD_AGENT_TOKEN
+ *           --name <name>; unset CLAWD_AGENT_TOKEN
  *
  * The token is never part of the generated text: the operator types it
  * at step 1's interactive prompt (`read -rs` keeps it out of the shell
@@ -32,8 +31,12 @@
  * the invoking user. What stays: the token lives only in the operator's
  * interactive prompt (typed, never pasted) and in the installer's
  * process environment until the installer unsets it (before it starts
- * npm or apt); step 2 ends with `unset CLAWD_AGENT_TOKEN` so the
- * variable does not outlive the install in the operator's own shell.
+ * npm or apt); step 2 ends with `; unset CLAWD_AGENT_TOKEN` on its
+ * last line so the variable does not outlive the install in the
+ * operator's own shell. It is part of the same logical command, never a
+ * separate pasted line: without bracketed paste, sudo would read a
+ * separate `unset` line as its password and the token would stay in the
+ * shell.
  * The installer reads `CLAWD_AGENT_TOKEN` from the agent repository's
  * `install.sh` on master, so this recipe needs an installer that knows
  * the variable (an older installer answers with a missing-token error
@@ -77,7 +80,7 @@ export interface BuildInstallSnippetInput {
 export interface InstallSnippetSteps {
   /** Step 1: paste, then type the token at the prompt. */
   promptStep: string
-  /** Step 2: paste, run, ends with `unset CLAWD_AGENT_TOKEN`. */
+  /** Step 2: paste, run, ends with `; unset CLAWD_AGENT_TOKEN` on the last line. */
   installStep: string
 }
 
@@ -123,6 +126,7 @@ export function buildInstallSnippet(input: BuildInstallSnippetInput): InstallSni
     lines[lines.length - 1] = lines[lines.length - 1] + ' \\'
     lines.push(`      --name ${shellQuote(input.name.trim())}`)
   }
-  lines.push(`unset ${TOKEN_ENV_VAR}`)
+  // Same logical command, regardless of the pipeline result.
+  lines[lines.length - 1] = lines[lines.length - 1] + `; unset ${TOKEN_ENV_VAR}`
   return { promptStep: PROMPT_STEP, installStep: lines.join('\n') }
 }

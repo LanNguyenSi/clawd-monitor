@@ -239,7 +239,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
       onClick={handleBackdropClick}
     >
       <div
-        className="w-full max-w-2xl bg-white border border-zinc-200 dark:bg-zinc-950 dark:border-zinc-800 rounded-xl shadow-2xl"
+        className="w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto bg-white border border-zinc-200 dark:bg-zinc-950 dark:border-zinc-800 rounded-xl shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
@@ -328,6 +328,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
                 <button
                   ref={tokenCopyButtonRef}
                   onClick={() => void copy(token, 'token')}
+                  aria-label="Copy token"
                   className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded-sm transition-colors"
                 >
                   {copied === 'token' ? 'Copied' : 'Copy'}
@@ -340,7 +341,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
                 Step 1 on the target host: paste and enter the token at the prompt
               </p>
               <div className="flex items-start gap-2">
-                <pre className="flex-1 bg-zinc-100 dark:bg-zinc-900 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-sm font-mono whitespace-pre-wrap break-all border border-zinc-200 dark:border-zinc-800 m-0">
+                <pre className="flex-1 bg-zinc-100 dark:bg-zinc-900 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-sm font-mono min-w-0 whitespace-pre-wrap break-words border border-zinc-200 dark:border-zinc-800 m-0">
                   {steps.promptStep}
                 </pre>
                 <button
@@ -358,7 +359,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
                 Step 2 on the target host: run the installer (root required)
               </p>
               <div className="flex items-start gap-2">
-                <pre className="flex-1 bg-zinc-100 dark:bg-zinc-900 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-sm font-mono whitespace-pre-wrap break-all border border-zinc-200 dark:border-zinc-800 m-0">
+                <pre className="flex-1 bg-zinc-100 dark:bg-zinc-900 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-sm font-mono min-w-0 whitespace-pre-wrap break-words border border-zinc-200 dark:border-zinc-800 m-0">
                   {steps.installStep}
                 </pre>
                 <button

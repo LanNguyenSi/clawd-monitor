@@ -91,10 +91,16 @@ describe('buildInstallSnippet', () => {
     expect(installStep).toContain("--server 'wss://monitor.example.com'")
   })
 
-  it('ends step 2 with unset CLAWD_AGENT_TOKEN', () => {
+  it('ends step 2 with unset CLAWD_AGENT_TOKEN on the last line of the same logical command', () => {
     for (const name of [undefined, 'my-agent']) {
       const lines = buildInstallSnippet({ ...base, name }).installStep.split('\n')
-      expect(lines[lines.length - 1]).toBe('unset CLAWD_AGENT_TOKEN')
+      const last = lines[lines.length - 1]
+      expect(last.endsWith('; unset CLAWD_AGENT_TOKEN')).toBe(true)
+      // Never its own line: sudo would read a separate pasted line as a password.
+      expect(lines.filter((l) => l.trim() === 'unset CLAWD_AGENT_TOKEN')).toHaveLength(0)
+      expect(lines.filter((l) => l.includes('unset'))).toHaveLength(1)
+      // Every earlier line continues the command with a backslash.
+      for (const l of lines.slice(0, -1)) expect(l).toMatch(/\\$/)
     }
   })
 
@@ -128,6 +134,11 @@ describe('buildInstallSnippet', () => {
     expect(installStep).toContain("--name 'my-agent'")
   })
 
+  it('trims surrounding whitespace from the name', () => {
+    const { installStep } = buildInstallSnippet({ ...base, name: '  box  ' })
+    expect(installStep).toContain("--name 'box'")
+  })
+
   it('quotes a name containing an apostrophe', () => {
     const { installStep } = buildInstallSnippet({ ...base, name: "worker's box" })
     expect(installStep).toContain("--name 'worker'\\''s box'")
@@ -142,12 +153,12 @@ describe('buildInstallSnippet', () => {
     const lines = buildInstallSnippet({ ...base, name: 'agent-01' }).installStep.split('\n')
     const serverLine = lines.find((l) => l.includes('--server'))
     expect(serverLine).toMatch(/\\$/)
-    expect(lines[lines.length - 2]).toBe("      --name 'agent-01'")
+    expect(lines[lines.length - 1]).toBe("      --name 'agent-01'; unset CLAWD_AGENT_TOKEN")
   })
 
   it('ends the pipeline on the --server line without a trailing backslash when there is no name', () => {
     const lines = buildInstallSnippet(base).installStep.split('\n')
-    expect(lines).toHaveLength(4)
+    expect(lines).toHaveLength(3)
     expect(lines[2]).not.toMatch(/\\$/)
   })
 

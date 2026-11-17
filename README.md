@@ -109,7 +109,9 @@ other: step 1 reads the token at an interactive prompt
 (`printf 'Agent token: '; read -rs CLAWD_AGENT_TOKEN; echo; export CLAWD_AGENT_TOKEN`),
 step 2 runs the installer with the token inherited from the shell
 environment (`... | sudo --preserve-env=CLAWD_AGENT_TOKEN bash -s -- --server ...`)
-and ends with `unset CLAWD_AGENT_TOKEN`. The token is typed, never
+and ends with `; unset CLAWD_AGENT_TOKEN` on its last line (the same command, so a
+terminal without bracketed paste cannot hand a separate `unset` line to sudo as a
+password). The token is typed, never
 pasted, so it stays out of your shell history and out of the generated
 commands; the installer stores it in a file readable only by the service
 user. Paste the two steps separately: pasted together, step 1's

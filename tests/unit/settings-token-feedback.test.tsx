@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act } from 'react'
 import { mount, unmountAll, flush, click, createElement as h } from './dom-helpers'
 import SettingsPage from '@/app/settings/page'
+import { buildInstallSnippet } from '@/lib/install-snippet'
 
 vi.mock('next/navigation', () => {
   const router = { replace: () => {}, push: () => {} }
@@ -158,6 +159,29 @@ describe('generate token', () => {
     await submit(input.form!)
     expect(postCalls).toBe(0)
     expect(root.querySelector('[role="alert"]')).toBeNull()
+  })
+})
+
+describe('install steps copy buttons', () => {
+  it('each Copy button copies exactly its own text: the token, step 1 or step 2', async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>(async () => {})
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    const root = await mountSettings()
+    const input = byLabel(root, 'Agent name')
+    await type(input, 'new-one')
+    await submit(input.form!)
+    const copied: string[] = []
+    for (const label of ['Copy token', 'Copy step 1', 'Copy step 2']) {
+      const btn = root.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)
+      expect(btn, label).not.toBeNull()
+      await click(btn!)
+      copied.push(writeText.mock.calls[writeText.mock.calls.length - 1][0])
+    }
+    const { promptStep, installStep } = buildInstallSnippet({ origin: window.location.origin, name: 'new-one' })
+    expect(copied).toEqual(['secret-value', promptStep, installStep])
+    expect(writeText).toHaveBeenCalledTimes(3)
+    expect(promptStep).not.toContain(installStep)
+    expect(installStep).not.toContain(promptStep)
   })
 })
 
