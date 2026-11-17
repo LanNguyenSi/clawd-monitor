@@ -87,14 +87,35 @@ On each OpenClaw host to monitor:
 
 ```bash
 npm install -g clawd-monitor-agent
+install -m 600 /dev/null ~/.clawd-agent-token   # then put the token from Settings in it
 clawd-monitor-agent \
   --server https://your-clawd-monitor-domain \
-  --token <token-from-settings> \
+  --token-file ~/.clawd-agent-token \
   --name "My OpenClaw Host" \
   --gateway http://localhost:18789
 ```
 
-Or copy the install snippet directly from the Settings page.
+Keep the token off the command line: a `--token <value>` argument stays
+readable in the process list (`ps`, `/proc/<pid>/cmdline`) for as long as
+the agent runs, and with it any local user on that host can connect as your
+agent. The agent reads the token from the first of these that is set:
+`--token-file`, the `CLAWD_AGENT_TOKEN` environment variable, the
+deprecated `--token`, and the `token` key of its config file. `--token`
+still works for existing installs but prints a warning.
+
+Or copy the install snippet directly from the Settings page. It runs the
+agent's installer with the token in the `CLAWD_AGENT_TOKEN` environment
+variable instead of an argument, and the installer stores it in a file
+readable only by the service user. The pasted line stays in your shell
+history, so clear that entry on a shared host (or see the agent's README
+for the variant that prompts for the token). The snippet needs the
+installer from `clawd-monitor-agent` master, which reads that variable. If
+`sudo` answers "not allowed to set the following environment variables"
+(a restricted sudoers), run the line from a root shell without `sudo`, or
+use `--token-file <path>`. An
+agent started with `--token` on an earlier version keeps working; see the
+[agent README](https://github.com/LanNguyenSi/clawd-monitor-agent#upgrading-an-install-that-uses---token)
+to move it to a token file.
 
 ## Usage
 
