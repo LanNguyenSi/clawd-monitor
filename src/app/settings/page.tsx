@@ -190,13 +190,12 @@ function SettingsInner() {
 
   if (!ready) return null
 
-  const installSnippet = newToken
+  const installSteps = newToken
     ? buildInstallSnippet({
         origin: window.location.origin,
-        token: newToken.token,
         name: newToken.name,
       })
-    : ''
+    : null
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
@@ -363,33 +362,56 @@ function SettingsInner() {
           </div>
 
           {/* Show new token (once) */}
-          {newToken && (
+          {newToken && installSteps && (
             <div className="mt-4 bg-indigo-50 border border-indigo-200 dark:bg-zinc-900 dark:border-indigo-700/50 rounded-xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium text-indigo-700 dark:text-indigo-300">Token generated for &ldquo;{newToken.name}&rdquo;</h3>
                 <button onClick={() => setNewToken(null)} aria-label="Dismiss generated token" className="min-w-6 min-h-6 inline-flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 text-sm"><span aria-hidden="true">✕</span></button>
               </div>
-              <p className="text-xs text-yellow-800 dark:text-yellow-500">⚠ Copy this token now — it won&apos;t be shown again.</p>
-
-              <div className="flex items-center gap-2">
-                <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-800 dark:text-zinc-200 px-3 py-2 rounded-sm font-mono break-all">
-                  {newToken.token}
-                </code>
-                <button onClick={() => copyToClipboard(newToken.token)}
-                  className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded-sm transition-colors">
-                  Copy
-                </button>
-              </div>
+              <p className="text-xs text-yellow-800 dark:text-yellow-500">⚠ Shown once — this token won&apos;t be shown again. Copy it now and paste it at the prompt of step 1 below.</p>
 
               <div className="space-y-2">
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">Install command (run on the target host as root):</p>
-                <div className="flex items-start gap-2">
-                  <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-sm font-mono whitespace-pre-wrap break-all">{installSnippet}</code>
-                  <button onClick={() => copyToClipboard(installSnippet)}
+                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Token</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-800 dark:text-zinc-200 px-3 py-2 rounded-sm font-mono break-all">
+                    {newToken.token}
+                  </code>
+                  <button onClick={() => copyToClipboard(newToken.token)}
+                    aria-label="Copy token"
                     className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded-sm transition-colors">
                     Copy
                   </button>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Step 1 on the target host: paste and enter the token at the prompt</p>
+                <div className="flex items-start gap-2">
+                  <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-sm font-mono whitespace-pre-wrap break-all">{installSteps.promptStep}</code>
+                  <button onClick={() => copyToClipboard(installSteps.promptStep)}
+                    aria-label="Copy step 1"
+                    className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded-sm transition-colors">
+                    Copy
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Step 2 on the target host: run the installer (as root)</p>
+                <div className="flex items-start gap-2">
+                  <code className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-sm font-mono whitespace-pre-wrap break-all">{installSteps.installStep}</code>
+                  <button onClick={() => copyToClipboard(installSteps.installStep)}
+                    aria-label="Copy step 2"
+                    className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded-sm transition-colors">
+                    Copy
+                  </button>
+                </div>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Paste the steps one after the other, never together (a merged paste lets step 1 read step 2 as the token). Step 2 clears the token from the shell when it finishes.
+                </p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  If <code>sudo</code> answers &ldquo;not allowed to set the following environment variables&rdquo; (restricted sudoers), run the <code>curl … | bash -s -- …</code> line from a root shell without <code>sudo</code>, or use <code>--token-file &lt;path&gt;</code> (see the agent README).
+                </p>
               </div>
             </div>
           )}

@@ -1,25 +1,47 @@
 /**
- * Build the curl-pipe-bash one-liner the "Add Agent" modal hands the
- * operator. Pure function — no React, no DOM, no clipboard. Trivial to
- * unit-test once a test runner is in the repo.
+ * Build the two-step install recipe the "Add Agent" modal and the
+ * Settings page hand the operator. Pure function — no React, no DOM,
+ * no clipboard. Trivial to unit-test once a test runner is in the repo.
  *
- * The snippet shape:
+ * The recipe shape (two SEPARATE copy blocks, pasted one after the
+ * other — never merged into one):
  *
- *   curl -fsSL https://raw.githubusercontent.com/LanNguyenSi/clawd-monitor-agent/master/install.sh \
- *     | CLAWD_AGENT_TOKEN=<token> sudo --preserve-env=CLAWD_AGENT_TOKEN bash -s -- \
- *         --server <ws-or-wss URL> \
- *         --name <name>
+ *   Step 1, paste and enter the token at the prompt:
  *
- * The token goes in through the environment of `sudo`, never as an argument:
- * the argv of `sudo` and `bash` is readable by every local user for as long
- * as the installer runs (`ps`, `/proc/<pid>/cmdline`), the environment is
- * readable only by root and the invoking user. What stays: the pasted line
- * is kept by the operator's shell history, and the installer's process
- * environment holds the token until the installer unsets it (before it
- * starts npm or apt). The installer reads `CLAWD_AGENT_TOKEN` from the
- * agent repository's `install.sh` on master, so this snippet needs an
- * installer that knows the variable (an older installer answers with a
- * missing-token error and changes nothing).
+ *     printf 'Agent token: '; read -rs CLAWD_AGENT_TOKEN; echo; export CLAWD_AGENT_TOKEN
+ *
+ *   Step 2, run the installer:
+ *
+ *     curl -fsSL https://raw.githubusercontent.com/LanNguyenSi/clawd-monitor-agent/master/install.sh \
+ *       | sudo --preserve-env=CLAWD_AGENT_TOKEN bash -s -- \
+ *           --server <ws-or-wss URL> \
+ *           --name <name>
+ *     unset CLAWD_AGENT_TOKEN
+ *
+ * The token is never part of the generated text: the operator types it
+ * at step 1's interactive prompt (`read -rs` keeps it out of the shell
+ * history) and step 2 inherits it from the shell environment through
+ * `sudo --preserve-env`. Merging the steps into one paste block is a
+ * bug, not a shortcut: `read -rs` consumes the NEXT pasted line, so a
+ * merged block would eat the curl line as the token.
+ *
+ * The token reaches the installer through the environment of `sudo`,
+ * never as an argument: the argv of `sudo` and `bash` is readable by
+ * every local user for as long as the installer runs (`ps`,
+ * `/proc/<pid>/cmdline`), the environment is readable only by root and
+ * the invoking user. What stays: the token lives only in the operator's
+ * interactive prompt (typed, never pasted) and in the installer's
+ * process environment until the installer unsets it (before it starts
+ * npm or apt); step 2 ends with `unset CLAWD_AGENT_TOKEN` so the
+ * variable does not outlive the install in the operator's own shell.
+ * The installer reads `CLAWD_AGENT_TOKEN` from the agent repository's
+ * `install.sh` on master, so this recipe needs an installer that knows
+ * the variable (an older installer answers with a missing-token error
+ * and changes nothing).
+ *
+ * If `sudo` answers "not allowed to set the following environment
+ * variables" (a restricted sudoers), run the `curl ... | bash -s -- ...`
+ * line from a root shell without `sudo`, or use `--token-file <path>`.
  *
  * `--name` is only included when the operator typed one. The installer
  * already defaults to /etc/hostname when omitted.
@@ -31,6 +53,14 @@ const TOKEN_ENV_VAR = 'CLAWD_AGENT_TOKEN'
 const INSTALL_SH_URL =
   'https://raw.githubusercontent.com/LanNguyenSi/clawd-monitor-agent/master/install.sh'
 
+/**
+ * Step 1: read the token from the terminal into the environment. One
+ * line, commands separated by `;`, so pasting it runs the printf and
+ * leaves `read -rs` waiting for the typed token; `export` hands it to
+ * the installer in step 2. Nothing here embeds the token.
+ */
+const PROMPT_STEP = `printf 'Agent token: '; read -rs ${TOKEN_ENV_VAR}; echo; export ${TOKEN_ENV_VAR}`
+
 export interface BuildInstallSnippetInput {
   /**
    * The dashboard's origin (typically `window.location.origin`).
@@ -40,10 +70,15 @@ export interface BuildInstallSnippetInput {
    * read like the production setup.
    */
   origin: string
-  /** Plaintext token returned by `POST /api/settings/tokens`. */
-  token: string
   /** Optional friendly name. Falls through to the agent's default if blank. */
   name?: string
+}
+
+export interface InstallSnippetSteps {
+  /** Step 1: paste, then type the token at the prompt. */
+  promptStep: string
+  /** Step 2: paste, run, ends with `unset CLAWD_AGENT_TOKEN`. */
+  installStep: string
 }
 
 /**
@@ -61,19 +96,25 @@ export function originToWs(origin: string): string {
 /**
  * Quote a value for safe inclusion in a `bash -s --` argument. We use
  * single quotes and escape any embedded single quotes the standard
- * shell-safe way (`'\''`). Tokens are hex so they don't need escaping
- * in practice, but a friendly name might contain spaces, apostrophes,
- * or shell metacharacters — quote everything for correctness.
+ * shell-safe way (`'\''`). Friendly names might contain spaces,
+ * apostrophes, or shell metacharacters — quote everything for
+ * correctness.
  */
 export function shellQuote(value: string): string {
   return "'" + value.replace(/'/g, "'\\''") + "'"
 }
 
-export function buildInstallSnippet(input: BuildInstallSnippetInput): string {
+/**
+ * Build the two steps. The token is deliberately not an input: it is
+ * only ever typed by the operator at step 1's prompt, so it cannot
+ * leak into the generated text, the rendered page, or the shell
+ * history.
+ */
+export function buildInstallSnippet(input: BuildInstallSnippetInput): InstallSnippetSteps {
   const server = originToWs(input.origin)
   const lines = [
     `curl -fsSL ${INSTALL_SH_URL} \\`,
-    `  | ${TOKEN_ENV_VAR}=${shellQuote(input.token)} sudo --preserve-env=${TOKEN_ENV_VAR} bash -s -- \\`,
+    `  | sudo --preserve-env=${TOKEN_ENV_VAR} bash -s -- \\`,
     `      --server ${shellQuote(server)}`,
   ]
   if (input.name && input.name.trim().length > 0) {
@@ -82,5 +123,6 @@ export function buildInstallSnippet(input: BuildInstallSnippetInput): string {
     lines[lines.length - 1] = lines[lines.length - 1] + ' \\'
     lines.push(`      --name ${shellQuote(input.name.trim())}`)
   }
-  return lines.join('\n')
+  lines.push(`unset ${TOKEN_ENV_VAR}`)
+  return { promptStep: PROMPT_STEP, installStep: lines.join('\n') }
 }

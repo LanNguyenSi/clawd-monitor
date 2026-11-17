@@ -23,10 +23,15 @@ const FOCUSABLE =
  *      /api/settings/tokens (existing route, unchanged) which returns
  *      the plaintext token *once* + the row's id and name.
  *
- *   2. We render the token in a copy box and a paste-ready
- *      curl-pipe-bash one-liner that bakes in the dashboard's own
- *      origin (proto-swapped to ws/wss) and the new token. The token
- *      is shown once and then unrecoverable.
+ *   2. We render the token in its own copy box (shown once, then
+ *      unrecoverable) plus two separate paste blocks: step 1 reads the
+ *      token at an interactive prompt, step 2 runs the installer with
+ *      the token inherited from the shell environment and ends with
+ *      `unset CLAWD_AGENT_TOKEN`. The token is never part of the
+ *      generated commands, so it never lands in the operator's shell
+ *      history. The two steps must stay separate copy blocks: pasted
+ *      as one block, `read -rs` would consume the curl line as the
+ *      token.
  *
  * Token-handling rules enforced here:
  * - The plaintext token never leaves React state. We clear it on
@@ -50,7 +55,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
   const [attempt, setAttempt] = useState(0)
   const [token, setToken] = useState<string | null>(null)
   const [tokenName, setTokenName] = useState<string>('')
-  const [copied, setCopied] = useState<'token' | 'snippet' | null>(null)
+  const [copied, setCopied] = useState<'token' | 'step1' | 'step2' | null>(null)
   const nameInputRef = useRef<HTMLInputElement | null>(null)
   const tokenCopyButtonRef = useRef<HTMLButtonElement | null>(null)
   const previousFocusRef = useRef<Element | null>(null)
@@ -196,7 +201,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
     }
   }
 
-  async function copy(value: string, kind: 'token' | 'snippet') {
+  async function copy(value: string, kind: 'token' | 'step1' | 'step2') {
     try {
       await navigator.clipboard.writeText(value)
       setCopied(kind)
@@ -215,10 +220,10 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
   // snippet that would confuse the operator at paste time.
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const originValid = origin.startsWith('http://') || origin.startsWith('https://')
-  const snippet =
+  const steps =
     token !== null && originValid
-      ? buildInstallSnippet({ origin, token, name: tokenName })
-      : ''
+      ? buildInstallSnippet({ origin, name: tokenName })
+      : null
 
   // Backdrop click only dismisses on the name step. On the snippet
   // step the token is unrecoverable; closing must be deliberate.
@@ -303,14 +308,14 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
           </form>
         )}
 
-        {step === 'snippet' && token !== null && (
+        {step === 'snippet' && token !== null && steps !== null && (
           <div className="px-6 py-5 space-y-5">
             <div>
               <p className="text-sm text-zinc-600 dark:text-zinc-400">
                 Token created for <span className="font-medium text-zinc-800 dark:text-zinc-200">&ldquo;{tokenName}&rdquo;</span>.
               </p>
               <p className="text-xs text-yellow-800 dark:text-yellow-500 mt-1.5">
-                ⚠ Copy now — this token won&apos;t be shown again. Click <strong>Done</strong> when finished.
+                ⚠ Shown once — this token won&apos;t be shown again. Copy it now and paste it at the prompt of step 1 below. Click <strong>Done</strong> when finished.
               </p>
             </div>
 
@@ -332,21 +337,43 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
 
             <div className="space-y-2">
               <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                Run on the target host (root required)
+                Step 1 on the target host: paste and enter the token at the prompt
               </p>
               <div className="flex items-start gap-2">
                 <pre className="flex-1 bg-zinc-100 dark:bg-zinc-900 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-sm font-mono whitespace-pre-wrap break-all border border-zinc-200 dark:border-zinc-800 m-0">
-                  {snippet}
+                  {steps.promptStep}
                 </pre>
                 <button
-                  onClick={() => void copy(snippet, 'snippet')}
+                  onClick={() => void copy(steps.promptStep, 'step1')}
+                  aria-label="Copy step 1"
                   className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded-sm transition-colors"
                 >
-                  {copied === 'snippet' ? 'Copied' : 'Copy'}
+                  {copied === 'step1' ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                Step 2 on the target host: run the installer (root required)
+              </p>
+              <div className="flex items-start gap-2">
+                <pre className="flex-1 bg-zinc-100 dark:bg-zinc-900 text-xs text-zinc-700 dark:text-zinc-300 px-3 py-2 rounded-sm font-mono whitespace-pre-wrap break-all border border-zinc-200 dark:border-zinc-800 m-0">
+                  {steps.installStep}
+                </pre>
+                <button
+                  onClick={() => void copy(steps.installStep, 'step2')}
+                  aria-label="Copy step 2"
+                  className="shrink-0 text-xs bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 px-3 py-2 rounded-sm transition-colors"
+                >
+                  {copied === 'step2' ? 'Copied' : 'Copy'}
                 </button>
               </div>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                The installer sets up Node, the agent, and a systemd service. Re-running with a different token rotates cleanly.
+                Paste the steps one after the other, never together (a merged paste lets step 1 read step 2 as the token). The installer sets up Node, the agent, and a systemd service; step 2 clears the token from the shell when it finishes. Re-running with a different token rotates cleanly.
+              </p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                If <code>sudo</code> answers &ldquo;not allowed to set the following environment variables&rdquo; (restricted sudoers), run the <code>curl … | bash -s -- …</code> line from a root shell without <code>sudo</code>, or use <code>--token-file &lt;path&gt;</code> (see the agent README).
               </p>
             </div>
 
