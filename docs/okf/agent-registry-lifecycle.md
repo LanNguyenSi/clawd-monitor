@@ -3,7 +3,7 @@ type: invariant
 title: Agent registry lifecycle, from WebSocket handshake to TTL eviction
 description: How a clawd-monitor-agent connection becomes an AgentRegistry entry (auth message first, static then persisted token check, newest connection wins), when an entry goes offline (only via its current socket), when it is evicted (lazily, only inside getAll), and what token revocation does and does not affect.
 tags: [agents, websocket, registry, tokens, ttl]
-timestamp: 2026-11-13T10:12:12Z
+timestamp: 2026-11-17T06:40:00Z
 sources:
   - server.ts
   - src/lib/ws-upgrade.ts
@@ -97,8 +97,10 @@ those constants are read (after the `.env` files were loaded).
 4. Before authentication, any valid non-`auth` message gets `auth_error`
    and the socket is closed
    (`src/lib/agent-ws-handler.ts:54-56#"ws.close()"`).
-5. The token is checked against the `AGENT_TOKENS` list first (exact string
-   match), then with `bcrypt.compare` against every `tokenHash` in
+5. The token is checked against the `AGENT_TOKENS` list first (a constant-time
+   `safeEqual` compare against every configured token, the verdicts combined
+   after the loop, so neither a match nor its position shortens the work,
+   `src/lib/agent-ws-handler.ts:251-258#"safeEqual(token, t)"`), then with `bcrypt.compare` against every `tokenHash` in
    `tokens.json`, and stops at the next entry once the socket is gone
    (`src/lib/agent-ws-handler.ts:90-95#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket with code 1008
