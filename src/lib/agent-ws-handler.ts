@@ -4,8 +4,8 @@ import bcrypt from 'bcryptjs'
 import { registry } from './agent-registry.js'
 import { readTokens, writeTokens, type TokenEntry } from './data-store.js'
 import { wsMessageSchema, type ValidatedWsMessage } from './schemas.js'
+import { safeEqual } from './secure-compare.js'
 import { admitUnauthenticated, WS_CLOSE_TRY_AGAIN_LATER } from './agent-ws-limits.js'
-
 // Static tokens from env (for backward compat + default setup)
 const STATIC_TOKENS = (process.env.AGENT_TOKENS ?? '')
   .split(',')
@@ -58,7 +58,7 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
       }
 
       // Validate token — check static env tokens first, then persisted tokens.json
-      const staticMatch = STATIC_TOKENS.includes(msg.token)
+      const staticMatch = matchesStaticToken(msg.token)
       let tokenValid = staticMatch
       let matched: TokenEntry | null = null
       if (!tokenValid) {
@@ -239,4 +239,20 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
   ws.on('error', (err: Error) => {
     console.warn(`[agent-ws] Error for ${agentId ?? 'unknown'}:`, err.message)
   })
+}
+
+/**
+ * Whether `token` equals one of the static tokens. Every entry is compared with
+ * safeEqual and the verdicts are combined after the loop, so neither the match
+ * nor its position shortens the work. An empty list never matches; a
+ * non-string `token` (the message schema rejects it before this point) is
+ * treated as no match.
+ */
+export function matchesStaticToken(token: unknown, tokens: readonly string[] = STATIC_TOKENS): boolean {
+  if (typeof token !== 'string') return false
+  let matched = false
+  for (const t of tokens) {
+    if (safeEqual(token, t)) matched = true
+  }
+  return matched
 }
