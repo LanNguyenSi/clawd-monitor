@@ -16,6 +16,9 @@
 //
 // No Strict-Transport-Security here: TLS ends at a reverse proxy the app
 // cannot see, and a domain-wide HSTS decision belongs to that proxy.
+// img-src 'self' data: blocks remote images on purpose, including ones in
+// agent memory Markdown (MemoryWidget, react-markdown): they would leak the
+// viewer's address to a third party, so such images do not render.
 // X-Frame-Options: DENY backs frame-ancestors 'none' for browsers that
 // predate CSP level 2.
 export function buildSecurityHeaders(production) {

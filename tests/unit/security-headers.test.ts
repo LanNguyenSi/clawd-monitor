@@ -1,60 +1,73 @@
-import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'fs'
-import { join } from 'path'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import nextConfig, { buildSecurityHeaders } from '../../next.config.mjs'
 // @ts-expect-error Next's bundled path-to-regexp ships no types
 import { match } from '../../node_modules/next/dist/compiled/path-to-regexp/index.js'
 
 type Header = { key: string; value: string }
+type Rule = { source: string; headers: Header[] }
 const byKey = (h: Header[]) => Object.fromEntries(h.map((x) => [x.key, x.value]))
+const rulesFor = (env: string) => {
+  vi.stubEnv('NODE_ENV', env)
+  return (nextConfig as { headers: () => Promise<Rule[]> }).headers()
+}
+
+const COMMON = [
+  "default-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+]
+const csp = (scriptSrc: string) => [COMMON[0], `script-src ${scriptSrc}`, ...COMMON.slice(1)].join('; ')
+const PROD_CSP = csp("'self' 'unsafe-inline'")
+const DEV_CSP = csp("'self' 'unsafe-inline' 'unsafe-eval'")
+
+afterEach(() => vi.unstubAllEnvs())
 
 describe('security headers', () => {
   it('applies one rule to pages and API routes alike', async () => {
-    const rules = await (nextConfig as { headers: () => Promise<Array<{ source: string; headers: Header[] }>> }).headers()
+    const rules = await rulesFor('production')
     expect(rules).toHaveLength(1)
     const matches = match(rules[0].source)
     for (const path of ['/', '/dashboard', '/login', '/settings', '/api/health', '/api/agents/list', '/api/stream/metrics', '/api/proxy/docker']) {
       expect(matches(path), path).not.toBe(false)
     }
-    expect(byKey(rules[0].headers)).toEqual(byKey(buildSecurityHeaders(process.env.NODE_ENV === 'production')))
   })
 
-  it('sets the content type, referrer and framing headers', () => {
-    const h = byKey(buildSecurityHeaders(true))
-    expect(h['X-Content-Type-Options']).toBe('nosniff')
-    expect(h['Referrer-Policy']).toBe('same-origin')
-    expect(h['X-Frame-Options']).toBe('DENY')
+  it('sends the exact production header set from headers()', async () => {
+    const [rule] = await rulesFor('production')
+    expect(rule.headers).toEqual([
+      { key: 'Content-Security-Policy', value: PROD_CSP },
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'same-origin' },
+      { key: 'X-Frame-Options', value: 'DENY' },
+    ])
+    expect(PROD_CSP).not.toContain("'unsafe-eval'")
   })
 
-  it('sends a CSP that forbids framing and remote connections', () => {
-    const csp = byKey(buildSecurityHeaders(true))['Content-Security-Policy']
-    expect(csp).toContain("default-src 'self'")
-    expect(csp).toContain("frame-ancestors 'none'")
-    expect(csp).toContain("connect-src 'self'")
-    expect(csp).toContain("object-src 'none'")
-    expect(csp).toContain("base-uri 'self'")
-    expect(csp).toContain("form-action 'self'")
+  it.each(['development', 'test'])('sends the exact header set with unsafe-eval under NODE_ENV=%s', async (env) => {
+    const [rule] = await rulesFor(env)
+    expect(byKey(rule.headers)['Content-Security-Policy']).toBe(DEV_CSP)
+    expect(byKey(rule.headers)['X-Content-Type-Options']).toBe('nosniff')
   })
 
-  it('allows unsafe-eval for scripts only outside production', () => {
-    const script = (prod: boolean) =>
-      byKey(buildSecurityHeaders(prod))['Content-Security-Policy'].split('; ').find((d) => d.startsWith('script-src'))
-    expect(script(true)).not.toContain("'unsafe-eval'")
-    expect(script(false)).toContain("'unsafe-eval'")
+  it('builds the policy from the flag alone', () => {
+    expect(byKey(buildSecurityHeaders(true))['Content-Security-Policy']).toBe(PROD_CSP)
+    expect(byKey(buildSecurityHeaders(false))['Content-Security-Policy']).toBe(DEV_CSP)
   })
 
   it('does not send Strict-Transport-Security (TLS is the proxy\'s)', () => {
     expect(byKey(buildSecurityHeaders(true))['Strict-Transport-Security']).toBeUndefined()
   })
 
-  it('keeps the inline theme script to a form the policy permits', () => {
-    // The theme script is inline, so script-src must keep 'unsafe-inline'. A
-    // hash source would make browsers ignore it and block Next's own inline
-    // hydration scripts, so the policy must not carry one.
-    const csp = byKey(buildSecurityHeaders(true))['Content-Security-Policy']
-    expect(csp).toContain("script-src 'self' 'unsafe-inline'")
-    expect(csp).not.toMatch(/'sha(256|384|512)-/)
-    const layout = readFileSync(join(__dirname, '../../src/app/layout.tsx'), 'utf8')
-    expect(layout).toContain('dangerouslySetInnerHTML')
+  it('carries no hash or nonce source, so the inline hydration scripts keep running', () => {
+    // A hash or nonce source makes browsers ignore 'unsafe-inline' and block
+    // Next's own inline scripts and the theme script.
+    expect(PROD_CSP).not.toMatch(/'(sha(256|384|512)|nonce)-/)
+    expect(byKey(buildSecurityHeaders(true))['Content-Security-Policy']).not.toMatch(/'(sha(256|384|512)|nonce)-/)
   })
 })
