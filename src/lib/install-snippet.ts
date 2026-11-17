@@ -6,14 +6,27 @@
  * The snippet shape:
  *
  *   curl -fsSL https://raw.githubusercontent.com/LanNguyenSi/clawd-monitor-agent/master/install.sh \
- *     | sudo bash -s -- \
+ *     | CLAWD_AGENT_TOKEN=<token> sudo --preserve-env=CLAWD_AGENT_TOKEN bash -s -- \
  *         --server <ws-or-wss URL> \
- *         --token <token> \
  *         --name <name>
+ *
+ * The token goes in through the environment of `sudo`, never as an argument:
+ * the argv of `sudo` and `bash` is readable by every local user for as long
+ * as the installer runs (`ps`, `/proc/<pid>/cmdline`), the environment is
+ * readable only by root and the invoking user. What stays: the pasted line
+ * is kept by the operator's shell history, and the installer's process
+ * environment holds the token until the installer unsets it (before it
+ * starts npm or apt). The installer reads `CLAWD_AGENT_TOKEN` from the
+ * agent repository's `install.sh` on master, so this snippet needs an
+ * installer that knows the variable (an older installer answers with a
+ * missing-token error and changes nothing).
  *
  * `--name` is only included when the operator typed one. The installer
  * already defaults to /etc/hostname when omitted.
  */
+
+/** Environment variable the agent's installer reads the token from. */
+const TOKEN_ENV_VAR = 'CLAWD_AGENT_TOKEN'
 
 const INSTALL_SH_URL =
   'https://raw.githubusercontent.com/LanNguyenSi/clawd-monitor-agent/master/install.sh'
@@ -60,9 +73,8 @@ export function buildInstallSnippet(input: BuildInstallSnippetInput): string {
   const server = originToWs(input.origin)
   const lines = [
     `curl -fsSL ${INSTALL_SH_URL} \\`,
-    '  | sudo bash -s -- \\',
-    `      --server ${shellQuote(server)} \\`,
-    `      --token ${shellQuote(input.token)}`,
+    `  | ${TOKEN_ENV_VAR}=${shellQuote(input.token)} sudo --preserve-env=${TOKEN_ENV_VAR} bash -s -- \\`,
+    `      --server ${shellQuote(server)}`,
   ]
   if (input.name && input.name.trim().length > 0) {
     // Append a continuation slash to the previous line so the snippet
