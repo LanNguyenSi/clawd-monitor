@@ -1,4 +1,5 @@
 import { loadEnvConfig } from '@next/env'
+import { defaultNodeEnvForStart } from './node-env-default.js'
 
 /**
  * Load `.env` / `.env.local` (and the mode-specific variants) into
@@ -10,7 +11,8 @@ export function loadServerEnv(dir: string = process.cwd(), dev: boolean = proces
   loadEnvConfig(dir, dev)
 }
 
-// Side effect on import: server.ts imports this module before anything that
+// Side effect on import (NODE_ENV first, it picks which .env files load): server.ts imports this module before anything that
 // reads process.env at module load (agent-ws-handler, agent-registry,
 // data-store), so those modules see values from the env files.
+defaultNodeEnvForStart()
 loadServerEnv()
