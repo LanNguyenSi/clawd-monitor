@@ -89,22 +89,88 @@ jobs:
 
   docker-image:
     # Builds the production Dockerfile on every PR and push, without pushing it
-    # anywhere, then smoke-tests the runner stage. The image is built on the
-    # server at deploy time; a broken base tag or docker-ce-cli apt step used to
-    # surface only there. The smoke checks avoid starting the app: docker-ce-cli
-    # has to be installed (LogTail docker source) and the runtime has to be
-    # Node 22. No build cache, so a cold cache is the only case.
+    # anywhere, then smoke-tests the runner stage and starts it. The image is
+    # built on the server at deploy time; a broken base tag or docker-ce-cli apt
+    # step, or a file or module missing from the runner stage, used to surface
+    # only there. docker-ce-cli has to be installed (LogTail docker source), the
+    # runtime has to be Node 22, and the started image has to answer /api/health.
+    # No build cache, so a cold cache is the only case.
     runs-on: ubuntu-latest
+    # The image build takes a few minutes and the start step is bounded at about
+    # 90 s; 20 minutes leaves headroom for a cold runner and stops a hung docker
+    # call from holding the runner for the 6 h default.
     timeout-minutes: 20
+    env:
+      IMAGE: clawd-monitor-ci:${{ github.sha }}
     steps:
       - uses: actions/checkout@v5
       - name: Build image
-        run: docker build --pull -t clawd-monitor-ci:${{ github.sha }} .
+        run: docker build --pull -t "$IMAGE" .
       - name: Smoke test runner stage
         run: |
           set -eu
-          image="clawd-monitor-ci:${{ github.sha }}"
-          docker run --rm --entrypoint docker "$image" --version
-          node_major=$(docker run --rm --entrypoint node "$image" -p 'process.versions.node.split(".")[0]')
+          docker run --rm --entrypoint docker "$IMAGE" --version
+          node_major=$(docker run --rm --entrypoint node "$IMAGE" -p 'process.versions.node.split(".")[0]')
           echo "node major: $node_major"
           test "$node_major" = "22"
+      - name: Image starts and answers /api/health
+        # Runs the image the way docker-compose.yml does: the container CMD
+        # (`node dist/server.js`) as the image user, NODE_ENV=production, the
+        # data directory /data on a fresh named volume (it takes the ownership
+        # of the image directory, as in production), PORT and HOSTNAME pinned,
+        # the 512 MB memory limit, and no docker socket. JWT_SECRET and
+        # ADMIN_PASSWORD are throwaway values generated here, none is a real
+        # secret; server.ts refuses to start in production without them. The
+        # container exits when that check or a missing file stops the server,
+        # and /api/health answers {"status":"ok",...} only from a running
+        # server, so both fail this step.
+        run: |
+          set -eu
+          cid=""
+          vol="clawd-monitor-ci-data-$$"
+          body=$(mktemp)
+          cleanup() {
+            if [ -n "$cid" ]; then docker rm -f "$cid" >/dev/null || true; fi
+            docker volume rm -f "$vol" >/dev/null || true
+            rm -f "$body"
+          }
+          trap cleanup EXIT
+          docker volume create "$vol" >/dev/null
+          cid=$(docker run -d \
+            --memory 512m \
+            -e NODE_ENV=production \
+            -e CLAWD_MONITOR_DATA_DIR=/data \
+            -e PORT=3000 \
+            -e HOSTNAME=0.0.0.0 \
+            -e JWT_SECRET="$(openssl rand -hex 32)" \
+            -e ADMIN_PASSWORD="$(openssl rand -hex 16)" \
+            -v "$vol":/data \
+            -p 127.0.0.1::3000 \
+            "$IMAGE")
+          port=$(docker port "$cid" 3000/tcp | head -n 1 | sed 's/.*://' || true)
+          if [ -z "$port" ]; then
+            echo "health smoke failed: the container published no host port" >&2
+            docker logs "$cid" >&2 || true
+            exit 1
+          fi
+          code=000
+          # 000 means nothing listens yet (the server is still starting): keep
+          # polling until a 90 s deadline (a probe in flight finishes first,
+          # curl allows 2 s) and only while the container is up. Any HTTP
+          # status is final.
+          start=$SECONDS
+          deadline=$((SECONDS + 90))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            code=$(curl -s -o "$body" -w '%{http_code}' --max-time 2 "http://127.0.0.1:$port/api/health" || true)
+            [ "$code" != 000 ] && break
+            [ "$(docker inspect -f '{{.State.Running}}' "$cid")" = true ] || break
+            sleep 1
+          done
+          # jq is preinstalled on ubuntu-latest runners; the check is on the
+          # top-level status only, a nested "status":"ok" does not count.
+          if [ "$code" != 200 ] || ! jq -e '.status == "ok"' "$body" >/dev/null 2>&1; then
+            echo "health smoke failed: status $code, body: $(cat "$body")" >&2
+            docker logs "$cid" >&2 || true
+            exit 1
+          fi
+          echo "health smoke ok after $((SECONDS - start))s: $(cat "$body")"

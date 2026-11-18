@@ -34,11 +34,19 @@ process environment (the shell, or Docker Compose) keeps its value over
 these files. One caveat: when a key is set in both the process environment
 and a `.env` file, the process value is kept, but `@next/env` expands a `$`
 in it (`dotenv-expand`), so `pa$word` becomes `pa`. Escape it as `\$` or set
-the key in one place only. For `NODE_ENV=production npm start` set
-`JWT_SECRET` and
-`ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH`. `npm start` does not set
-`NODE_ENV`; without `NODE_ENV=production` the server skips the startup check
-and accepts the development fallbacks.
+the key in one place only. For `npm start` set `JWT_SECRET` and
+`ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH`. `npm start` runs in production
+mode: when `NODE_ENV` is unset or empty, the server entry sets it to
+`production` (it recognises the start script through npm's
+`npm_lifecycle_event`, so this works on Windows shells too), the startup
+check applies and the server refuses to start without those secrets. A
+`NODE_ENV` you set yourself wins, so `NODE_ENV=development npm start` still
+runs with the development fallbacks. For local development use `npm run dev`;
+starting `node dist/server.js` directly (outside npm) does not set `NODE_ENV`
+and skips the check unless you set it. All `.env*` files except the committed
+templates (`.env.example`, `.env.runtime.example`) are git-ignored, including
+the mode-specific variants (`.env.production`, `.env.production.local`,
+`.env.development`, ...), so secrets kept there are not committed by accident.
 
 Notes:
 
