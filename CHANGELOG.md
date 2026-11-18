@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Both compose files map `host.docker.internal` to the host gateway.** Inside the container `http://localhost:9500` (the `.env.example` default for `DEFAULT_GATEWAY_URL`) is the container itself, not a gateway on the host. `docker-compose.yml` and `docker-compose.traefik.yml` now carry `extra_hosts: [host.docker.internal:host-gateway]` on the `app` service, so an operator can set `DEFAULT_GATEWAY_URL=http://host.docker.internal:9500` to reach a gateway running on the host (the gateway policy accepts the operator default as configured; `http://localhost:9500` remains right for `npm start` on the host). `tests/unit/gateway.test.ts`, `tests/unit/compose-config.test.ts`; `.env.example`, `docs/configuration.md`.
+
+### Changed
+
+- **Both compose files cap the container's CPU at one core.** `docker-compose.yml` and `docker-compose.traefik.yml` set `cpus: "1.0"` next to `mem_limit` on the `app` service. Docker refuses a `cpus` value above the host's CPU count and the host's count is not pinned in the files, so 1.0 is valid on every host; a host with more cores can raise it. `tests/unit/compose-config.test.ts`; `docs/configuration.md`.
+
 ## [0.5.0] - 2026-11-17
 
 ### Upgrade notes
