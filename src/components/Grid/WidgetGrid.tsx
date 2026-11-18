@@ -84,6 +84,8 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
   const cancelScroll = useRef<(() => void) | null>(null)
   // True while focus is, or just was, inside the grid; see the edit-mode effect.
   const focusInGrid = useRef(false)
+  // The card that holds focus, if focus is on a card itself (not on something inside it).
+  const focusedCard = useRef<Element | null>(null)
   const wasEditMode = useRef(editMode)
   const hintId = useId()
 
@@ -96,22 +98,36 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
   // then drops focus to <body>. Put it on the grid container instead: it keeps
   // the keyboard user's place in the page (Tab goes on into the grid, Shift+Tab
   // back to the toolbar) and, unlike the "Edit layout" toggle, does not move
-  // them away from what they were working on.
+  // them away from what they were working on. Focus that is still valid after
+  // the lock (a widget's scroll region, the Undo button) is left where it is.
   useLayoutEffect(() => {
     const was = wasEditMode.current
     wasEditMode.current = editMode
     if (!was || editMode) return
     const root = gridRef.current
     const active = document.activeElement
-    const inGrid = Boolean(root && active && root.contains(active))
-    // Some browsers have already moved focus to <body> when the effect runs.
-    if (inGrid || (active === document.body && focusInGrid.current)) {
+    // The card has lost its tabindex by now, so it is recognised by identity;
+    // some browsers have already moved focus to <body> when the effect runs.
+    const onCard = Boolean(active && active === focusedCard.current)
+    if (onCard || (active === document.body && focusInGrid.current)) {
       root?.focus({ preventScroll: true })
       announce('Layout locked')
     }
   }, [editMode, announce])
 
   useEffect(() => () => cancelScroll.current?.(), [])
+
+  // A press outside the grid ends "focus is in the grid": the blur it causes
+  // has no relatedTarget, so the blur handler cannot tell it from a fix-up.
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      const root = gridRef.current
+      if (root && e.target instanceof Node && root.contains(e.target)) return
+      focusInGrid.current = false
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [])
 
   // Move focus once the DOM reflects the state change that asked for it.
   useEffect(() => {
@@ -256,11 +272,18 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
       ref={gridRef}
       tabIndex={-1}
       className="outline-none"
-      onFocus={() => { focusInGrid.current = true }}
+      onFocus={(e) => {
+        focusInGrid.current = true
+        const t = e.target as Element
+        focusedCard.current = t.getAttribute('aria-roledescription') === 'movable widget' ? t : null
+      }}
       onBlur={(e) => {
         // Focus moving to another element outside the grid ends "inside"; a blur
         // to nowhere (relatedTarget null) may be the browser's own focus fix-up.
-        if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget as Node)) focusInGrid.current = false
+        if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget as Node)) {
+          focusInGrid.current = false
+          focusedCard.current = null
+        }
       }}
     >
     <ResponsiveGrid

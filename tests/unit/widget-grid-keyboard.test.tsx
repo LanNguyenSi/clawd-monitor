@@ -425,6 +425,85 @@ describe('locking the layout while a card has focus', () => {
     outside.remove()
   })
 
+  it('leaves focus on a widget scroll region that stays focusable', async () => {
+    await mount({ lg: THREE })
+    const region = document.createElement('div')
+    region.setAttribute('role', 'region')
+    region.tabIndex = 0
+    card('CPU + RAM').appendChild(region)
+    await act(async () => region.focus())
+    await rerender(false)
+    expect(document.activeElement).toBe(region)
+    expect(announcer().textContent).toBe('')
+  })
+
+  it('leaves focus on the Undo button, which stays focusable', async () => {
+    await mount({ lg: THREE })
+    await act(async () =>
+      host.querySelector<HTMLButtonElement>('button[aria-label="Remove CPU + RAM widget"]')!.click(),
+    )
+    const undo = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === 'Undo')!
+    expect(document.activeElement).toBe(undo)
+    await rerender(false)
+    expect(document.activeElement).toBe(undo)
+    expect(announcer().textContent).toBe('')
+  })
+
+  it('does not steal body focus after a click on empty space outside the grid', async () => {
+    await mount({ lg: THREE })
+    await act(async () => card('CPU + RAM').focus())
+    // A press on empty page space: pointerdown first, then the blur with no relatedTarget.
+    await act(async () => {
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+      card('CPU + RAM').blur()
+    })
+    expect(document.activeElement).toBe(document.body)
+    await rerender(false)
+    expect(document.activeElement).toBe(document.body)
+    expect(announcer().textContent).toBe('')
+  })
+
+  it('still redirects a focused card after a press outside that does not move focus', async () => {
+    await mount({ lg: THREE })
+    await act(async () => card('CPU + RAM').focus())
+    // A press that leaves focus where it is: no blur follows.
+    await act(async () => {
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    })
+    expect(document.activeElement).toBe(card('CPU + RAM'))
+    await rerender(false)
+    expect(document.activeElement).toBe(host.firstElementChild)
+    expect(announcer().textContent).toBe('Layout locked')
+  })
+
+  it('removes its document pointerdown listener when the grid unmounts', async () => {
+    const add = vi.spyOn(document, 'addEventListener')
+    const remove = vi.spyOn(document, 'removeEventListener')
+    await mount({ lg: THREE })
+    const added = add.mock.calls.filter(([type]) => type === 'pointerdown').map(([, fn]) => fn)
+    expect(added).toHaveLength(1)
+    expect(remove.mock.calls.filter(([type]) => type === 'pointerdown')).toHaveLength(0)
+    await act(async () => root.unmount())
+    const removed = remove.mock.calls.filter(([type]) => type === 'pointerdown').map(([, fn]) => fn)
+    expect(removed).toEqual(added)
+    add.mockRestore()
+    remove.mockRestore()
+    // afterEach unmounts again: render an empty root so it has something to unmount.
+    root = createRoot(host)
+  })
+
+  it('keeps the flag on a press inside the grid, so a card that lost focus is still redirected', async () => {
+    await mount({ lg: THREE })
+    await act(async () => card('CPU + RAM').focus())
+    await act(async () => {
+      card('Cron Jobs').dispatchEvent(new Event('pointerdown', { bubbles: true }))
+      card('CPU + RAM').blur()
+    })
+    await rerender(false)
+    expect(document.activeElement).toBe(host.firstElementChild)
+    expect(announcer().textContent).toBe('Layout locked')
+  })
+
   it('does nothing when focus never was in the grid', async () => {
     await mount({ lg: THREE })
     await rerender(false)
