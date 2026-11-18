@@ -124,7 +124,6 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
       const root = gridRef.current
       if (root && e.target instanceof Node && root.contains(e.target)) return
       focusInGrid.current = false
-      focusedCard.current = null
     }
     document.addEventListener('pointerdown', onPointerDown)
     return () => document.removeEventListener('pointerdown', onPointerDown)

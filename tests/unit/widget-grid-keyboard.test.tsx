@@ -463,6 +463,35 @@ describe('locking the layout while a card has focus', () => {
     expect(announcer().textContent).toBe('')
   })
 
+  it('still redirects a focused card after a press outside that does not move focus', async () => {
+    await mount({ lg: THREE })
+    await act(async () => card('CPU + RAM').focus())
+    // A press that leaves focus where it is: no blur follows.
+    await act(async () => {
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    })
+    expect(document.activeElement).toBe(card('CPU + RAM'))
+    await rerender(false)
+    expect(document.activeElement).toBe(host.firstElementChild)
+    expect(announcer().textContent).toBe('Layout locked')
+  })
+
+  it('removes its document pointerdown listener when the grid unmounts', async () => {
+    const add = vi.spyOn(document, 'addEventListener')
+    const remove = vi.spyOn(document, 'removeEventListener')
+    await mount({ lg: THREE })
+    const added = add.mock.calls.filter(([type]) => type === 'pointerdown').map(([, fn]) => fn)
+    expect(added).toHaveLength(1)
+    expect(remove.mock.calls.filter(([type]) => type === 'pointerdown')).toHaveLength(0)
+    await act(async () => root.unmount())
+    const removed = remove.mock.calls.filter(([type]) => type === 'pointerdown').map(([, fn]) => fn)
+    expect(removed).toEqual(added)
+    add.mockRestore()
+    remove.mockRestore()
+    // afterEach unmounts again: render an empty root so it has something to unmount.
+    root = createRoot(host)
+  })
+
   it('keeps the flag on a press inside the grid, so a card that lost focus is still redirected', async () => {
     await mount({ lg: THREE })
     await act(async () => card('CPU + RAM').focus())
