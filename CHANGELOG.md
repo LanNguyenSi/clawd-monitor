@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **`npm start` now runs in production mode, and mode-specific `.env` files are git-ignored.** `npm start` (`node dist/server.js`) did not set `NODE_ENV`, so a bare-metal start skipped the startup check and ran with the development fallbacks for the admin password and the JWT secret; the compose files and the image already set `NODE_ENV=production` and were not affected. The server entry now defaults `NODE_ENV` to `production` when it is started by the `start` script and `NODE_ENV` is unset or empty (detected through npm's `npm_lifecycle_event`, so it also works on Windows); a `NODE_ENV` you set wins. Behaviour change: `npm start` without `JWT_SECRET` and `ADMIN_PASSWORD` (or `ADMIN_PASSWORD_HASH`) now refuses to start, and `.env.production` is loaded instead of `.env.development`; for development use `npm run dev` (or set `NODE_ENV=development` explicitly). Under `npm start` the session cookie is now `Secure` as well, so plain HTTP works only on localhost (see the Troubleshooting section of `docs/configuration.md`). `.gitignore` only covered `.env`, `.env.local` and `.env.runtime*`, so secrets in `.env.production`, `.env.production.local`, `.env.development` and the like could be committed by accident; it now ignores every `.env*` file except the tracked templates `.env.example` and `.env.runtime.example`. `tests/unit/env-bootstrap.test.ts`; `docs/configuration.md`, `docs/development.md`.
 
+### Changed
+
+- **`tsx` moved to `devDependencies`.** Only the `dev` script (`tsx server.ts`) uses it; the production server runs the compiled `dist/server.js`, so `tsx` and `esbuild` no longer ship in the runner image.
+
+### Tests and CI
+
+- **CI starts the built image and checks `/api/health`.** The `docker-image` job only ran `docker --version` and a Node major check inside the image, so a broken runner stage (a file missing from the build output, a runtime module pruned away) was found only on the server. A new step starts the image detached like `docker-compose.yml` (`NODE_ENV=production`, `/data` on a fresh volume, no docker socket, `JWT_SECRET` and `ADMIN_PASSWORD` generated in the job), polls `/api/health` on loopback until a 90 s deadline and fails on a status other than 200, a body whose top-level `status` is not `ok` or an early container exit, prints the container logs on failure and always removes the container and volume. `tests/unit/ci-docker-smoke.test.ts`.
+
 ## [0.5.0] - 2026-11-17
 
 ### Upgrade notes
