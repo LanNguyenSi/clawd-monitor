@@ -70,8 +70,15 @@ on.
 `relay-config` (`scripts/relay-config.test.sh` against `.relay.yml`) and
 `docker-image`. `docker-image` builds the production `Dockerfile` without
 pushing it, then runs `docker --version` and `node` inside the image to prove
-the runner stage has docker-ce-cli and Node 22. It catches a broken base tag or
-apt step before the deploy system builds the image on the server.
+the runner stage has docker-ce-cli and Node 22. A last step starts the image
+detached the way `docker-compose.yml` runs it (`NODE_ENV=production`, data
+directory `/data` on a fresh volume, no docker socket, throwaway `JWT_SECRET`
+and `ADMIN_PASSWORD` generated in the job), polls `GET /api/health` on loopback
+for up to 90 s and fails on any status but 200, a body without `"status":"ok"`
+or a container that exits first, printing `docker logs`; the container and
+volume are always removed. It catches a broken base tag or apt step, and a
+file or runtime module missing from the runner stage, before the deploy system
+builds the image on the server.
 
 ## Pull requests
 

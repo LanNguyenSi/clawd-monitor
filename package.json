@@ -24,7 +24,6 @@
     "react-grid-layout": "^1.5.0",
     "react-markdown": "^9.1.0",
     "swr": "^2.5.1",
-    "tsx": "^4.23.15",
     "undici": "^6.29.1",
     "ws": "^8.22.2",
     "zod": "^4.6.7"
@@ -45,6 +44,7 @@
     "jsdom": "^29.1.1",
     "postcss": "^8.5.32",
     "tailwindcss": "^4.3.5",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^4.1.12"
   },
