@@ -3,7 +3,7 @@ type: module
 title: Auth and config loading across the two module graphs
 description: Admin password precedence, the login rate limit and its client key (TRUSTED_PROXY_HOPS), the password.json and tokens.json data files, JWT cookie flags and lifetime, the production startup check, and how the custom server loads .env files before its modules read the environment, while the compiled route graph reads its own variables later.
 tags: [auth, config, env, jwt, startup, rate-limit]
-timestamp: 2026-11-17T14:32:48Z
+timestamp: 2026-11-18T06:55:21Z
 sources:
   - server.ts
   - tsconfig.server.json
@@ -59,7 +59,7 @@ authentication that sit in more than one file.
 The server graph reads its environment at module load, before Next.js
 exists. `server.ts` imports `./src/lib/env-bootstrap.js` first
 (`server.ts:3#"env-bootstrap"`), which calls `loadEnvConfig()` from
-`@next/env` (`src/lib/env-bootstrap.ts:12#"loadEnvConfig(dir, dev)"`) and so puts
+`@next/env` (`src/lib/env-bootstrap.ts:11#"loadEnvConfig(dir, dev)"`) and so puts
 `.env`, `.env.local` and the mode-specific variants into `process.env`
 before any module below it is evaluated. Just before that, under `npm start` (npm sets `npm_lifecycle_event=start`) and with `NODE_ENV` unset or empty, it sets `NODE_ENV=production` (`src/lib/node-env-default.ts:14#"defaultNodeEnvForStart"`, called from `src/lib/env-bootstrap.ts:17#"defaultNodeEnvForStart()"`), so the start script runs the production startup check; a `NODE_ENV` the caller set wins. `@next/env` never replaces a
 variable that is already in the process environment, so values from the
