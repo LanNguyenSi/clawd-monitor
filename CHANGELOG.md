@@ -9,8 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **CI starts the built image and checks `/api/health`.** The `docker-image` job only ran `docker --version` and a Node major check inside the image, so a broken runner stage (a file missing from the build output, a runtime module pruned away) was found only on the server. A new step starts the image detached like `docker-compose.yml` (`NODE_ENV=production`, `/data` on a fresh volume, no docker socket, `JWT_SECRET` and `ADMIN_PASSWORD` generated in the job), polls `/api/health` on loopback until a 90 s deadline and fails on a status other than 200, a body without `"status":"ok"` or an early container exit, prints the container logs on failure and always removes the container and volume. `tests/unit/ci-docker-smoke.test.ts`.
 - **`tsx` moved to `devDependencies`.** Only the `dev` script (`tsx server.ts`) uses it; the production server runs the compiled `dist/server.js`, so `tsx` and `esbuild` no longer ship in the runner image.
+
+### Tests and CI
+
+- **CI starts the built image and checks `/api/health`.** The `docker-image` job only ran `docker --version` and a Node major check inside the image, so a broken runner stage (a file missing from the build output, a runtime module pruned away) was found only on the server. A new step starts the image detached like `docker-compose.yml` (`NODE_ENV=production`, `/data` on a fresh volume, no docker socket, `JWT_SECRET` and `ADMIN_PASSWORD` generated in the job), polls `/api/health` on loopback until a 90 s deadline and fails on a status other than 200, a body whose top-level `status` is not `ok` or an early container exit, prints the container logs on failure and always removes the container and volume. `tests/unit/ci-docker-smoke.test.ts`.
 
 ## [0.5.0] - 2026-11-17
 

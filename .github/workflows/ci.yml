@@ -148,6 +148,11 @@ jobs:
             -p 127.0.0.1::3000 \
             "$IMAGE")
           port=$(docker port "$cid" 3000/tcp | head -n 1 | sed 's/.*://' || true)
+          if [ -z "$port" ]; then
+            echo "health smoke failed: the container published no host port" >&2
+            docker logs "$cid" >&2 || true
+            exit 1
+          fi
           code=000
           # 000 means nothing listens yet (the server is still starting): keep
           # polling until a 90 s deadline (a probe in flight finishes first,
@@ -161,7 +166,9 @@ jobs:
             [ "$(docker inspect -f '{{.State.Running}}' "$cid")" = true ] || break
             sleep 1
           done
-          if [ "$code" != 200 ] || ! grep -q '"status":"ok"' "$body"; then
+          # jq is preinstalled on ubuntu-latest runners; the check is on the
+          # top-level status only, a nested "status":"ok" does not count.
+          if [ "$code" != 200 ] || ! jq -e '.status == "ok"' "$body" >/dev/null 2>&1; then
             echo "health smoke failed: status $code, body: $(cat "$body")" >&2
             docker logs "$cid" >&2 || true
             exit 1
