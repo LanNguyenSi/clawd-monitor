@@ -109,7 +109,11 @@ Notes:
     includes a URL equal to the default gateway URL: the default's exemption
     does not apply to agent-reported URLs.
   The operator default (`DEFAULT_GATEWAY_URL`) is trusted as
-  configured, including `http` and a loopback address.
+  configured, including `http` and a loopback address. In Docker, `localhost`
+  is the container itself: for a gateway running on the host set
+  `DEFAULT_GATEWAY_URL=http://host.docker.internal:9500` (both compose files
+  map that name to the host through `extra_hosts`); `http://localhost:9500`
+  is for `npm start` on the host.
 - With an agent selected, the Log Tail widget's Docker source is not
   available: `/api/agents/<id>/logs?source=docker` answers two "not
   available" lines and never starts `docker` on the clawd-monitor host. Clear
@@ -353,6 +357,11 @@ the limit under real agent load needs a higher `mem_limit` first. Swap is not
 capped: without `memswap_limit` Docker allows as much swap as the memory limit
 on a host that has swap, so the container can use about 512m of RAM plus 512m
 of swap before the kernel kills it.
+
+**CPU limit.** Both `docker-compose.yml` and `docker-compose.traefik.yml` cap
+the container at one core (`cpus: "1.0"`). Docker refuses a `cpus` value above
+the host's CPU count, so 1.0 is valid everywhere; on a host with more cores
+you can raise the value in the compose file you run.
 
 **Logs.** The `json-file` driver keeps at most 3 files of 10 MB per container
 (30 MB). Compose recreates the container on the first `up -d` after this

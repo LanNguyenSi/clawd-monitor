@@ -9,8 +9,9 @@ import { resolve } from 'path'
 // Guards the container settings of the two compose files and the Makefile
 // docker targets: the healthcheck against /api/health (and that its command
 // really exits 0 on a 2xx and 1 on everything else, including a hang), the
-// memory limit, the log rotation, and that `make docker-up` / `make
-// docker-down` can only ever address the plain local stack.
+// memory limit, the CPU cap, the host.docker.internal alias, the log rotation,
+// and that `make docker-up` / `make docker-down` can only ever address the
+// plain local stack.
 
 const ROOT = resolve(__dirname, '../..')
 // js-yaml ships no types in this repo; a require keeps tsc quiet and returns any.
@@ -27,6 +28,8 @@ interface Compose {
         start_period: string
       }
       mem_limit: string
+      cpus: string
+      extra_hosts: string[]
       logging: unknown
       restart: string
       volumes?: string[]
@@ -61,6 +64,17 @@ describe.each(COMPOSE_FILES)('%s app service', (file) => {
 
   it('limits memory to 512m', () => {
     expect(app.mem_limit).toBe('512m')
+  })
+
+  it('caps CPU at one core (valid on any host, higher counts can raise it)', () => {
+    const cpus = Number(app.cpus)
+    expect(Number.isNaN(cpus)).toBe(false)
+    expect(cpus).toBeGreaterThan(0)
+    expect(cpus).toBeLessThanOrEqual(1)
+  })
+
+  it('maps host.docker.internal to the host gateway for a gateway on the host', () => {
+    expect(app.extra_hosts).toEqual(['host.docker.internal:host-gateway'])
   })
 
   it('rotates the json-file log: 10m, 3 files', () => {

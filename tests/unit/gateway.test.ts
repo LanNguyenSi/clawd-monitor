@@ -963,3 +963,57 @@ describe('operator default that is itself https and allowlisted', () => {
     expect(globalFetch).toHaveBeenCalledTimes(1)
   })
 })
+
+// ── operator default on the Docker host alias ────────────────────────────────
+//
+// Inside the container localhost:9500 is the container itself; the compose
+// files map host.docker.internal to the host gateway, so the operator default
+// becomes http://host.docker.internal:9500. checkGatewayUrl returns the
+// operator default trusted verbatim (trustDefault && rawUrl ===
+// DEFAULT_GATEWAY_URL, src/lib/gateway.ts), before the https/allowlist/
+// private-range checks, and isPrivateHost does not judge host names other
+// than localhost, so the policy accepts it on the fetch path.
+
+describe('operator default http://host.docker.internal:9500 (gateway on the Docker host)', () => {
+  let mod: Awaited<ReturnType<typeof loadGateway>>
+
+  beforeAll(async () => {
+    mod = await loadGateway({
+      DEFAULT_GATEWAY_URL: 'http://host.docker.internal:9500',
+      NEXT_PUBLIC_DEFAULT_GATEWAY_URL: '',
+      ALLOWED_GATEWAY_HOSTS: '',
+      DEFAULT_GATEWAY_TOKEN: '',
+    })
+  })
+
+  afterAll(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules() })
+
+  it('is the resolved default with an empty allowlist', () => {
+    expect(mod.DEFAULT_GATEWAY_URL).toBe('http://host.docker.internal:9500')
+  })
+
+  it('is not a private host', () => {
+    expect(mod.isPrivateHost('host.docker.internal')).toBe(false)
+  })
+
+  it('passes assertGatewayUrlAllowed with trustDefault, http scheme, port 9500, empty allowlist', () => {
+    expect(() =>
+      mod.assertGatewayUrlAllowed('http://host.docker.internal:9500', { trustDefault: true }),
+    ).not.toThrow()
+  })
+
+  it('gatewayFetch sends it through the global fetch, not the allowlist path', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('ok'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await mod.gatewayFetch('/status')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe('http://host.docker.internal:9500/status')
+  })
+
+  it('gets no exception as a remote-chosen URL (still needs https and the allowlist)', async () => {
+    await expect(mod.remoteGatewayFetch('http://host.docker.internal:9500', '/status'))
+      .rejects.toBeInstanceOf(mod.GatewayUrlError)
+  })
+})

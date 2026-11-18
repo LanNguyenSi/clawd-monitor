@@ -42,6 +42,13 @@ services:
       retries: 3
       start_period: 20s
     mem_limit: 512m
+    # docker refuses a cpus value above the host's CPU count and the host's
+    # count is not pinned here, so 1.0 is valid on every host.
+    cpus: "1.0"
+    # Lets the container reach a gateway running on the host as
+    # http://host.docker.internal:9500.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     logging:
       driver: json-file
       options:

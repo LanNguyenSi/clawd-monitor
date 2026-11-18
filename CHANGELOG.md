@@ -11,9 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **`npm start` now runs in production mode, and mode-specific `.env` files are git-ignored.** `npm start` (`node dist/server.js`) did not set `NODE_ENV`, so a bare-metal start skipped the startup check and ran with the development fallbacks for the admin password and the JWT secret; the compose files and the image already set `NODE_ENV=production` and were not affected. The server entry now defaults `NODE_ENV` to `production` when it is started by the `start` script and `NODE_ENV` is unset or empty (detected through npm's `npm_lifecycle_event`, so it also works on Windows); a `NODE_ENV` you set wins. Behaviour change: `npm start` without `JWT_SECRET` and `ADMIN_PASSWORD` (or `ADMIN_PASSWORD_HASH`) now refuses to start, and `.env.production` is loaded instead of `.env.development`; for development use `npm run dev` (or set `NODE_ENV=development` explicitly). Under `npm start` the session cookie is now `Secure` as well, so plain HTTP works only on localhost (see the Troubleshooting section of `docs/configuration.md`). `.gitignore` only covered `.env`, `.env.local` and `.env.runtime*`, so secrets in `.env.production`, `.env.production.local`, `.env.development` and the like could be committed by accident; it now ignores every `.env*` file except the tracked templates `.env.example` and `.env.runtime.example`. `tests/unit/env-bootstrap.test.ts`; `docs/configuration.md`, `docs/development.md`.
 
+### Fixed
+
+- **Both compose files map `host.docker.internal` to the host gateway.** Inside the container `http://localhost:9500` (the `.env.example` default for `DEFAULT_GATEWAY_URL`) is the container itself, not a gateway on the host. `docker-compose.yml` and `docker-compose.traefik.yml` now carry `extra_hosts: [host.docker.internal:host-gateway]` on the `app` service, so an operator can set `DEFAULT_GATEWAY_URL=http://host.docker.internal:9500` to reach a gateway running on the host (the gateway policy accepts the operator default as configured; `http://localhost:9500` remains right for `npm start` on the host). `tests/unit/gateway.test.ts`, `tests/unit/compose-config.test.ts`; `.env.example`, `docs/configuration.md`.
+
 ### Changed
 
 - **`tsx` moved to `devDependencies`.** Only the `dev` script (`tsx server.ts`) uses it; the production server runs the compiled `dist/server.js`, so `tsx` and `esbuild` no longer ship in the runner image.
+- **Both compose files cap the container's CPU at one core.** `docker-compose.yml` and `docker-compose.traefik.yml` set `cpus: "1.0"` next to `mem_limit` on the `app` service. Docker refuses a `cpus` value above the host's CPU count and the host's count is not pinned in the files, so 1.0 is valid on every host; a host with more cores can raise it. `tests/unit/compose-config.test.ts`; `docs/configuration.md`.
 
 ### Tests and CI
 
