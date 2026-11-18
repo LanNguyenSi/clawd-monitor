@@ -29,7 +29,7 @@ development secret. Do not expose a dev server.
 |--------|---------|
 | `npm run dev` | Start the dev server (`tsx server.ts`) |
 | `npm run build` | Production build (`next build` + server TypeScript compile) |
-| `npm start` | Run the production build (`node dist/server.js`); set `NODE_ENV=production` for production behaviour |
+| `npm start` | Run the production build (`node dist/server.js`) in production mode: `NODE_ENV` defaults to `production` unless you set it; use `npm run dev` for development |
 | `npm run lint` | `eslint .` (flat config, `eslint.config.mjs`) |
 | `npm run type-check` | `tsc --noEmit` |
 | `npm run type-check:tests` | Type-check the test files (`tsc --noEmit -p tsconfig.test.json`) |

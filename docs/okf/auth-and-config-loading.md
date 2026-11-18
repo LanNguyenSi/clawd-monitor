@@ -58,9 +58,9 @@ authentication that sit in more than one file.
 The server graph reads its environment at module load, before Next.js
 exists. `server.ts` imports `./src/lib/env-bootstrap.js` first
 (`server.ts:3#"env-bootstrap"`), which calls `loadEnvConfig()` from
-`@next/env` (`src/lib/env-bootstrap.ts:10#"loadEnvConfig(dir, dev)"`) and so puts
+`@next/env` (`src/lib/env-bootstrap.ts:26#"loadEnvConfig(dir, dev)"`) and so puts
 `.env`, `.env.local` and the mode-specific variants into `process.env`
-before any module below it is evaluated. `@next/env` never replaces a
+before any module below it is evaluated. Just before that, under `npm start` (npm sets `npm_lifecycle_event=start`) and with `NODE_ENV` unset or empty, it sets `NODE_ENV=production` (`src/lib/env-bootstrap.ts:13#"defaultNodeEnvForStart"`), so the start script runs the production startup check; a `NODE_ENV` the caller set wins. `@next/env` never replaces a
 variable that is already in the process environment, so values from the
 shell or from Docker Compose win over the files. The files are expanded
 with `dotenv-expand`, which also rewrites a `$` in a value that came from the

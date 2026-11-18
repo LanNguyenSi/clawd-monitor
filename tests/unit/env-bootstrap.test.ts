@@ -8,6 +8,7 @@
  * show.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { defaultNodeEnvForStart } from '../../src/lib/env-bootstrap'
 import { execFileSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
@@ -21,11 +22,12 @@ beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cm-env-')) })
 afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }) })
 
 /** Run a script in a fresh process (cwd = temp dir) and return its last stdout line. */
-function runFresh(lines: string[], extraEnv: Record<string, string> = {}): string {
+function runFresh(lines: string[], extraEnv: Record<string, string | undefined> = {}): string {
   const script = path.join(dir, 'probe.ts')
   fs.writeFileSync(script, lines.join('\n'))
   // @next/env skips .env.local when NODE_ENV=test (vitest's default), so pin it.
   const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: 'development', ...extraEnv }
+  for (const [k, v] of Object.entries(extraEnv)) if (v === undefined) delete env[k]
   delete env.CLAWD_MONITOR_DATA_DIR
   delete env.AGENT_TOKENS
   return execFileSync(tsx, [script], { cwd: dir, env, timeout: 60_000 }).toString().trim().split('\n').pop()!
@@ -66,5 +68,45 @@ describe('server start order', () => {
       'console.log(JSON.stringify({ dataDir: getDataDir(), tokens: process.env.AGENT_TOKENS }))',
     ])
     expect(JSON.parse(out)).toEqual({ dataDir, tokens: 'static-from-file' })
+  })
+})
+
+describe('NODE_ENV default for npm start', () => {
+  const run = (env: Record<string, string | undefined>): string | undefined => {
+    defaultNodeEnvForStart(env)
+    return env.NODE_ENV
+  }
+
+  it('defaults to production under npm start when NODE_ENV is absent', () => {
+    expect(run({ npm_lifecycle_event: 'start' })).toBe('production')
+  })
+
+  it('treats an empty NODE_ENV as absent under npm start', () => {
+    expect(run({ npm_lifecycle_event: 'start', NODE_ENV: '' })).toBe('production')
+  })
+
+  it('keeps NODE_ENV=production under npm start', () => {
+    expect(run({ npm_lifecycle_event: 'start', NODE_ENV: 'production' })).toBe('production')
+  })
+
+  it('lets an explicit NODE_ENV=development win under npm start', () => {
+    expect(run({ npm_lifecycle_event: 'start', NODE_ENV: 'development' })).toBe('development')
+  })
+
+  it('leaves NODE_ENV unset outside npm start (no lifecycle event)', () => {
+    expect(run({})).toBeUndefined()
+  })
+
+  it('leaves NODE_ENV unset under another npm script such as dev', () => {
+    expect(run({ npm_lifecycle_event: 'dev' })).toBeUndefined()
+  })
+
+  it('importing the bootstrap under npm start sets production, so .env.production loads and dev does not', () => {
+    fs.writeFileSync(path.join(dir, '.env.production'), 'CM_TEST_MODE_FILE=production-file\n')
+    fs.writeFileSync(path.join(dir, '.env.development'), 'CM_TEST_MODE_FILE=development-file\n')
+    const lines = [`import ${bootstrap}`, 'console.log(process.env.NODE_ENV + ":" + process.env.CM_TEST_MODE_FILE)']
+    expect(runFresh(lines, { npm_lifecycle_event: 'start', NODE_ENV: undefined })).toBe('production:production-file')
+    expect(runFresh(lines, { npm_lifecycle_event: 'start', NODE_ENV: 'development' })).toBe('development:development-file')
+    expect(runFresh(lines, { npm_lifecycle_event: 'dev', NODE_ENV: undefined })).toBe('undefined:development-file')
   })
 })

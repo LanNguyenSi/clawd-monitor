@@ -1,11 +1,11 @@
 node_modules/
 .next/
-.env
-.env.local
-# Runtime secrets on the deploy host (loaded by the compose files) and any
-# backup copies of them; the committed template stays tracked.
-.env.runtime
-.env.runtime.*
+# Every .env file is ignored (.env, .env.local, the mode-specific variants
+# Next.js loads such as .env.production and .env.development.local, the
+# runtime secrets of the deploy host and any backup copies); only the
+# committed templates stay tracked.
+.env*
+!.env.example
 !.env.runtime.example
 *.tsbuildinfo
 .DS_Store
