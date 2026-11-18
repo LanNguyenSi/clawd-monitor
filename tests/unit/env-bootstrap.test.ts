@@ -8,7 +8,7 @@
  * show.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { defaultNodeEnvForStart } from '../../src/lib/env-bootstrap'
+import { defaultNodeEnvForStart } from '../../src/lib/node-env-default'
 import { execFileSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
@@ -30,6 +30,8 @@ function runFresh(lines: string[], extraEnv: Record<string, string | undefined> 
   for (const [k, v] of Object.entries(extraEnv)) if (v === undefined) delete env[k]
   delete env.CLAWD_MONITOR_DATA_DIR
   delete env.AGENT_TOKENS
+  // @next/env sets this in any process that loaded a .env file (a vitest worker does, when the repo root has one); a child that inherits it loads no file at all.
+  delete env.__NEXT_PROCESSED_ENV
   return execFileSync(tsx, [script], { cwd: dir, env, timeout: 60_000 }).toString().trim().split('\n').pop()!
 }
 
@@ -40,6 +42,22 @@ describe('env bootstrap', () => {
     fs.writeFileSync(path.join(dir, '.env.local'), 'CM_TEST_ONLY_IN_FILE=from-file\n')
     const out = runFresh([`import ${bootstrap}`, 'console.log(process.env.CM_TEST_ONLY_IN_FILE)'])
     expect(out).toBe('from-file')
+  })
+
+  it('still loads files when the parent process already ran @next/env (__NEXT_PROCESSED_ENV inherited)', () => {
+    fs.writeFileSync(path.join(dir, '.env.local'), 'CM_TEST_ONLY_IN_FILE=from-file\n')
+    const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: 'development', __NEXT_PROCESSED_ENV: 'true' }
+    const script = path.join(dir, 'probe.ts')
+    fs.writeFileSync(script, [`import ${bootstrap}`, 'console.log(process.env.CM_TEST_ONLY_IN_FILE)'].join('\n'))
+    // Control: the child really skips the files when it inherits the flag, so the runFresh case below is a meaningful guard.
+    const inherited = execFileSync(tsx, [script], { cwd: dir, env, timeout: 60_000 }).toString().trim().split('\n').pop()
+    expect(inherited).toBe('undefined')
+    process.env.__NEXT_PROCESSED_ENV = 'true'
+    try {
+      expect(runFresh([`import ${bootstrap}`, 'console.log(process.env.CM_TEST_ONLY_IN_FILE)'])).toBe('from-file')
+    } finally {
+      delete process.env.__NEXT_PROCESSED_ENV
+    }
   })
 
   it('does not override a value already in the process environment', () => {
