@@ -260,7 +260,8 @@ exit 0`,
     expect(r.status).not.toBe(0)
     expect(r.curlCalls).toBeGreaterThanOrEqual(2)
     expect(r.curlCalls).toBeLessThanOrEqual(5)
-    expect(r.seconds).toBeGreaterThanOrEqual(2.5)
+    // bash's SECONDS is a truncated integer, so a 3 s deadline can end after just over 2 s.
+    expect(r.seconds).toBeGreaterThanOrEqual(2)
     expect(r.seconds).toBeLessThan(15)
     expect(r.stderr).toContain('status 000')
     expectCleanup(r)
