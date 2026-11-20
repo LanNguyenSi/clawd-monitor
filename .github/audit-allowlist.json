@@ -1,9 +1,3 @@
 {
-  "entries": [
-    {
-      "id": "GHSA-fc5q-39xc-vjpf",
-      "reason": "picomatch ReDoS through single-branch repeated extglobs. Every picomatch release up to 4.0.7 is affected and no patched version exists yet. picomatch is only in the dev tree here (eslint, vitest and their globbing helpers), never in the production dependencies, and it only matches glob patterns from the repository config. Remove the entry once a fixed picomatch is published and the lockfile picks it up.",
-      "reviewBy": "2026-12-18"
-    }
-  ]
+  "entries": []
 }
