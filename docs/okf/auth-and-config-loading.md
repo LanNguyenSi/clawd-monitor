@@ -3,7 +3,7 @@ type: module
 title: Auth and config loading across the two module graphs
 description: Admin password precedence, the login rate limit and its client key (TRUSTED_PROXY_HOPS), the password.json and tokens.json data files, JWT cookie flags and lifetime, the production startup check, and how the custom server loads .env files before its modules read the environment, while the compiled route graph reads its own variables later.
 tags: [auth, config, env, jwt, startup, rate-limit]
-timestamp: 2026-11-18T06:55:21Z
+timestamp: 2026-11-21T10:23:02Z
 sources:
   - server.ts
   - tsconfig.server.json
@@ -12,6 +12,7 @@ sources:
   - docker-compose.yml
   - docker-compose.traefik.yml
   - src/lib/auth.ts
+  - src/middleware.ts
   - src/lib/client-ip.ts
   - src/lib/login-rate-limit.ts
   - src/lib/secure-compare.ts
@@ -278,7 +279,8 @@ which wins over `.env` and `.env.runtime`.
 - `extractToken()` takes an `Authorization: Bearer` header first, then the
   cookie (`src/lib/auth.ts:42-49#"if (cookie) return cookie.value"`).
 
-There is no Next.js middleware. Every API route handler gates on
+`src/middleware.ts` only sets the per-request Content-Security-Policy and
+nonce and does no authentication. Every API route handler gates on
 `isAuthenticated()` itself, except `GET /api/health`, which returns agent
 counts without a session (`src/app/api/health/route.ts:6-7#"registry.getAll()"`),
 and the `/api/auth` handlers: `GET` only reports whether the request is
