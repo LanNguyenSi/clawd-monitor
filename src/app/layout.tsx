@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import localFont from 'next/font/local'
 import './globals.css'
 
@@ -135,11 +136,14 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Set by src/middleware.ts; reading it makes every page render per request.
+  const nonce = (await headers()).get('x-nonce') ?? undefined
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem('clawd-monitor:theme');if(t==='light')document.documentElement.classList.remove('dark')}catch(e){}})()`,
           }}
