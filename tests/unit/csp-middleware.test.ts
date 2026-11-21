@@ -88,6 +88,19 @@ describe('middleware', () => {
     expect(scriptSrc(run('/login', 'production').headers.get('Content-Security-Policy') as string)).not.toContain("'unsafe-eval'")
   })
 
+  it('forwards the original request headers to rendering', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    const res = middleware(
+      new NextRequest('http://127.0.0.1:3160/dashboard', {
+        headers: { cookie: 'token=abc', 'x-clawd-peer-addr': '10.0.0.7' },
+      }),
+    )
+    const overridden = (res.headers.get('x-middleware-override-headers') ?? '').split(',')
+    expect(overridden).toEqual(expect.arrayContaining(['cookie', 'x-clawd-peer-addr', 'x-nonce', 'content-security-policy']))
+    expect(res.headers.get('x-middleware-request-cookie')).toBe('token=abc')
+    expect(res.headers.get('x-middleware-request-x-clawd-peer-addr')).toBe('10.0.0.7')
+  })
+
   it('ignores a CSP or nonce header sent by the client', () => {
     vi.stubEnv('NODE_ENV', 'production')
     const res = middleware(
@@ -105,11 +118,17 @@ describe('middleware', () => {
 describe('middleware matcher', () => {
   const [source] = config.matcher
   const matches = match(source)
-  it.each(['/', '/login', '/dashboard', '/settings', '/api/health', '/api/agents/list', '/api/stream/metrics', '/api/proxy/docker'])(
+  it.each(['/', '/login', '/dashboard', '/settings', '/api/health', '/api/agents/list', '/api/stream/metrics', '/api/proxy/docker', '/_next/staticX', '/_next/imageXYZ', '/_next/image/x', '/favicon.svgX', '/faviconXsvg'])(
     'covers %s',
     (path) => expect(matches(path)).not.toBe(false),
   )
-  it.each(['/_next/static/chunks/main.js', '/_next/image', '/favicon.svg'])('skips %s', (path) => {
+  it.each([
+    '/_next/static/chunks/main.js',
+    '/_next/static/css/app.css',
+    '/_next/static/media/font.woff2',
+    '/_next/image',
+    '/favicon.svg',
+  ])('skips %s', (path) => {
     expect(matches(path)).toBe(false)
   })
 })

@@ -12,6 +12,7 @@ sources:
   - docker-compose.yml
   - docker-compose.traefik.yml
   - src/lib/auth.ts
+  - src/middleware.ts
   - src/lib/client-ip.ts
   - src/lib/login-rate-limit.ts
   - src/lib/secure-compare.ts
@@ -278,7 +279,8 @@ which wins over `.env` and `.env.runtime`.
 - `extractToken()` takes an `Authorization: Bearer` header first, then the
   cookie (`src/lib/auth.ts:42-49#"if (cookie) return cookie.value"`).
 
-There is no Next.js middleware. Every API route handler gates on
+`src/middleware.ts` only sets the per-request Content-Security-Policy and
+nonce and does no authentication. Every API route handler gates on
 `isAuthenticated()` itself, except `GET /api/health`, which returns agent
 counts without a session (`src/app/api/health/route.ts:6-7#"registry.getAll()"`),
 and the `/api/auth` handlers: `GET` only reports whether the request is
