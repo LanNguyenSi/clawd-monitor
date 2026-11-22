@@ -3,7 +3,7 @@ type: module
 title: Auth and config loading across the two module graphs
 description: Admin password precedence, the login rate limit and its client key (TRUSTED_PROXY_HOPS), the password.json and tokens.json data files, JWT cookie flags and lifetime, the production startup check, and how the custom server loads .env files before its modules read the environment, while the compiled route graph reads its own variables later.
 tags: [auth, config, env, jwt, startup, rate-limit]
-timestamp: 2026-11-21T10:23:02Z
+timestamp: 2026-11-22T10:54:26Z
 sources:
   - server.ts
   - tsconfig.server.json
