@@ -290,8 +290,8 @@ authenticated (`src/app/api/auth/route.ts:9-10#"isAuthenticated(req)"`),
 clears the cookie (`src/app/api/auth/route.ts:91#"export async function DELETE"`).
 The dashboard page calls `GET /api/auth` from the browser and redirects to
 `/login` when the response is not OK
-(`src/app/dashboard/page.tsx:31-33#"router.replace('/login')"`) or reports
-no session (`src/app/dashboard/page.tsx:37-39#"router.replace('/login')"`).
+(`src/app/dashboard/page.tsx:36-38#"router.replace('/login')"`) or reports
+no session (`src/app/dashboard/page.tsx:42-44#"router.replace('/login')"`).
 
 ## Key files
 

@@ -5,6 +5,7 @@ import { Responsive, WidthProvider } from 'react-grid-layout'
 import type { Layout } from 'react-grid-layout'
 import { GridItem } from './GridItem'
 import { UndoNotice } from './UndoNotice'
+import { usePendingUndo, type PendingUndoStore } from './usePendingUndo'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import {
   applyGridKey,
@@ -49,14 +50,11 @@ interface Props {
   cols: ColCount
   editMode?: boolean
   onLayoutChange?: (widgetIds: string[]) => void
-}
-
-interface RemovedWidget {
-  id: string
-  title: string
-  /** Every breakpoint's full layout as the user saw it before the remove. */
-  before: ResponsiveLayouts
-  key: number
+  /**
+   * The pending removal, owned by the dashboard page so a remount of the grid
+   * keeps it. Defaults to state inside this component.
+   */
+  undo?: PendingUndoStore
 }
 
 type PendingFocus = { kind: 'widget'; title: string } | { kind: 'grid' }
@@ -69,16 +67,15 @@ const SCROLL_FALLBACK_MS = 400
 
 const titleOfWidget = (id: string) => WIDGET_REGISTRY.find((w) => w.id === id)?.title ?? id
 
-export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
+export function WidgetGrid({ cols, editMode = false, onLayoutChange, undo }: Props) {
   const [layouts, setLayouts] = useState<ResponsiveLayouts>({})
   const [mounted, setMounted] = useState(false)
-  const [removed, setRemoved] = useState<RemovedWidget | null>(null)
-  const removalCount = useRef(0)
+  // The page owns the pending removal so it survives a remount; used
+  // stand-alone, the grid keeps it here instead.
+  const ownUndo = usePendingUndo()
+  const pendingUndo = undo ?? ownUndo
   const gridRef = useRef<HTMLDivElement>(null)
   const pendingFocus = useRef<PendingFocus | null>(null)
-  // Set by a drag or resize after the remove: the saved snapshot is then out of
-  // date and Undo only splices the widget back in.
-  const editedSinceRemove = useRef(false)
   const [announcement, setAnnouncement] = useState<{ n: number; text: string }>({ n: 0, text: '' })
   const lastMessage = useRef('')
   const cancelScroll = useRef<(() => void) | null>(null)
@@ -164,17 +161,17 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
     if (reason === 'escape' && document.activeElement?.closest('[data-undo-notice]')) {
       pendingFocus.current = { kind: 'grid' }
     }
-    setRemoved(null)
-  }, [])
+    pendingUndo.clear()
+  }, [pendingUndo])
 
   // react-grid-layout calls onDragStop on every mouseup on a drag handle, also
   // for a plain click without movement; only a real move or resize counts.
   const markEdited = useCallback((_layout: Layout[], oldItem?: Layout, newItem?: Layout) => {
     if (!oldItem || !newItem) return
     if (oldItem.x !== newItem.x || oldItem.y !== newItem.y || oldItem.w !== newItem.w || oldItem.h !== newItem.h) {
-      editedSinceRemove.current = true
+      pendingUndo.markEdited()
     }
-  }, [])
+  }, [pendingUndo])
 
   // The grid slides a moved card with a CSS transition. Scroll once it has
   // arrived (or after a fallback delay when no transition runs), because
@@ -220,7 +217,7 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
     if (!(e.repeat && result.message === lastMessage.current)) announce(result.message)
     if (!result.changed) return
     // Same path as a pointer move: persist per breakpoint and report the ids.
-    editedSinceRemove.current = true
+    pendingUndo.markEdited()
     handleLayoutChange(result.layout, { ...layouts, [bp]: result.layout })
     scrollIntoViewWhenSettled(card)
   }
@@ -230,18 +227,17 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
     setLayouts(next)
     saveLayouts(localStorage, next)
     onLayoutChange?.(widgetIdsOf(next))
-    removalCount.current += 1
-    editedSinceRemove.current = false
-    setRemoved({ id, title, before: layouts, key: removalCount.current })
+    pendingUndo.begin({ id, title }, layouts)
   }
 
   const handleUndo = () => {
+    const removed = pendingUndo.pending
     if (!removed) return
     const next: ResponsiveLayouts = { ...layouts }
     for (const [bp, snapshot] of Object.entries(removed.before)) {
       const current = next[bp]
       if (!current) continue
-      if (!editedSinceRemove.current) {
+      if (!removed.edited) {
         // Nothing moved since the remove: put the layout back exactly as it was
         // (keeping only widgets that still exist).
         const present = new Set(current.map((l) => l.i))
@@ -260,7 +256,7 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
     setLayouts(next)
     saveLayouts(localStorage, next)
     onLayoutChange?.(widgetIdsOf(next))
-    setRemoved(null)
+    pendingUndo.clear()
   }
 
   if (!mounted) return null
@@ -335,7 +331,7 @@ export function WidgetGrid({ cols, editMode = false, onLayoutChange }: Props) {
       <span key={announcement.n}>{announcement.text}</span>
     </div>
     <UndoNotice
-      notice={removed ? { key: removed.key, message: `${removed.title} removed` } : null}
+      notice={pendingUndo.pending ? { key: pendingUndo.pending.key, message: `${pendingUndo.pending.title} removed` } : null}
       onUndo={handleUndo}
       onDismiss={dismissRemoved}
     />
