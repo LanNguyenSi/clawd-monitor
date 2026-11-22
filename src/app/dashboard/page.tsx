@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Navbar } from '@/components/Nav/Navbar'
 import { WidgetGrid } from '@/components/Grid/WidgetGrid'
+import { usePendingUndo } from '@/components/Grid/usePendingUndo'
 import { KeyboardShortcuts } from '@/components/KeyboardShortcuts'
 import { ActiveAgentProvider } from '@/lib/active-agent'
 import { ThemeProvider, useTheme } from '@/lib/theme'
@@ -22,6 +23,10 @@ function DashboardInner() {
   const [editMode, setEditMode] = useState(false)
   const [gridKey, setGridKey] = useState(0)
   const [activeWidgetIds, setActiveWidgetIds] = useState<string[]>([])
+  // The pending widget removal lives here, above the grid, so a remount of the
+  // grid (refresh, Add widget, Reset layout) does not drop the Undo notice.
+  const undo = usePendingUndo()
+  const [undoAnnouncement, setUndoAnnouncement] = useState<{ n: number; text: string }>({ n: 0, text: '' })
 
   useEffect(() => {
     let mounted = true
@@ -87,14 +92,25 @@ function DashboardInner() {
     const widget = WIDGET_REGISTRY.find((w) => w.id === widgetId)
     if (!widget) return
     addWidgetToStorage(localStorage, widget, new Set(WIDGET_REGISTRY.map((w) => w.id)), defaultLayouts(cols))
+    undo.widgetAdded(widgetId)
     setGridKey((k) => k + 1)
-  }, [cols])
+  }, [cols, undo])
 
   const handleResetLayout = useCallback(() => {
     if (!window.confirm(RESET_CONFIRM_MESSAGE)) return
     resetLayouts(localStorage)
+    // Resetting throws the layout away, so the pending undo goes with it on
+    // purpose; say so in the live region outside the grid instead of dropping
+    // the notice silently on the remount.
+    if (undo.pending) {
+      setUndoAnnouncement((a) => ({
+        n: a.n + 1,
+        text: `Layout reset. Undo of ${undo.pending?.title} is no longer available.`,
+      }))
+      undo.clear()
+    }
     setGridKey((k) => k + 1)
-  }, [])
+  }, [undo])
 
   const handleToggleEditMode = useCallback(() => {
     setEditMode((v) => !v)
@@ -117,11 +133,19 @@ function DashboardInner() {
       />
       <main className="flex-1 overflow-auto p-2">
         <h1 className="sr-only">Dashboard</h1>
+
+        {/* A pending undo dropped by Reset layout is announced here: the region
+            is outside the grid, so the grid remount does not swallow it. */}
+        <div aria-live="polite" aria-atomic="true" className="sr-only" data-undo-announcer="">
+          <span key={undoAnnouncement.n}>{undoAnnouncement.text}</span>
+        </div>
+
         <WidgetGrid
           key={gridKey}
           cols={cols}
           editMode={editMode}
           onLayoutChange={setActiveWidgetIds}
+          undo={undo}
         />
 
         {/* Help hint */}
