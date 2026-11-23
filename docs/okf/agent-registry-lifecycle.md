@@ -73,22 +73,22 @@ those constants are read (after the `.env` files were loaded).
 2. Before that, a socket is held to limits in `src/lib/agent-ws-limits.ts`
    until it authenticates. At most 32 such sockets exist at once, 4 per client
    key and 16 per IPv6 /48; the next is closed with 1013
-   (`src/lib/agent-ws-limits.ts:307#"AGENT_WS_MAX_UNAUTHENTICATED"`). A slot is
+   (`src/lib/agent-ws-limits.ts:328#"AGENT_WS_MAX_UNAUTHENTICATED"`). A slot is
    given back once the socket authenticated, closed, errored, timed out or was
    rejected and the work for its messages (a token compare in progress) has
    settled. A deadline of 10 s closes a silent socket with 1008
-   (`src/lib/agent-ws-limits.ts:348#"AGENT_WS_AUTH_TIMEOUT_MS"`). A frame over
+   (`src/lib/agent-ws-limits.ts:370#"AGENT_WS_AUTH_TIMEOUT_MS"`). A frame over
    8 KiB closes it with 1009 before any parse
-   (`src/lib/agent-ws-handler.ts:38#"guard.tooLarge(raw)"`). A handshake that
+   (`src/lib/agent-ws-handler.ts:41#"guard.tooLarge(raw)"`). A handshake that
    needs the token store is charged to the client IP first, 10 per 15 minutes,
    and the socket is closed with 1008 before the store is read when the
    budget is used up; a socket gets one such handshake, and an `auth` message
    sent meanwhile is ignored
-   (`src/lib/agent-ws-handler.ts:67#"guard.admitHandshake()"`). These
+   (`src/lib/agent-ws-handler.ts:77#"guard.admitHandshake()"`). These
    refusals send no `auth_error`. The server as a whole refuses any frame over
    1 MiB (`src/lib/agent-ws-limits.ts:101#"maxPayload"`). After the token was
    accepted, the authenticated sockets are bounded too: 128 in total and 16 per
-   client key (`src/lib/agent-ws-limits.ts:396#"AGENT_WS_MAX_AUTHENTICATED"`).
+   client key (`src/lib/agent-ws-limits.ts:421#"AGENT_WS_MAX_AUTHENTICATED"`).
    A socket over either cap is closed with 1013 and no `auth_error`, before
    the registry is touched, so an existing entry of that `agentId` is not
    replaced by a refused connection.
@@ -96,20 +96,20 @@ those constants are read (after the `.env` files were loaded).
    `wsMessageSchema`
    (`auth`, `snapshot` or `ping`). A frame that is not JSON is dropped
    without a reply
-   (`src/lib/agent-ws-handler.ts:49-50#"return"`); a JSON frame that fails
+   (`src/lib/agent-ws-handler.ts:52-53#"return"`); a JSON frame that fails
    the schema gets `{type:'error'}` and the socket stays open
-   (`src/lib/agent-ws-handler.ts:45#"Invalid message format"`).
+   (`src/lib/agent-ws-handler.ts:48#"Invalid message format"`).
 4. Before authentication, any valid non-`auth` message gets `auth_error`
    and the socket is closed
-   (`src/lib/agent-ws-handler.ts:54-56#"ws.close()"`).
+   (`src/lib/agent-ws-handler.ts:57-59#"ws.close()"`).
 5. The token is checked against the `AGENT_TOKENS` list first (a constant-time
    `safeEqual` compare against every configured token, the verdicts combined
    after the loop, so neither a match nor its position shortens the work,
-   `src/lib/agent-ws-handler.ts:268-274#"safeEqual(token, t)"`), then with `bcrypt.compare` against every `tokenHash` in
+   `src/lib/agent-ws-handler.ts:278-284#"safeEqual(token, t)"`), then with `bcrypt.compare` against every `tokenHash` in
    `tokens.json`, and stops at the next entry once the socket is gone
-   (`src/lib/agent-ws-handler.ts:90-95#"tokenValid = true"`). A miss sends
+   (`src/lib/agent-ws-handler.ts:100-105#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket with code 1008
-   (`src/lib/agent-ws-handler.ts:187#"guard.close(1008"`). A `tokens.json` read
+   (`src/lib/agent-ws-handler.ts:197#"guard.close(1008"`). A `tokens.json` read
    that throws (the file is corrupt, empty, unreadable or holds an entry that is
    not an object with string `id`, `name`, `tokenHash` and `createdAt` and, when
    present, a string `lastUsedAt` and `agentId`; only a missing file reads as no
@@ -117,17 +117,20 @@ those constants are read (after the `.env` files were loaded).
    (`Server busy`), no `auth_error` (which would make the reference agent stop
    for good), and a warning that carries only the error message, naming the
    file, so the client learns only that the handshake should be retried, not why, and the operator sees the
-   cause (`src/lib/agent-ws-handler.ts:80-82#"WS_CLOSE_TRY_AGAIN_LATER"`).
+   cause (`src/lib/agent-ws-handler.ts:90-92#"WS_CLOSE_TRY_AGAIN_LATER"`).
 6. On success the handler takes the authenticated slot and calls
    `registry.register()` with the agent's self-reported `agentId`, `name`,
    `version`, `gatewayUrl` and `gatewayToken`, then sends `auth_ok`; no `await`
-   lies between the slot and the registration. `register()` returns false,
+   lies between the slot and the registration. A socket authenticates at most
+   once: a further `auth` message while the first is being checked is ignored
+   without closing, and `guard.authenticated()` returns null on a second call,
+   so one socket never holds two slots or two registry entries. `register()` returns false,
    and changes nothing, for a new `agentId` when the registry already holds
    256 entries, online and offline together, after it evicted the expired
    offline ones (`src/lib/agent-registry.ts:72#"AGENT_REGISTRY_MAX_ENTRIES"`);
    the handler then gives the slot back and closes the socket with 1013. An
    `agentId` that already has an entry is never refused by this cap
-   (`src/lib/agent-ws-handler.ts:203-221#"auth_ok"`). The handshake does not
+   (`src/lib/agent-ws-handler.ts:212-230#"auth_ok"`). The handshake does not
    validate `gatewayUrl` (the documented agent protocol sends a loopback
    URL); the only consumer that fetches it, the logs route, does so through
    `remoteGatewayFetch`, which applies the full URL rule (https, host and port
@@ -137,11 +140,11 @@ those constants are read (after the `.env` files were loaded).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored
-(`src/lib/agent-ws-handler.ts:225-241#"type: 'pong'"`). A snapshot is stored
+(`src/lib/agent-ws-handler.ts:235-251#"type: 'pong'"`). A snapshot is stored
 under the connection's own `agentId`, not the `agentId` field inside the
 snapshot payload, and only when the connection still owns the entry (see
 "Newest connection wins")
-(`src/lib/agent-ws-handler.ts:233#"registry.update(ws, agentId, msg.data)"`).
+(`src/lib/agent-ws-handler.ts:243#"registry.update(ws, agentId, msg.data)"`).
 
 ## Persisted tokens are bound to an agent on first use
 
@@ -155,7 +158,7 @@ as an invalid token, registry untouched) when any entry's `agentId` equals the
 handshake's; a missing file reads as no entries, an unreadable or corrupt one
 refuses the handshake too (fail closed) but retryably, with close 1013 and no
 `auth_error`, so the reference agent reconnects instead of stopping
-(`src/lib/agent-ws-handler.ts:101-132#"if (staticMatch)"`). A match against a persisted
+(`src/lib/agent-ws-handler.ts:111-142#"if (staticMatch)"`). A match against a persisted
 token is bound: the handler re-reads `tokens.json` after the bcrypt
 comparison, patches only the matched id and rewrites the file with no await
 in between, so a token created or revoked during the comparison is neither lost
@@ -165,14 +168,14 @@ entry without `agentId` records the handshake's `agentId` in that write
 (existing tokens bind on their next handshake); an entry with another
 `agentId` is rejected with the same `auth_error` and close 1008 as an invalid
 token, and the registry is not touched
-(`src/lib/agent-ws-handler.ts:155#"current.agentId !== msg.agentId"`).
+(`src/lib/agent-ws-handler.ts:165#"current.agentId !== msg.agentId"`).
 The same write stamps `lastUsedAt`
-(`src/lib/agent-ws-handler.ts:165#"current.lastUsedAt"`). A failed write does
+(`src/lib/agent-ws-handler.ts:175#"current.lastUsedAt"`). A failed write does
 not fail the handshake of an already bound token, but a failed write of a new
 binding does (fail closed), because the token would otherwise stay usable for
 any `agentId`
-(`src/lib/agent-ws-handler.ts:170#"best effort"`,
-`src/lib/agent-ws-handler.ts:176#"needsBinding"`). Binding is trust on
+(`src/lib/agent-ws-handler.ts:180#"best effort"`,
+`src/lib/agent-ws-handler.ts:186#"needsBinding"`). Binding is trust on
 first use and not unique: two tokens may bind the same `agentId` (a token is
 rotated by creating the new one before revoking the old), and revoking a token
 drops its binding with the entry. An entry whose stored `agentId` is the empty
@@ -208,7 +211,7 @@ connection of the real agent could overwrite fresh data.
 The replaced socket is dropped, not left silently connected. When the
 handler's `registry.update()` returns `false`, the handler sends no `ack`,
 logs a warning and closes that socket with code 4000
-(`src/lib/agent-ws-handler.ts:233-237#"REPLACED_CLOSE_CODE"`). The close
+(`src/lib/agent-ws-handler.ts:243-247#"REPLACED_CLOSE_CODE"`). The close
 happens on the replaced socket's own next `snapshot`, never inside
 `register()`, which keeps its rule of not touching the old socket (event
 loop interference with the new connection). An agent that sees 4000 has been
@@ -233,7 +236,7 @@ never sends snapshots keeps `lastSnapshotAt` at its last snapshot (or `0`).
 ## Offline and eviction
 
 An entry goes offline only through `disconnect()` from the socket's `close`
-handler (`src/lib/agent-ws-handler.ts:251#"registry.disconnect(agentId, ws)"`).
+handler (`src/lib/agent-ws-handler.ts:261#"registry.disconnect(agentId, ws)"`).
 There is no idle timeout on snapshots: an entry whose socket stays open and
 answers pings is online indefinitely, whether or not it sends snapshots. The
 server does ping, though: every 30 s the heartbeat pings each authenticated
@@ -242,9 +245,9 @@ socket and terminates one that did not answer the previous ping
 `src/lib/agent-ws-limits.ts:157#"ws.terminate()"`). The terminate ends in the
 socket's `close` event, so a dead peer (a half-open connection) takes the
 same path to offline, and then to eviction, as a clean close, within one to
-two intervals. The timer starts with the server
-(`src/lib/agent-ws-limits.ts:173#"export function startAgentHeartbeat"`) and
-is cleared when it closes.
+two intervals. One timer serves every server of the process: the first server starts it
+(`src/lib/agent-ws-limits.ts:183#"export function startAgentHeartbeat"`) and
+it is cleared when the last one closes.
 
 Eviction is lazy. `cleanup()` deletes an entry when it is offline and
 `now - lastSnapshotAt > AGENT_TTL_MS`

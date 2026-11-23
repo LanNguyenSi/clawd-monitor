@@ -23,7 +23,7 @@ vi.mock('@/lib/data-store', () => ({
 
 vi.mock('@/lib/agent-registry', () => ({
   registry: {
-    register: vi.fn(),
+    register: vi.fn(() => true),
     update: vi.fn(() => true),
     disconnect: vi.fn(),
   },

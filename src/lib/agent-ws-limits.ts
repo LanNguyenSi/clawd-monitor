@@ -169,11 +169,30 @@ export function runAgentHeartbeat(): void {
   }
 }
 
-/** Run the heartbeat every `intervalMs` until `wss` closes. */
+// One timer serves every server of the process: the authenticated sockets are
+// module-global, so a timer per server would run several rounds per interval
+// and terminate a socket that was pinged only once.
+const heartbeatServers = new Set<WebSocketServer>()
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
+/**
+ * Run the heartbeat every `intervalMs` while `wss` is open. The first open
+ * server starts the one shared timer (its interval wins), later ones join it,
+ * and the timer stops when the last server closes.
+ */
 export function startAgentHeartbeat(wss: WebSocketServer, intervalMs: number = AGENT_WS_PING_INTERVAL_MS): void {
-  const timer = setInterval(runAgentHeartbeat, intervalMs)
-  timer.unref?.()
-  wss.once('close', () => clearInterval(timer))
+  heartbeatServers.add(wss)
+  if (heartbeatTimer === null) {
+    heartbeatTimer = setInterval(runAgentHeartbeat, intervalMs)
+    heartbeatTimer.unref?.()
+  }
+  wss.once('close', () => {
+    heartbeatServers.delete(wss)
+    if (heartbeatServers.size === 0 && heartbeatTimer !== null) {
+      clearInterval(heartbeatTimer)
+      heartbeatTimer = null
+    }
+  })
 }
 
 let unauthenticated = 0
@@ -265,7 +284,9 @@ export interface PreAuthGuard {
   /**
    * The socket presented a valid token: stop the deadline, free the
    * unauthenticated slot, clear the IP's failures if it was charged, and take
-   * an authenticated slot (in total and for the client key). Returns null,
+   * an authenticated slot (in total and for the client key). A socket takes one
+   * slot at most: every call after the first returns null and changes nothing.
+   * Returns null,
    * after closing the socket with 1013, when AGENT_WS_MAX_AUTHENTICATED
    * sockets are already authenticated or the client key holds its share.
    * `isReplaced` tells the heartbeat whether a newer connection took over the
@@ -321,6 +342,7 @@ export function admitUnauthenticated(ws: WebSocket, req: IncomingMessage): PreAu
   let charged = false
   // A socket gets one persisted-token handshake: every outcome but success closes it.
   let handshakeStarted = false
+  let authCalled = false
   let cancelReap: (() => void) | null = null
 
   const releaseIfIdle = () => {
@@ -384,6 +406,9 @@ export function admitUnauthenticated(ws: WebSocket, req: IncomingMessage): PreAu
         })
     },
     authenticated(agent) {
+      // One slot per socket: a second call must not take another one.
+      if (authCalled) return null
+      authCalled = true
       clearTimeout(deadline)
       // The slot is given back when the message that authenticated has settled.
       done = true

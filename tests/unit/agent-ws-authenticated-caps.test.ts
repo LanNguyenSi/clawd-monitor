@@ -282,3 +282,85 @@ describe('cap on registry entries', () => {
     expect(registry.agents.has('fill-0')).toBe(true)
   })
 })
+
+describe('one authentication per socket', () => {
+  const PERSISTED = 'persisted-once-token'
+  const authMsg = (token: string, agentId: string) =>
+    Buffer.from(JSON.stringify({ type: 'auth', token, agentId, name: agentId, version: '1' }))
+
+  async function storeWithPersistedAndBound() {
+    vi.mocked(readTokens).mockReturnValue([
+      { id: 'p1', name: 'persisted', tokenHash: await bcrypt.hash(PERSISTED, 4), createdAt: new Date().toISOString() },
+      { id: 'p2', name: 'bound', tokenHash: await bcrypt.hash('other-token', 4), createdAt: new Date().toISOString(), agentId: 'agent-b-bound' },
+    ])
+  }
+
+  afterEach(() => {
+    vi.mocked(readTokens).mockReturnValue([])
+  })
+
+  it('a pending persisted auth for agent A and a static auth for agent B give one slot, one entry, and go offline on close', async () => {
+    await storeWithPersistedAndBound()
+    const ws = new MockWs()
+    handle(asWs(ws), reqFrom('10.8.0.1'))
+    // The second message arrives while bcrypt of the first is still running.
+    ws.emit('message', authMsg(PERSISTED, 'agent-a'))
+    ws.emit('message', authMsg(STATIC_TOKEN, 'agent-b'))
+    await vi.waitFor(() => expect(sentTypes(ws)).toContain('auth_ok'), { timeout: 5000 })
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(sentTypes(ws).filter((t) => t === 'auth_ok')).toHaveLength(1)
+    expect(limits.authenticatedSocketCount()).toBe(1)
+    expect(limits.authenticatedKeyCount('10.8.0.1')).toBe(1)
+    expect([...registry.agents.keys()]).toEqual(['agent-a'])
+    expect(registry.agents.get('agent-a')!.online).toBe(true)
+
+    ws.emit('close')
+    expect(registry.agents.get('agent-a')!.online).toBe(false)
+    expect([...registry.agents.values()].some((a) => a.online)).toBe(false)
+    expect(limits.authenticatedSocketCount()).toBe(0)
+    expect(limits.authenticatedKeyCount('10.8.0.1')).toBe(0)
+  })
+
+  it('a second auth message while the first is checked is ignored: it does not close the socket or answer auth_error', async () => {
+    await storeWithPersistedAndBound()
+    const ws = new MockWs()
+    handle(asWs(ws), reqFrom('10.8.0.2'))
+    ws.emit('message', authMsg(PERSISTED, 'agent-a'))
+    // A static token for an agentId that a persisted token is bound to is refused
+    // when it is checked; as a second message it is not checked at all.
+    ws.emit('message', authMsg(STATIC_TOKEN, 'agent-b-bound'))
+    await vi.waitFor(() => expect(sentTypes(ws)).toContain('auth_ok'), { timeout: 5000 })
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(sentTypes(ws)).not.toContain('auth_error')
+    expect(ws.close).not.toHaveBeenCalled()
+    expect(registry.agents.get('agent-a')!.online).toBe(true)
+    expect(registry.agents.has('agent-b-bound')).toBe(false)
+  })
+
+  it('a second static auth after authentication changes nothing', async () => {
+    const ws = await connect('agent-once', '10.8.0.3')
+    expect(accepted(ws)).toBe(true)
+    ws.emit('message', authMsg(STATIC_TOKEN, 'agent-twice'))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(limits.authenticatedSocketCount()).toBe(1)
+    expect([...registry.agents.keys()]).toEqual(['agent-once'])
+  })
+
+  it('guard.authenticated() takes a slot once: a second call returns null and takes none', () => {
+    const ws = new MockWs()
+    const guard = limits.admitUnauthenticated(asWs(ws), reqFrom('10.8.0.4'))!
+    expect(guard).not.toBeNull()
+    const first = guard.authenticated({ agentId: 'g-a', isReplaced: () => false })
+    expect(first).not.toBeNull()
+    expect(guard.authenticated({ agentId: 'g-b', isReplaced: () => false })).toBeNull()
+    expect(limits.authenticatedSocketCount()).toBe(1)
+    expect(limits.authenticatedKeyCount('10.8.0.4')).toBe(1)
+    expect(ws.close).not.toHaveBeenCalled()
+
+    ws.emit('close')
+    expect(limits.authenticatedSocketCount()).toBe(0)
+    expect(limits.authenticatedKeyCount('10.8.0.4')).toBe(0)
+  })
+})

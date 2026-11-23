@@ -27,6 +27,9 @@ function send(ws: WebSocket, msg: object) {
 export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
   let agentId: string | null = null
   let authenticated = false
+  // A socket authenticates at most once: set by the first auth message, whatever
+  // its outcome (every outcome but success closes the socket).
+  let authStarted = false
 
   // Bounds what a socket may cost before it authenticates (see agent-ws-limits.ts).
   const guard = admitUnauthenticated(ws, req)
@@ -56,6 +59,13 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
         ws.close()
         return
       }
+
+      // The first auth message decides the outcome. A further one on the same
+      // socket, while the first is still being checked, is ignored without
+      // closing: it must not authenticate the socket a second time (two slots,
+      // two registry entries, one close).
+      if (authStarted) return
+      authStarted = true
 
       // Validate token — check static env tokens first, then persisted tokens.json
       const staticMatch = matchesStaticToken(msg.token)

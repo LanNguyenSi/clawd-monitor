@@ -259,10 +259,11 @@ these refusals are temporary, so the agent reconnects with its backoff.
   State is in memory, so a restart clears it.
 - The handshake budget also bounds the CPU one address can spend: up to 10
   handshakes per 15 minutes, each up to one bcrypt compare (about 100 ms) per
-  stored token. A socket gets one persisted-token handshake (every
-  outcome but success closes it); an `auth` message sent on the same socket
-  meanwhile is ignored (the socket stays open and the first handshake decides
-  the outcome).
+  stored token. A socket authenticates at most once (every
+  outcome but success closes it); a further `auth` message on the same socket,
+  whether the first is still being checked or has succeeded, is ignored (the
+  socket stays open and the first one decides the outcome), so it never takes a
+  second authenticated slot or registers a second agent.
 - A token store that exists but cannot be read gets close `1013` and no
   `auth_error`, for persisted and static tokens alike (see
   [Handshake](#handshake)).

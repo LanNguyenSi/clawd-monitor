@@ -212,3 +212,43 @@ describe('replaced sockets on a tick', () => {
     expect(wsOld.terminate).not.toHaveBeenCalled()
   })
 })
+
+describe('several servers in one process', () => {
+  it('run one heartbeat: a socket that answers every ping survives, and the timer outlives all but the last server', async () => {
+    const second = limits.createAgentWebSocketServer()
+    try {
+      const ws = await connect('multi-agent')
+      for (let i = 0; i < 3; i++) {
+        await tick()
+        expect(ws.terminate).not.toHaveBeenCalled()
+        ws.emit('pong')
+      }
+      expect(ws.ping).toHaveBeenCalledTimes(3)
+
+      // Closing one server leaves the shared timer running for the other.
+      second.close()
+      await vi.advanceTimersByTimeAsync(0)
+      await tick()
+      expect(ws.ping).toHaveBeenCalledTimes(4)
+      expect(ws.terminate).not.toHaveBeenCalled()
+      ws.emit('pong')
+
+      // Closing the last one stops it.
+      wss.close()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      second.close()
+    }
+  })
+
+  it('a server opened after the others closed starts the heartbeat again', async () => {
+    wss.close()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(vi.getTimerCount()).toBe(0)
+    wss = limits.createAgentWebSocketServer()
+    const ws = await connect('restart-agent')
+    await tick()
+    expect(ws.ping).toHaveBeenCalledTimes(1)
+  })
+})
