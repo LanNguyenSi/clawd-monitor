@@ -27,7 +27,7 @@ vi.mock('@/lib/agent-registry', () => {
   return {
     registry: {
       agents,
-      register: vi.fn(),
+      register: vi.fn(() => true),
       update: vi.fn(() => true),
       disconnect: vi.fn(),
       getAll: vi.fn(() => []),

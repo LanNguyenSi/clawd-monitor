@@ -120,6 +120,73 @@ describe('POST /api/auth/change-password', () => {
     expect(json.error).toBe('Password must be at least 8 characters')
   })
 
+  it('returns 400 when newPassword is not a string', async () => {
+    authMock.mockReturnValue(true)
+    for (const bad of [12345678, ['abcdefgh'], { length: 20 }, true]) {
+      const res = await POST(makeRequest({ currentPassword: 'admin', newPassword: bad, confirmPassword: bad }))
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toBe('Password must be at least 8 characters')
+    }
+    expect(readPasswordConfig().hash).toBeUndefined()
+  })
+
+  describe('72-byte limit (bcrypt only uses the first 72 bytes)', () => {
+    const post = (newPassword: string) =>
+      POST(makeRequest({ currentPassword: 'oldpass', newPassword, confirmPassword: newPassword }))
+
+    beforeEach(async () => {
+      authMock.mockReturnValue(true)
+      writePasswordConfig({ hash: await bcrypt.hash('oldpass', TEST_BCRYPT_COST) })
+    })
+
+    it('accepts 72 ASCII bytes and the stored hash verifies it', async () => {
+      const pw = 'a'.repeat(72)
+      const res = await post(pw)
+      expect(res.status).toBe(200)
+      await expect(bcrypt.compare(pw, readPasswordConfig().hash!)).resolves.toBe(true)
+    }, ROUTE_HASH_TIMEOUT_MS)
+
+    it('refuses 73 ASCII bytes with a message naming the byte limit, and keeps the old password', async () => {
+      const before = readPasswordConfig().hash
+      const res = await post('a'.repeat(73))
+      expect(res.status).toBe(400)
+      const { error } = await res.json()
+      expect(error).toContain('72 bytes')
+      expect(error).toContain('2 to 4 bytes')
+      expect(readPasswordConfig().hash).toBe(before)
+    })
+
+    it('counts bytes, not characters: 24 three-byte characters (72 bytes) are accepted and verify', async () => {
+      const pw = '\u20ac'.repeat(24)
+      expect(pw.length).toBe(24)
+      expect(Buffer.byteLength(pw, 'utf8')).toBe(72)
+      const res = await post(pw)
+      expect(res.status).toBe(200)
+      await expect(bcrypt.compare(pw, readPasswordConfig().hash!)).resolves.toBe(true)
+    }, ROUTE_HASH_TIMEOUT_MS)
+
+    it('refuses 25 three-byte characters (75 bytes, only 25 characters)', async () => {
+      const pw = '\u20ac'.repeat(25)
+      expect(pw.length).toBe(25)
+      const res = await post(pw)
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toContain('72 bytes')
+    })
+
+    it('counts a surrogate pair (4 bytes, 2 UTF-16 units) as 4 bytes: 18 emoji are 72 bytes, 19 are not', async () => {
+      const ok = await post('\u{1F600}'.repeat(18))
+      expect(ok.status).toBe(200)
+      const tooLong = await post('\u{1F600}'.repeat(19))
+      expect(tooLong.status).toBe(400)
+    }, ROUTE_HASH_TIMEOUT_MS)
+
+    it('checks the length of 8 characters before the byte limit: 7 characters stay a short-password error', async () => {
+      const res = await post('abcdefg')
+      expect(res.status).toBe(400)
+      expect((await res.json()).error).toBe('Password must be at least 8 characters')
+    })
+  })
+
   it('returns 400 when newPassword and confirmPassword do not match', async () => {
     authMock.mockReturnValue(true)
     const res = await POST(makeRequest({ currentPassword: 'admin', newPassword: 'newpassword', confirmPassword: 'different' }))

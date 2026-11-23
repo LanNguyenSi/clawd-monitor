@@ -19,7 +19,7 @@ import type WebSocket from 'ws'
 import type { IncomingMessage } from 'http'
 
 vi.mock('@/lib/agent-registry', () => ({
-  registry: { register: vi.fn(), update: vi.fn(), disconnect: vi.fn() },
+  registry: { register: vi.fn(() => true), update: vi.fn(), disconnect: vi.fn() },
 }))
 
 class MockWs extends EventEmitter {

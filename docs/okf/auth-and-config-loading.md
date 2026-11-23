@@ -3,7 +3,7 @@ type: module
 title: Auth and config loading across the two module graphs
 description: Admin password precedence, the login rate limit and its client key (TRUSTED_PROXY_HOPS), the password.json and tokens.json data files, JWT cookie flags and lifetime, the production startup check, and how the custom server loads .env files before its modules read the environment, while the compiled route graph reads its own variables later.
 tags: [auth, config, env, jwt, startup, rate-limit]
-timestamp: 2026-11-22T10:54:26Z
+timestamp: 2026-11-23T06:44:19Z
 sources:
   - server.ts
   - tsconfig.server.json
@@ -155,10 +155,10 @@ removes the file; removing `password.json` restores the env password, removing
   (`src/app/api/settings/tokens/route.ts:46#"bcrypt.hash(rawToken, 10)"`);
   the raw token is returned once, in the `POST` response. A successful
   handshake with such a token stamps its `lastUsedAt`
-  (`src/lib/agent-ws-handler.ts:165#"current.lastUsedAt"`), which the `GET`
+  (`src/lib/agent-ws-handler.ts:175#"current.lastUsedAt"`), which the `GET`
   list returns and the settings page shows, and binds the token to the
   handshake's `agentId` when it has none yet
-  (`src/lib/agent-ws-handler.ts:166#"current.agentId = msg.agentId"`).
+  (`src/lib/agent-ws-handler.ts:176#"current.agentId = msg.agentId"`).
 
 ## Admin password precedence
 
@@ -174,17 +174,23 @@ asked, so a 500 for a broken store or a missing password does not use up an
 attempt.
 
 `POST /api/auth/change-password` requires a valid session, a new password
-of at least 8 characters and a matching confirmation
-(`src/app/api/auth/change-password/route.ts:25-26#"at least 8 characters"`).
+that is a string of at least 8 characters and at most 72 UTF-8 bytes
+(`src/app/api/auth/change-password/route.ts:28-29#"at least 8 characters"`,
+`src/app/api/auth/change-password/route.ts:34#"MAX_PASSWORD_BYTES"`; bcrypt
+hashes only the first 72 bytes, so a longer password is refused with 400
+instead of being stored truncated, and non-ASCII characters count 2 to 4
+bytes) and a matching confirmation. The limit applies to the change route
+only: `ADMIN_PASSWORD` is compared in full, and an `ADMIN_PASSWORD_HASH` made
+from a longer password checks only its first 72 bytes at login.
 It verifies the current password with the same chain, except that it has no
 production branch: with nothing configured it compares against `admin`
-(`src/app/api/auth/change-password/route.ts:57-58#"safeEqual(candidate, 'admin')"`),
+(`src/app/api/auth/change-password/route.ts:69-70#"safeEqual(candidate, 'admin')"`),
 and the plain and dev-default comparisons also go through `safeEqual`. In
 production the startup check exits when neither `ADMIN_PASSWORD` nor
 `ADMIN_PASSWORD_HASH` is set (`server.ts:20-23#"process.exit(1)"`), so this
 fallback is reached only in development. The check sits behind its own limiter
 instance, described below. It stores a bcrypt hash with cost 12
-(`src/app/api/auth/change-password/route.ts:77#"writePasswordConfig({ hash: newHash })"`).
+(`src/app/api/auth/change-password/route.ts:89#"writePasswordConfig({ hash: newHash })"`).
 
 ## Login rate limit
 
@@ -197,7 +203,7 @@ the client's keys and records them as known good (next paragraphs)
 `src/app/api/auth/route.ts:75#"loginRateLimiter.recordSuccess"`).
 The change-password route does the same admission with a second limiter instance,
 `passwordChangeRateLimiter`, so the two key spaces do not share counts
-(`src/app/api/auth/change-password/route.ts:62#"passwordChangeRateLimiter.acquire"`);
+(`src/app/api/auth/change-password/route.ts:74#"passwordChangeRateLimiter.acquire"`);
 it never calls `recordSuccess`, so its known-good set stays empty.
 
 The limiter (`src/lib/login-rate-limit.ts`) allows 5 attempts per key in a fixed

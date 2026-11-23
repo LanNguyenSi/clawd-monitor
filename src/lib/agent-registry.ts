@@ -36,6 +36,15 @@ export function parseAgentTtlMs(raw: string | undefined): number {
 
 const AGENT_TTL_MS = parseAgentTtlMs(process.env.AGENT_TTL_MS)
 
+/**
+ * Most entries the registry holds, online and offline together. A static token
+ * may claim any agentId that no persisted token is bound to, so without a bound
+ * the map could grow with every new id until the TTL passes. A new agentId over
+ * the bound is refused; an agentId that already has an entry is never refused
+ * (a reconnect replaces its own entry). Not configurable.
+ */
+export const AGENT_REGISTRY_MAX_ENTRIES = 256
+
 function toPublicEntry(entry: AgentEntry): AgentEntryPublic {
   return {
     agentId: entry.agentId,
@@ -52,8 +61,19 @@ function toPublicEntry(entry: AgentEntry): AgentEntryPublic {
 class AgentRegistry {
   agents: Map<string, AgentEntry> = new Map()
 
-  register(ws: WebSocket, meta: { agentId: string; name: string; version: string; token: string; gatewayUrl?: string; gatewayToken?: string }) {
+  /**
+   * Register `ws` as the connection of `meta.agentId`. Returns false, and
+   * changes nothing, when the agentId is new and the registry is at
+   * AGENT_REGISTRY_MAX_ENTRIES even after the expired offline entries were
+   * evicted (the caller then refuses the connection, retryably).
+   */
+  register(ws: WebSocket, meta: { agentId: string; name: string; version: string; token: string; gatewayUrl?: string; gatewayToken?: string }): boolean {
     const existing = this.agents.get(meta.agentId)
+    if (!existing && this.agents.size >= AGENT_REGISTRY_MAX_ENTRIES) {
+      // Expired offline entries are otherwise evicted only by getAll().
+      this.cleanup()
+      if (this.agents.size >= AGENT_REGISTRY_MAX_ENTRIES) return false
+    }
 
     // Register the new connection first, THEN close the old one.
     // This ensures the close handler for the old WS sees entry.ws !== oldWs
@@ -72,7 +92,14 @@ class AgentRegistry {
     // Calling terminate/close/removeAllListeners on the old WS can interfere
     // with the new connection in the same Node.js event loop.
     // The old socket cannot write any more, though: update() ignores a socket
-    // that is not entry.ws, and the handler closes it on its next snapshot.
+    // that is not entry.ws, and the handler closes it on its next snapshot, or
+    // on the next heartbeat tick (see agent-ws-limits.ts), whichever comes first.
+    return true
+  }
+
+  /** Whether `ws` is the socket that currently owns the entry of `agentId`. */
+  owns(ws: WebSocket, agentId: string): boolean {
+    return this.agents.get(agentId)?.ws === ws
   }
 
   /**

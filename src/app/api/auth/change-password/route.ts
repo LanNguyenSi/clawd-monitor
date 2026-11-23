@@ -6,6 +6,9 @@ import { getClientKeys, getTrustedProxyHops } from '@/lib/client-ip'
 import { passwordChangeRateLimiter } from '@/lib/login-rate-limit'
 import { safeEqual } from '@/lib/secure-compare'
 
+// bcrypt (bcryptjs) hashes only the first 72 bytes of the password.
+const MAX_PASSWORD_BYTES = 72
+
 export async function POST(req: NextRequest) {
   if (!isAuthenticated(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -22,8 +25,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'All fields required' }, { status: 400 })
   }
 
-  if (newPassword.length < 8) {
+  if (typeof newPassword !== 'string' || newPassword.length < 8) {
     return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
+  }
+
+  // bcrypt only uses the first 72 bytes of its input: a longer password would
+  // be stored truncated, and its tail would not be checked at login.
+  if (Buffer.byteLength(newPassword, 'utf8') > MAX_PASSWORD_BYTES) {
+    return NextResponse.json(
+      { error: `Password must be at most ${MAX_PASSWORD_BYTES} bytes (UTF-8); characters outside ASCII take 2 to 4 bytes each` },
+      { status: 400 },
+    )
   }
 
   if (newPassword !== confirmPassword) {
