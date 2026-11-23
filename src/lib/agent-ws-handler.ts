@@ -209,16 +209,17 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
         isReplaced: () => !registry.owns(ws, claimedAgentId),
       })
       if (!slot) return
-      // Only an explicit false is the registry's refusal.
+      // register() returns false when the registry is full; anything but true
+      // is a refusal.
       if (
-        registry.register(ws, {
+        !registry.register(ws, {
           agentId: msg.agentId,
           name: msg.name,
           version: msg.version,
           token: msg.token,
           gatewayUrl: msg.gatewayUrl,
           gatewayToken: msg.gatewayToken,
-        }) === false
+        })
       ) {
         console.warn(`[agent-ws] Refusing connection of agent ${msg.agentId}: the agent registry is full`)
         slot.refuse()

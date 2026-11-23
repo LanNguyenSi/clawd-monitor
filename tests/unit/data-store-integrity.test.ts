@@ -26,7 +26,7 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
 }))
 
 vi.mock('@/lib/agent-registry', () => ({
-  registry: { register: vi.fn(), update: vi.fn(), disconnect: vi.fn() },
+  registry: { register: vi.fn(() => true), update: vi.fn(), disconnect: vi.fn() },
 }))
 
 type DataStore = typeof import('@/lib/data-store')
