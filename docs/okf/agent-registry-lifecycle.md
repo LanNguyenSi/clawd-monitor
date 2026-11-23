@@ -3,7 +3,7 @@ type: invariant
 title: Agent registry lifecycle, from WebSocket handshake to TTL eviction
 description: How a clawd-monitor-agent connection becomes an AgentRegistry entry (auth message first, static then persisted token check, newest connection wins), when an entry goes offline (only via its current socket), when it is evicted (lazily, only inside getAll), and what token revocation does and does not affect.
 tags: [agents, websocket, registry, tokens, ttl]
-timestamp: 2026-11-17T06:40:00Z
+timestamp: 2026-11-23T06:44:19Z
 sources:
   - server.ts
   - src/lib/ws-upgrade.ts
@@ -105,7 +105,7 @@ those constants are read (after the `.env` files were loaded).
 5. The token is checked against the `AGENT_TOKENS` list first (a constant-time
    `safeEqual` compare against every configured token, the verdicts combined
    after the loop, so neither a match nor its position shortens the work,
-   `src/lib/agent-ws-handler.ts:278-284#"safeEqual(token, t)"`), then with `bcrypt.compare` against every `tokenHash` in
+   `src/lib/agent-ws-handler.ts:279-285#"safeEqual(token, t)"`), then with `bcrypt.compare` against every `tokenHash` in
    `tokens.json`, and stops at the next entry once the socket is gone
    (`src/lib/agent-ws-handler.ts:100-105#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket with code 1008
@@ -130,7 +130,7 @@ those constants are read (after the `.env` files were loaded).
    offline ones (`src/lib/agent-registry.ts:72#"AGENT_REGISTRY_MAX_ENTRIES"`);
    the handler then gives the slot back and closes the socket with 1013. An
    `agentId` that already has an entry is never refused by this cap
-   (`src/lib/agent-ws-handler.ts:212-230#"auth_ok"`). The handshake does not
+   (`src/lib/agent-ws-handler.ts:213-231#"auth_ok"`). The handshake does not
    validate `gatewayUrl` (the documented agent protocol sends a loopback
    URL); the only consumer that fetches it, the logs route, does so through
    `remoteGatewayFetch`, which applies the full URL rule (https, host and port
@@ -140,11 +140,11 @@ those constants are read (after the `.env` files were loaded).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored
-(`src/lib/agent-ws-handler.ts:235-251#"type: 'pong'"`). A snapshot is stored
+(`src/lib/agent-ws-handler.ts:236-252#"type: 'pong'"`). A snapshot is stored
 under the connection's own `agentId`, not the `agentId` field inside the
 snapshot payload, and only when the connection still owns the entry (see
 "Newest connection wins")
-(`src/lib/agent-ws-handler.ts:243#"registry.update(ws, agentId, msg.data)"`).
+(`src/lib/agent-ws-handler.ts:244#"registry.update(ws, agentId, msg.data)"`).
 
 ## Persisted tokens are bound to an agent on first use
 
@@ -211,7 +211,7 @@ connection of the real agent could overwrite fresh data.
 The replaced socket is dropped, not left silently connected. When the
 handler's `registry.update()` returns `false`, the handler sends no `ack`,
 logs a warning and closes that socket with code 4000
-(`src/lib/agent-ws-handler.ts:243-247#"REPLACED_CLOSE_CODE"`). The close
+(`src/lib/agent-ws-handler.ts:244-248#"REPLACED_CLOSE_CODE"`). The close
 happens on the replaced socket's own next `snapshot`, never inside
 `register()`, which keeps its rule of not touching the old socket (event
 loop interference with the new connection). An agent that sees 4000 has been
@@ -236,7 +236,7 @@ never sends snapshots keeps `lastSnapshotAt` at its last snapshot (or `0`).
 ## Offline and eviction
 
 An entry goes offline only through `disconnect()` from the socket's `close`
-handler (`src/lib/agent-ws-handler.ts:261#"registry.disconnect(agentId, ws)"`).
+handler (`src/lib/agent-ws-handler.ts:262#"registry.disconnect(agentId, ws)"`).
 There is no idle timeout on snapshots: an entry whose socket stays open and
 answers pings is online indefinitely, whether or not it sends snapshots. The
 server does ping, though: every 30 s the heartbeat pings each authenticated
