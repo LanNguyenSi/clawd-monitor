@@ -174,17 +174,23 @@ asked, so a 500 for a broken store or a missing password does not use up an
 attempt.
 
 `POST /api/auth/change-password` requires a valid session, a new password
-of at least 8 characters and a matching confirmation
-(`src/app/api/auth/change-password/route.ts:25-26#"at least 8 characters"`).
+that is a string of at least 8 characters and at most 72 UTF-8 bytes
+(`src/app/api/auth/change-password/route.ts:28-29#"at least 8 characters"`,
+`src/app/api/auth/change-password/route.ts:34#"MAX_PASSWORD_BYTES"`; bcrypt
+hashes only the first 72 bytes, so a longer password is refused with 400
+instead of being stored truncated, and non-ASCII characters count 2 to 4
+bytes) and a matching confirmation. The limit applies to the change route
+only: `ADMIN_PASSWORD` is compared in full, and an `ADMIN_PASSWORD_HASH` made
+from a longer password checks only its first 72 bytes at login.
 It verifies the current password with the same chain, except that it has no
 production branch: with nothing configured it compares against `admin`
-(`src/app/api/auth/change-password/route.ts:57-58#"safeEqual(candidate, 'admin')"`),
+(`src/app/api/auth/change-password/route.ts:69-70#"safeEqual(candidate, 'admin')"`),
 and the plain and dev-default comparisons also go through `safeEqual`. In
 production the startup check exits when neither `ADMIN_PASSWORD` nor
 `ADMIN_PASSWORD_HASH` is set (`server.ts:20-23#"process.exit(1)"`), so this
 fallback is reached only in development. The check sits behind its own limiter
 instance, described below. It stores a bcrypt hash with cost 12
-(`src/app/api/auth/change-password/route.ts:77#"writePasswordConfig({ hash: newHash })"`).
+(`src/app/api/auth/change-password/route.ts:89#"writePasswordConfig({ hash: newHash })"`).
 
 ## Login rate limit
 
@@ -197,7 +203,7 @@ the client's keys and records them as known good (next paragraphs)
 `src/app/api/auth/route.ts:75#"loginRateLimiter.recordSuccess"`).
 The change-password route does the same admission with a second limiter instance,
 `passwordChangeRateLimiter`, so the two key spaces do not share counts
-(`src/app/api/auth/change-password/route.ts:62#"passwordChangeRateLimiter.acquire"`);
+(`src/app/api/auth/change-password/route.ts:74#"passwordChangeRateLimiter.acquire"`);
 it never calls `recordSuccess`, so its known-good set stays empty.
 
 The limiter (`src/lib/login-rate-limit.ts`) allows 5 attempts per key in a fixed

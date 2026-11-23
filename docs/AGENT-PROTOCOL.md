@@ -114,7 +114,10 @@ use it, see token binding above), the newest connection wins. The older
 socket may not write any more: its next `snapshot` is dropped without an
 `ack` and the server closes it with code `4000` (`Replaced by a newer
 connection`); a `ping` on it is still answered. The server does not close the
-older socket at the moment the newer one connects. The reference agent
+older socket at the moment the newer one connects, but it closes it with `4000`
+on its next heartbeat tick (see [Keepalive](#keepalive)) if it has not sent a
+`snapshot` by then, so a replaced socket that never writes does not stay open.
+The reference agent
 reconnects after a `4000` (it resets its delay to 1 s on every `auth_ok`), so two
 agent processes that share an `agentId` take turns replacing each other, about
 once per snapshot interval plus the 1 s reconnect delay.
@@ -190,6 +193,19 @@ Server → agent:
 { "type": "pong" }
 ```
 
+The server also pings every authenticated socket itself, with a WebSocket
+protocol ping frame (not a JSON message), every 30 seconds. A compliant
+WebSocket client answers it with a pong frame automatically, and the reference
+agent's `ws` library does, so an agent author needs to do nothing. A socket
+that did not answer the previous ping by the next tick is terminated: the
+connection closes, the agent goes offline and its entry is evicted once
+`AGENT_TTL_MS` has passed, as for any other close. A dead peer (a half-open TCP
+connection, for instance after a network change) is therefore noticed within
+one to two intervals, about 30 to 60 seconds, instead of staying online for
+good. An agent that handles WebSocket frames itself must answer a ping frame
+with a pong frame, or it is dropped. The JSON `ping` above is independent of
+this and keeps working.
+
 ## Errors
 
 - A message that parses as JSON but fails schema validation gets
@@ -200,8 +216,9 @@ Server → agent:
 ## Limits and close codes
 
 The endpoint is open to anyone, so a socket that has not authenticated yet is
-held to limits (constants in `src/lib/agent-ws-limits.ts`, not settings). When
-one is hit the server closes the socket with a WebSocket close code and sends
+held to limits, and the number of authenticated sockets and registry entries is
+bounded too (constants in `src/lib/agent-ws-limits.ts` and
+`src/lib/agent-registry.ts`, not settings). When one is hit the server closes the socket with a WebSocket close code and sends
 no `auth_error`: that message makes the reference agent stop for good, and
 these refusals are temporary, so the agent reconnects with its backoff.
 
@@ -212,8 +229,17 @@ these refusals are temporary, so the agent reconnects with its backoff.
 | Time to authenticate | 10 s after connecting | Close `1008` (`Authentication timeout`); a socket that authenticated is not affected |
 | Sockets waiting to authenticate | 32, all clients together; 4 per client key and 16 per IPv6 /48 | The next socket is closed at once with `1013` (`Server busy`) |
 | Persisted-token handshakes per client IP | 10 per 15 minutes | Close `1008` (`Too many attempts`) before the token store is read; a successful handshake clears the IP's count |
-| Replaced by a newer connection | A newer connection of the same `agentId` authenticated | Close `4000` (`Replaced by a newer connection`), sent on the replaced socket's next `snapshot` (never when the newer one registers); not fatal, the agent reconnects |
+| Authenticated sockets | 128, all clients together; 16 per client key | A socket that presents a valid token over a cap is closed with `1013` (`Server busy`), no `auth_ok`, no `auth_error`; the agent reconnects with its backoff. An existing entry of that `agentId` is not touched |
+| Agents in the registry | 256 entries, online and offline together (offline ones count until `AGENT_TTL_MS`) | A new `agentId` over the cap is closed with `1013` after expired offline entries were evicted; an `agentId` that already has an entry is never refused by this cap |
+| No pong to the server's ping | One missed pong (ping every 30 s) | The server terminates the socket (no close frame); the agent goes offline |
+| Replaced by a newer connection | A newer connection of the same `agentId` authenticated | Close `4000` (`Replaced by a newer connection`), sent on the replaced socket's next `snapshot` or at the next heartbeat tick, whichever comes first (never when the newer one registers); not fatal, the agent reconnects |
 
+- The authenticated-socket caps are checked once the token was accepted, and the
+  per-key cap uses the same client key as the limits above. Behind a reverse
+  proxy without `TRUSTED_PROXY_HOPS` every agent has the proxy's address as its
+  key, so all of them share 16 authenticated sockets; set `TRUSTED_PROXY_HOPS`
+  (see `docs/configuration.md`) so each agent host counts for itself. A
+  handshake refused by a cap does not count against the handshake limit.
 - The handshake limit counts only tokens that need the token store and a
   bcrypt compare. A token from `AGENT_TOKENS` is matched first, costs one
   synchronous read and parse of `tokens.json` per handshake (the agentId
@@ -267,9 +293,10 @@ stateDiagram-v2
   AwaitingAuth --> Closed: invalid token, snapshot or ping first, over a limit, or no auth within the deadline
   AwaitingAuth --> Online: valid token, register, auth_ok
   Offline --> Online: re-auth
+  AwaitingAuth --> Closed: valid token over a cap (1013)
   Online --> Online: snapshot or ping
-  Online --> Offline: socket closes
-  Online --> Closed: replaced (next snapshot, 4000)
+  Online --> Offline: socket closes, or no pong to the server's ping
+  Online --> Closed: replaced (next snapshot or heartbeat tick, 4000)
   Offline --> Evicted: list or health read after AGENT_TTL_MS since last snapshot
   Closed --> [*]
   Evicted --> [*]

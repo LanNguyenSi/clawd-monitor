@@ -44,7 +44,7 @@ single one of those files states.
 ## One registry for two module graphs
 
 The registry is a singleton stored on `globalThis`
-(`src/lib/agent-registry.ts:133-138#"export const registry = globalForRegistry.agentRegistry"`).
+(`src/lib/agent-registry.ts:165#"export const registry = globalForRegistry.agentRegistry"`).
 The custom server (`server.ts`, run by `tsx` or compiled by `tsc`) and the
 Next.js-compiled API routes load `agent-registry.ts` as separate module
 instances; the `globalThis` slot is what makes the WebSocket handler and the
@@ -73,11 +73,11 @@ those constants are read (after the `.env` files were loaded).
 2. Before that, a socket is held to limits in `src/lib/agent-ws-limits.ts`
    until it authenticates. At most 32 such sockets exist at once, 4 per client
    key and 16 per IPv6 /48; the next is closed with 1013
-   (`src/lib/agent-ws-limits.ts:185#"AGENT_WS_MAX_UNAUTHENTICATED"`). A slot is
+   (`src/lib/agent-ws-limits.ts:307#"AGENT_WS_MAX_UNAUTHENTICATED"`). A slot is
    given back once the socket authenticated, closed, errored, timed out or was
    rejected and the work for its messages (a token compare in progress) has
    settled. A deadline of 10 s closes a silent socket with 1008
-   (`src/lib/agent-ws-limits.ts:226#"AGENT_WS_AUTH_TIMEOUT_MS"`). A frame over
+   (`src/lib/agent-ws-limits.ts:348#"AGENT_WS_AUTH_TIMEOUT_MS"`). A frame over
    8 KiB closes it with 1009 before any parse
    (`src/lib/agent-ws-handler.ts:38#"guard.tooLarge(raw)"`). A handshake that
    needs the token store is charged to the client IP first, 10 per 15 minutes,
@@ -86,7 +86,12 @@ those constants are read (after the `.env` files were loaded).
    sent meanwhile is ignored
    (`src/lib/agent-ws-handler.ts:67#"guard.admitHandshake()"`). These
    refusals send no `auth_error`. The server as a whole refuses any frame over
-   1 MiB (`src/lib/agent-ws-limits.ts:73#"maxPayload"`).
+   1 MiB (`src/lib/agent-ws-limits.ts:101#"maxPayload"`). After the token was
+   accepted, the authenticated sockets are bounded too: 128 in total and 16 per
+   client key (`src/lib/agent-ws-limits.ts:396#"AGENT_WS_MAX_AUTHENTICATED"`).
+   A socket over either cap is closed with 1013 and no `auth_error`, before
+   the registry is touched, so an existing entry of that `agentId` is not
+   replaced by a refused connection.
 3. Every frame within those limits is JSON-parsed and validated against
    `wsMessageSchema`
    (`auth`, `snapshot` or `ping`). A frame that is not JSON is dropped
@@ -100,7 +105,7 @@ those constants are read (after the `.env` files were loaded).
 5. The token is checked against the `AGENT_TOKENS` list first (a constant-time
    `safeEqual` compare against every configured token, the verdicts combined
    after the loop, so neither a match nor its position shortens the work,
-   `src/lib/agent-ws-handler.ts:251-258#"safeEqual(token, t)"`), then with `bcrypt.compare` against every `tokenHash` in
+   `src/lib/agent-ws-handler.ts:268-274#"safeEqual(token, t)"`), then with `bcrypt.compare` against every `tokenHash` in
    `tokens.json`, and stops at the next entry once the socket is gone
    (`src/lib/agent-ws-handler.ts:90-95#"tokenValid = true"`). A miss sends
    `auth_error` and closes the socket with code 1008
@@ -113,10 +118,16 @@ those constants are read (after the `.env` files were loaded).
    for good), and a warning that carries only the error message, naming the
    file, so the client learns only that the handshake should be retried, not why, and the operator sees the
    cause (`src/lib/agent-ws-handler.ts:80-82#"WS_CLOSE_TRY_AGAIN_LATER"`).
-6. On success the handler calls `registry.register()` with the agent's
-   self-reported `agentId`, `name`, `version`, `gatewayUrl` and
-   `gatewayToken`, then sends `auth_ok`
-   (`src/lib/agent-ws-handler.ts:194-205#"auth_ok"`). The handshake does not
+6. On success the handler takes the authenticated slot and calls
+   `registry.register()` with the agent's self-reported `agentId`, `name`,
+   `version`, `gatewayUrl` and `gatewayToken`, then sends `auth_ok`; no `await`
+   lies between the slot and the registration. `register()` returns false,
+   and changes nothing, for a new `agentId` when the registry already holds
+   256 entries, online and offline together, after it evicted the expired
+   offline ones (`src/lib/agent-registry.ts:72#"AGENT_REGISTRY_MAX_ENTRIES"`);
+   the handler then gives the slot back and closes the socket with 1013. An
+   `agentId` that already has an entry is never refused by this cap
+   (`src/lib/agent-ws-handler.ts:203-221#"auth_ok"`). The handshake does not
    validate `gatewayUrl` (the documented agent protocol sends a loopback
    URL); the only consumer that fetches it, the logs route, does so through
    `remoteGatewayFetch`, which applies the full URL rule (https, host and port
@@ -126,11 +137,11 @@ those constants are read (after the `.env` files were loaded).
 
 After authentication only `snapshot` and `ping` are handled; a second
 `auth` message is ignored
-(`src/lib/agent-ws-handler.ts:208-224#"type: 'pong'"`). A snapshot is stored
+(`src/lib/agent-ws-handler.ts:225-241#"type: 'pong'"`). A snapshot is stored
 under the connection's own `agentId`, not the `agentId` field inside the
 snapshot payload, and only when the connection still owns the entry (see
 "Newest connection wins")
-(`src/lib/agent-ws-handler.ts:216#"registry.update(ws, agentId, msg.data)"`).
+(`src/lib/agent-ws-handler.ts:233#"registry.update(ws, agentId, msg.data)"`).
 
 ## Persisted tokens are bound to an agent on first use
 
@@ -175,19 +186,19 @@ such a token is unusable. The settings API passes `id`, `name`, `createdAt`,
 `register()` overwrites the map entry for the `agentId` with the new socket
 and `online: true`, carrying over `lastSnapshot` and `lastSnapshotAt` from
 any previous entry
-(`src/lib/agent-registry.ts:61-66#"online: true"`). The old socket is left
+(`src/lib/agent-registry.ts:80-87#"online: true"`). The old socket is left
 open on purpose
-(`src/lib/agent-registry.ts:70-75#"skips stale sockets"`). When it later
+(`src/lib/agent-registry.ts:91-96#"skips stale sockets"`). When it later
 closes, `disconnect(agentId, ws)` sees that it is no longer the entry's
 socket and does nothing
-(`src/lib/agent-registry.ts:96-100#"entry.online = false"`), so a reconnect
+(`src/lib/agent-registry.ts:123-128#"entry.online = false"`), so a reconnect
 is never marked offline by the stale socket's close. Regression-pinned by
 `tests/unit/agent-registry.test.ts:236#"does NOT mark the agent offline when called with a stale (replaced) ws"`.
 
 A replaced socket cannot write either. `update(ws, agentId, snapshot)` takes
 the sending socket as a required argument and stores nothing, returning
 `false`, unless `ws` is the entry's current socket
-(`src/lib/agent-registry.ts:87-89#"entry.ws !== ws"`); the check lives in
+(`src/lib/agent-registry.ts:114-117#"entry.ws !== ws"`); the check lives in
 the registry, not at the call site, so the one write a socket triggers
 cannot skip it. Before this check a replaced socket kept its `agentId` from
 the closure and kept overwriting the current connection's snapshot, so a
@@ -197,7 +208,7 @@ connection of the real agent could overwrite fresh data.
 The replaced socket is dropped, not left silently connected. When the
 handler's `registry.update()` returns `false`, the handler sends no `ack`,
 logs a warning and closes that socket with code 4000
-(`src/lib/agent-ws-handler.ts:216-220#"REPLACED_CLOSE_CODE"`). The close
+(`src/lib/agent-ws-handler.ts:233-237#"REPLACED_CLOSE_CODE"`). The close
 happens on the replaced socket's own next `snapshot`, never inside
 `register()`, which keeps its rule of not touching the old socket (event
 loop interference with the new connection). An agent that sees 4000 has been
@@ -206,31 +217,43 @@ reconnects with its backoff and becomes the current connection again. Two
 live agent processes configured with one `agentId` therefore take turns
 replacing each other, about once per snapshot interval plus the 1 s reconnect delay, instead of one silently feeding a
 dropped stream. A `ping` on a replaced socket is still answered with `pong`
-and does not close it, because it writes nothing. The close of the replaced
+and does not close it, because it writes nothing. A replaced socket that never
+sends a snapshot is closed with 4000 as well, by the heartbeat: on its next
+tick, a later turn of the event loop than the registration that replaced it
+(`src/lib/agent-ws-limits.ts:139#"export function runAgentHeartbeat"`). The close of the replaced
 socket reaches `disconnect(agentId, ws)` as a stale socket and leaves the
 agent online. Pinned by `tests/unit/agent-ws-replaced-socket.test.ts` and the
 `update` cases in `tests/unit/agent-registry.test.ts`.
 
 A `snapshot` from the current socket sets `online: true` again
-(`src/lib/agent-registry.ts:87-93#"entry.online = true"`). A `ping` only
+(`src/lib/agent-registry.ts:114-120#"entry.online = true"`). A `ping` only
 answers `pong` and touches no registry field, so an agent that pings but
 never sends snapshots keeps `lastSnapshotAt` at its last snapshot (or `0`).
 
 ## Offline and eviction
 
 An entry goes offline only through `disconnect()` from the socket's `close`
-handler (`src/lib/agent-ws-handler.ts:234#"registry.disconnect(agentId, ws)"`).
-There is no server-side idle timeout: an entry whose socket stays open is
-online indefinitely, whether or not it sends snapshots.
+handler (`src/lib/agent-ws-handler.ts:251#"registry.disconnect(agentId, ws)"`).
+There is no idle timeout on snapshots: an entry whose socket stays open and
+answers pings is online indefinitely, whether or not it sends snapshots. The
+server does ping, though: every 30 s the heartbeat pings each authenticated
+socket and terminates one that did not answer the previous ping
+(`src/lib/agent-ws-limits.ts:67#"AGENT_WS_PING_INTERVAL_MS"`,
+`src/lib/agent-ws-limits.ts:157#"ws.terminate()"`). The terminate ends in the
+socket's `close` event, so a dead peer (a half-open connection) takes the
+same path to offline, and then to eviction, as a clean close, within one to
+two intervals. The timer starts with the server
+(`src/lib/agent-ws-limits.ts:173#"export function startAgentHeartbeat"`) and
+is cleared when it closes.
 
 Eviction is lazy. `cleanup()` deletes an entry when it is offline and
 `now - lastSnapshotAt > AGENT_TTL_MS`
-(`src/lib/agent-registry.ts:126#"now - entry.lastSnapshotAt > AGENT_TTL_MS"`),
+(`src/lib/agent-registry.ts:153#"now - entry.lastSnapshotAt > AGENT_TTL_MS"`),
 with `AGENT_TTL_MS` defaulting to 300000 ms
 (`src/lib/agent-registry.ts:22#"AGENT_TTL_MS"`); a value that is not a plain
 positive integer falls back to that default with one `console.warn`
 (`src/lib/agent-registry.ts:24#"export function parseAgentTtlMs"`). Only `getAll()` calls it
-(`src/lib/agent-registry.ts:103-104#"this.cleanup()"`), and only two routes
+(`src/lib/agent-registry.ts:130-132#"this.cleanup()"`), and only two routes
 call `getAll()`: `GET /api/agents/list`
 (`src/app/api/agents/list/route.ts:11#"registry.getAll()"`) and the
 unauthenticated `GET /api/health`
@@ -238,7 +261,7 @@ unauthenticated `GET /api/health`
 
 - Until one of those two routes is requested, an expired entry stays in the
   map, and `getAgent()` (no cleanup) still returns it
-  (`src/lib/agent-registry.ts:108-111#"return toPublicEntry(entry)"`), so
+  (`src/lib/agent-registry.ts:135-139#"return toPublicEntry(entry)"`), so
   `GET /api/agents/<id>/snapshot` answers with the stale snapshot and
   `online: false`
   (`src/app/api/agents/[agentId]/snapshot/route.ts:16-23#"online: agent.online"`).
@@ -255,7 +278,7 @@ The route calls `registry.remove()`
 (`src/app/api/agents/[agentId]/route.ts:17#"registry.remove(agentId)"`), which
 deletes an offline entry, refuses an online one with 409 and answers 404 for
 an unknown id
-(`src/lib/agent-registry.ts:115#"remove(agentId: string)"`). The switcher
+(`src/lib/agent-registry.ts:142#"remove(agentId: string)"`). The switcher
 keeps the entry in its list on any failure other than 404, so a removed agent
 does not reappear on the next 5-second poll unless it reconnects.
 
@@ -278,6 +301,9 @@ every route response built from `getAll()` or `getAgent()` uses that shape.
 
 ## What breaks it
 
+- Counting the authenticated slot (or the registry cap) after
+  `registry.register()` instead of before it would let a refused connection
+  replace the entry of a live agent.
 - Dropping the `entry.ws !== ws` check in `disconnect()` would mark a
   freshly reconnected agent offline as soon as its replaced socket closes.
 - Calling `cleanup()` from `getAgent()` would make the snapshot route return

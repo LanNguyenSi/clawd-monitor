@@ -4,9 +4,12 @@ import { LoginRateLimiter } from './login-rate-limit.js'
 import { PEER_ADDR_HEADER, getClientKeys, getTrustedProxyHops, type ClientKeys } from './client-ip.js'
 
 /**
- * Limits on the agent WebSocket (/api/agents/ws) that hold before a socket has
- * authenticated: anyone can open the path, so what an unauthenticated socket
+ * Limits on the agent WebSocket (/api/agents/ws). Before a socket has
+ * authenticated, anyone can open the path, so what an unauthenticated socket
  * may cost the process (memory, bcrypt time, open sockets) is bounded here.
+ * After authentication the number of open sockets is bounded too (in total and
+ * per client key), and a heartbeat closes a socket whose peer stopped
+ * answering, so a half-open connection cannot keep an agent online for ever.
  */
 
 /**
@@ -56,10 +59,34 @@ export const AGENT_WS_CLOSE_GRACE_MS = 2000
  */
 export const AGENT_WS_HANDSHAKE_MAX_ATTEMPTS = 10
 
+/**
+ * The server pings every authenticated socket this often; a socket that did
+ * not answer the previous ping by the next tick is terminated. A dead peer is
+ * therefore noticed after one to two intervals. Not configurable.
+ */
+export const AGENT_WS_PING_INTERVAL_MS = 30_000
+
+/** Authenticated sockets that may be open at once, all clients together. */
+export const AGENT_WS_MAX_AUTHENTICATED = 128
+
+/**
+ * Of those, the most one client key may hold (the peer address, or the one the
+ * trusted proxy saw; an IPv6 client is keyed by its /64). Behind a reverse
+ * proxy without TRUSTED_PROXY_HOPS every agent has the proxy's address as its
+ * key, so there they share this budget.
+ */
+export const AGENT_WS_MAX_AUTHENTICATED_PER_KEY = 16
+
 /** Close codes (RFC 6455 / IANA) the server uses before authentication. */
 export const WS_CLOSE_POLICY = 1008
 export const WS_CLOSE_TOO_BIG = 1009
 export const WS_CLOSE_TRY_AGAIN_LATER = 1013
+
+/**
+ * Application close code (4000-4999 is free for applications) for a socket
+ * that a newer connection of the same agentId replaced.
+ */
+export const AGENT_WS_REPLACED_CLOSE_CODE = 4000
 
 /** Failed (or in-flight) persisted-token handshakes per client IP. Static tokens are not counted. */
 export const agentHandshakeLimiter = new LoginRateLimiter(AGENT_WS_HANDSHAKE_MAX_ATTEMPTS)
@@ -67,10 +94,86 @@ export const agentHandshakeLimiter = new LoginRateLimiter(AGENT_WS_HANDSHAKE_MAX
 /**
  * The WebSocket server for /api/agents/ws. ws buffers a whole message before
  * any handler sees it and the path is open to anyone, so the size cap is set
- * on the server itself.
+ * on the server itself. The heartbeat of the authenticated sockets runs for as
+ * long as the server is open.
  */
 export function createAgentWebSocketServer(): WebSocketServer {
-  return new WebSocketServer({ noServer: true, maxPayload: AGENT_WS_MAX_PAYLOAD_BYTES })
+  const wss = new WebSocketServer({ noServer: true, maxPayload: AGENT_WS_MAX_PAYLOAD_BYTES })
+  startAgentHeartbeat(wss)
+  return wss
+}
+
+/** One authenticated socket as the heartbeat sees it. */
+interface AuthenticatedSocket {
+  ws: WebSocket
+  agentId: string
+  /** False from the moment a ping is sent until its pong arrives. */
+  alive: boolean
+  /** True when the registry entry of the agentId now belongs to another socket. */
+  isReplaced: () => boolean
+  replacedClosed: boolean
+}
+
+const authenticatedSockets = new Set<AuthenticatedSocket>()
+const authenticatedByKey = new Map<string, number>()
+
+/** Sockets currently counted against AGENT_WS_MAX_AUTHENTICATED. */
+export function authenticatedSocketCount(): number {
+  return authenticatedSockets.size
+}
+
+/** Authenticated sockets counted for one client key. */
+export function authenticatedKeyCount(key: string): number {
+  return authenticatedByKey.get(key) ?? 0
+}
+
+/**
+ * One heartbeat round over the authenticated sockets. A socket that a newer
+ * connection of its agentId replaced is closed with the replaced code (here, a
+ * later turn of the event loop than the registration that replaced it, so the
+ * interference register() avoids does not apply, and a replaced socket that
+ * never sends a snapshot does not stay open). Any other socket that did not
+ * answer the previous ping is terminated, which runs the ordinary close path
+ * (the agent goes offline); the rest is pinged.
+ */
+export function runAgentHeartbeat(): void {
+  for (const entry of [...authenticatedSockets]) {
+    const { ws } = entry
+    if (entry.isReplaced()) {
+      if (!entry.replacedClosed) {
+        entry.replacedClosed = true
+        console.warn(`[agent-ws] Closing connection of agent ${entry.agentId}: this connection no longer owns the agent entry`)
+        try {
+          ws.close(AGENT_WS_REPLACED_CLOSE_CODE, 'Replaced by a newer connection')
+        } catch {
+          // already closing
+        }
+      }
+      continue
+    }
+    if (!entry.alive) {
+      console.warn(`[agent-ws] Terminating connection of agent ${entry.agentId}: no pong since the last ping`)
+      try {
+        ws.terminate()
+      } catch {
+        // already gone
+      }
+      continue
+    }
+    entry.alive = false
+    try {
+      ws.ping()
+    } catch {
+      // not open any more; the close path follows
+    }
+  }
+}
+
+/** Run the heartbeat every `intervalMs` until `wss` closes. */
+export function startAgentHeartbeat(wss: WebSocketServer, intervalMs: number = AGENT_WS_PING_INTERVAL_MS): void {
+  const timer = setInterval(runAgentHeartbeat, intervalMs)
+  timer.unref?.()
+  wss.once('close', () => clearInterval(timer))
 }
 
 let unauthenticated = 0
@@ -159,8 +262,17 @@ export interface PreAuthGuard {
    * has settled. For a handshake that failed.
    */
   close(code: number, reason: string): void
-  /** The socket authenticated: stop the deadline, free the slot, clear the IP's failures if it was charged. */
-  authenticated(): void
+  /**
+   * The socket presented a valid token: stop the deadline, free the
+   * unauthenticated slot, clear the IP's failures if it was charged, and take
+   * an authenticated slot (in total and for the client key). Returns null,
+   * after closing the socket with 1013, when AGENT_WS_MAX_AUTHENTICATED
+   * sockets are already authenticated or the client key holds its share.
+   * `isReplaced` tells the heartbeat whether a newer connection took over the
+   * agentId. Call it synchronously before registry.register(), with no await
+   * in between, so the count and the registration cannot interleave.
+   */
+  authenticated(agent: { agentId: string; isReplaced: () => boolean }): AuthenticatedSlot | null
   /**
    * Run the processing of one message. The slot of a socket that is gone (or
    * authenticated) is given back only when every message run this way has
@@ -170,6 +282,16 @@ export interface PreAuthGuard {
    * keep the slot.
    */
   run(work: () => Promise<void>): void
+}
+
+/** The authenticated slot of one socket. */
+export interface AuthenticatedSlot {
+  /**
+   * The registry refused the agent after the slot was taken: give the slot
+   * back and close the socket with 1013 (no auth_error, so the reference
+   * agent retries).
+   */
+  refuse(): void
 }
 
 /**
@@ -261,13 +383,54 @@ export function admitUnauthenticated(ws: WebSocket, req: IncomingMessage): PreAu
           releaseIfIdle()
         })
     },
-    authenticated() {
+    authenticated(agent) {
       clearTimeout(deadline)
       // The slot is given back when the message that authenticated has settled.
       done = true
+      // The token was valid, whatever happens next: it is not a failed guess.
       if (charged) {
         agentHandshakeLimiter.reset(client.key, client.parent)
         agentHandshakeLimiter.recordSuccess(client.key, client.parent)
+      }
+      if (
+        authenticatedSockets.size >= AGENT_WS_MAX_AUTHENTICATED ||
+        authenticatedKeyCount(client.key) >= AGENT_WS_MAX_AUTHENTICATED_PER_KEY
+      ) {
+        console.warn(`[agent-ws] Refusing connection of agent ${agent.agentId}: too many authenticated connections`)
+        reject(WS_CLOSE_TRY_AGAIN_LATER, 'Server busy')
+        return null
+      }
+
+      const entry: AuthenticatedSocket = {
+        ws,
+        agentId: agent.agentId,
+        alive: true,
+        isReplaced: agent.isReplaced,
+        replacedClosed: false,
+      }
+      authenticatedSockets.add(entry)
+      authenticatedByKey.set(client.key, authenticatedKeyCount(client.key) + 1)
+      // Given back exactly once, whichever of close and error comes first
+      // (ws emits close after error, and terminate() ends in close).
+      let released = false
+      const release = () => {
+        if (released) return
+        released = true
+        authenticatedSockets.delete(entry)
+        const n = authenticatedKeyCount(client.key) - 1
+        if (n > 0) authenticatedByKey.set(client.key, n)
+        else authenticatedByKey.delete(client.key)
+      }
+      ws.on('close', release)
+      ws.on('error', release)
+      ws.on('pong', () => {
+        entry.alive = true
+      })
+      return {
+        refuse() {
+          release()
+          reject(WS_CLOSE_TRY_AGAIN_LATER, 'Server busy')
+        },
       }
     },
   }

@@ -5,7 +5,7 @@ import { registry } from './agent-registry.js'
 import { readTokens, writeTokens, type TokenEntry } from './data-store.js'
 import { wsMessageSchema, type ValidatedWsMessage } from './schemas.js'
 import { safeEqual } from './secure-compare.js'
-import { admitUnauthenticated, WS_CLOSE_TRY_AGAIN_LATER } from './agent-ws-limits.js'
+import { admitUnauthenticated, AGENT_WS_REPLACED_CLOSE_CODE, WS_CLOSE_TRY_AGAIN_LATER } from './agent-ws-limits.js'
 // Static tokens from env (for backward compat + default setup)
 const STATIC_TOKENS = (process.env.AGENT_TOKENS ?? '')
   .split(',')
@@ -14,7 +14,7 @@ const STATIC_TOKENS = (process.env.AGENT_TOKENS ?? '')
 
 // Application close code (4000-4999 is free for applications) for a socket that
 // a newer connection of the same agentId replaced.
-export const REPLACED_CLOSE_CODE = 4000
+export const REPLACED_CLOSE_CODE = AGENT_WS_REPLACED_CLOSE_CODE
 
 function send(ws: WebSocket, msg: object) {
   try {
@@ -188,17 +188,34 @@ export function handleAgentConnection(ws: WebSocket, req: IncomingMessage) {
         return
       }
 
+      // Take the authenticated slot (total and per client key), then register.
+      // No await lies between the two and the slot is checked before the
+      // registry is touched, so a refusal leaves an existing entry alone. Both
+      // refusals are close 1013 without auth_error, so the reference agent
+      // retries with its backoff.
+      const claimedAgentId = msg.agentId
+      const slot = guard.authenticated({
+        agentId: claimedAgentId,
+        isReplaced: () => !registry.owns(ws, claimedAgentId),
+      })
+      if (!slot) return
+      // Only an explicit false is the registry's refusal.
+      if (
+        registry.register(ws, {
+          agentId: msg.agentId,
+          name: msg.name,
+          version: msg.version,
+          token: msg.token,
+          gatewayUrl: msg.gatewayUrl,
+          gatewayToken: msg.gatewayToken,
+        }) === false
+      ) {
+        console.warn(`[agent-ws] Refusing connection of agent ${msg.agentId}: the agent registry is full`)
+        slot.refuse()
+        return
+      }
       agentId = msg.agentId
       authenticated = true
-      guard.authenticated()
-      registry.register(ws, {
-        agentId: msg.agentId,
-        name: msg.name,
-        version: msg.version,
-        token: msg.token,
-        gatewayUrl: msg.gatewayUrl,
-        gatewayToken: msg.gatewayToken,
-      })
 
       send(ws, { type: 'auth_ok' })
       console.log(`[agent-ws] Agent connected: "${msg.name}" (${msg.agentId})`)

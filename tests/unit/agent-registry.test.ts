@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { MockInstance } from 'vitest'
-import { registry, parseAgentTtlMs, DEFAULT_AGENT_TTL_MS } from '@/lib/agent-registry'
+import { registry, parseAgentTtlMs, DEFAULT_AGENT_TTL_MS, AGENT_REGISTRY_MAX_ENTRIES } from '@/lib/agent-registry'
 import type { AgentSnapshot } from '@/lib/agent-registry'
 import type WebSocket from 'ws'
 
@@ -472,5 +472,40 @@ describe('registry.remove', () => {
 
   it('reports not_found for an unknown agent', () => {
     expect(registry.remove('nope')).toBe('not_found')
+  })
+})
+
+describe('registry.register cap and registry.owns', () => {
+  beforeEach(() => { registry.agents.clear() })
+
+  it('returns true and owns() is true only for the socket that registered last', () => {
+    const wsOld = makeMockWs()
+    const wsNew = makeMockWs()
+    expect(registry.register(wsOld, makeMeta('own-1'))).toBe(true)
+    expect(registry.owns(wsOld, 'own-1')).toBe(true)
+    expect(registry.register(wsNew, makeMeta('own-1'))).toBe(true)
+    expect(registry.owns(wsOld, 'own-1')).toBe(false)
+    expect(registry.owns(wsNew, 'own-1')).toBe(true)
+    expect(registry.owns(wsNew, 'unknown')).toBe(false)
+  })
+
+  it('refuses a new agentId at AGENT_REGISTRY_MAX_ENTRIES and changes nothing, but replaces an existing one', () => {
+    for (let i = 0; i < AGENT_REGISTRY_MAX_ENTRIES; i++) registry.register(makeMockWs(), makeMeta(`cap-${i}`))
+    expect(registry.agents.size).toBe(AGENT_REGISTRY_MAX_ENTRIES)
+
+    expect(registry.register(makeMockWs(), makeMeta('cap-new'))).toBe(false)
+    expect(registry.agents.has('cap-new')).toBe(false)
+    expect(registry.agents.size).toBe(AGENT_REGISTRY_MAX_ENTRIES)
+
+    const wsRe = makeMockWs()
+    expect(registry.register(wsRe, makeMeta('cap-3'))).toBe(true)
+    expect(registry.owns(wsRe, 'cap-3')).toBe(true)
+    expect(registry.agents.size).toBe(AGENT_REGISTRY_MAX_ENTRIES)
+  })
+
+  it('one below the cap still admits a new agentId', () => {
+    for (let i = 0; i < AGENT_REGISTRY_MAX_ENTRIES - 1; i++) registry.register(makeMockWs(), makeMeta(`cap-${i}`))
+    expect(registry.register(makeMockWs(), makeMeta('cap-last'))).toBe(true)
+    expect(registry.agents.size).toBe(AGENT_REGISTRY_MAX_ENTRIES)
   })
 })

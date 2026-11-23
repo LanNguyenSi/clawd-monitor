@@ -122,6 +122,16 @@ Notes:
   400).
 - `GITHUB_TOKEN` and `GITHUB_REPOS` are read from the server environment only;
   the GitHub PRs route ignores a `token` or `repos` query parameter.
+- A static `AGENT_TOKENS` entry may claim any `agentId` that no Settings token
+  is bound to, so the agent connections are bounded server-side: at most 128
+  authenticated agent sockets in total, 16 per client address, and 256 agent
+  entries in the registry (offline ones count until `AGENT_TTL_MS`); a
+  connection over a cap is closed with `1013` and the agent retries. The server
+  pings every agent socket every 30 seconds and drops one that did not answer
+  the previous ping. The values are constants, not settings; see
+  `docs/AGENT-PROTOCOL.md`, "Limits and close codes". Behind a reverse proxy
+  set `TRUSTED_PROXY_HOPS`, or all agents share the 16 sockets of the proxy's
+  address.
 - Agent tokens can also be issued and revoked from the Settings UI instead of
   the static `AGENT_TOKENS` list.
 
@@ -141,6 +151,17 @@ one that is set:
    password check of `POST /api/auth/change-password` uses the same compare.
 4. None set: login returns HTTP 500 when `NODE_ENV=production`; in development
    the password `admin` is accepted.
+
+**Length limit.** bcrypt hashes only the first 72 bytes of a password.
+`POST /api/auth/change-password` therefore refuses a new password longer than 72
+bytes in UTF-8 (HTTP 400, the settings form shows the message) instead of
+storing it truncated; the limit counts bytes, so non-ASCII characters count 2
+to 4 each (24 characters of 3 bytes fit, 25 do not). It does not apply to
+`ADMIN_PASSWORD` (plaintext, compared in full and not truncated). An
+`ADMIN_PASSWORD_HASH` made from a password longer than 72 bytes (for example
+with `htpasswd` or a bcrypt library that does not refuse it) accepts any
+password that starts with the same first 72 bytes: the part after byte 72 is
+not checked at login. Hash a password of at most 72 bytes.
 
 A successful login sets a session cookie holding a JWT that is valid for 24
 hours. The flowchart shows the same order and where a Settings change is
