@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Documentation: the backup section covers the host env files, and a new "Rollback (agent-relay)" section describes what the relay does with `rollback: true`.** `.env` and `.env.runtime` are git-ignored host state outside the data volume, so a backup of the volume alone, a `git pull` or a rollback does not bring them back; `docs/configuration.md` now says to back them up with the volume (same protection as the archive) and to restore them before `up`. The rollback section lists when the relay rolls back, what it resets and restarts, that the volume and env files are untouched, and the manual fallback commands. `docs/configuration.md`.
+
 - **`tsx` moved to `devDependencies`.** Only the `dev` script (`tsx server.ts`) uses it; the production server runs the compiled `dist/server.js`, so `tsx` and `esbuild` no longer ship in the runner image.
 - **Both compose files cap the container's CPU at one core.** `docker-compose.yml` and `docker-compose.traefik.yml` set `cpus: "1.0"` next to `mem_limit` on the `app` service. Docker refuses a `cpus` value above the host's CPU count and the host's count is not pinned in the files, so 1.0 is valid on every host; a host with more cores can raise it. `tests/unit/compose-config.test.ts`; `docs/configuration.md`.
 
