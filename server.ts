@@ -8,22 +8,33 @@ import { handleAgentConnection } from './src/lib/agent-ws-handler.js'
 import { createAgentWebSocketServer } from './src/lib/agent-ws-limits.js'
 import { attachUpgradeRouter } from './src/lib/ws-upgrade.js'
 import { withPeerAddress } from './src/lib/client-ip.js'
+import { jwtSecretProblem } from './src/lib/auth.js'
 
 const dev = process.env.NODE_ENV !== 'production'
 const port = parseInt(process.env.PORT ?? '3000')
 const hostname = process.env.HOSTNAME ?? '0.0.0.0'
 
-// Validate critical config at startup
+// Validate critical config at startup. The JWT_SECRET rule (required in
+// production, at least JWT_SECRET_MIN_LENGTH characters) lives in one place:
+// jwtSecretProblem() in src/lib/auth.ts, shared with getJwtSecret() there.
 if (!dev) {
   const missing: string[] = []
-  if (!process.env.JWT_SECRET) missing.push('JWT_SECRET')
   if (!process.env.ADMIN_PASSWORD && !process.env.ADMIN_PASSWORD_HASH) missing.push('ADMIN_PASSWORD or ADMIN_PASSWORD_HASH')
   if (missing.length > 0) {
     console.error(`[startup] Missing required env vars in production: ${missing.join(', ')}`)
     process.exit(1)
   }
+  const jwtProblem = jwtSecretProblem(process.env.JWT_SECRET)
+  if (jwtProblem) {
+    console.error(`[startup] ${jwtProblem}. Generate one with: openssl rand -hex 32`)
+    process.exit(1)
+  }
 } else {
   if (!process.env.JWT_SECRET) console.warn('[startup] JWT_SECRET not set — using insecure dev default')
+  else {
+    const jwtProblem = jwtSecretProblem(process.env.JWT_SECRET)
+    if (jwtProblem) console.warn(`[startup] ${jwtProblem}; accepted in development, refused in production`)
+  }
   if (!process.env.ADMIN_PASSWORD && !process.env.ADMIN_PASSWORD_HASH) console.warn('[startup] No admin password configured — using dev default "admin"')
   if (!process.env.AGENT_TOKENS) console.warn('[startup] AGENT_TOKENS not set — agents cannot connect without UI-created tokens')
 }

@@ -54,7 +54,8 @@ tls:
 git clone https://github.com/LanNguyenSi/clawd-monitor
 cd clawd-monitor
 cp .env.example .env
-# edit .env: set ADMIN_PASSWORD, JWT_SECRET, DOMAIN
+# edit .env: set ADMIN_PASSWORD, JWT_SECRET (at least 32 chars:
+# openssl rand -hex 32), DOMAIN
 
 docker compose -f docker-compose.traefik.yml up -d
 ```
