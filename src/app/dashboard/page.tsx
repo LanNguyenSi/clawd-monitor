@@ -131,7 +131,7 @@ function DashboardInner() {
         onResetLayout={handleResetLayout}
         activeWidgetIds={activeWidgetIds}
       />
-      <main className="flex-1 overflow-auto p-2">
+      <main className="relative flex-1 overflow-auto p-2">
         <h1 className="sr-only">Dashboard</h1>
 
         {/* A pending undo dropped by Reset layout is announced here: the region

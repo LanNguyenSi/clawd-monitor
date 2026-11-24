@@ -265,6 +265,34 @@ describe('AddAgentModal error announcement', () => {
     expect(alert!.textContent).toContain('Name is required')
   })
 
+  it('shows the app error for an empty name instead of the native bubble, without calling fetch', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = await openModal()
+    const form = container.querySelector('form')!
+    const input = container.querySelector('#add-agent-name') as HTMLInputElement
+    expect(form.noValidate).toBe(true)
+    // requestSubmit runs constraint validation: with the native check on, an
+    // empty required field would block the submit event and the app error.
+    await act(async () => {
+      form.requestSubmit()
+    })
+    const alert = container.querySelector('[role="alert"]')
+    expect(alert).not.toBeNull()
+    expect(alert!.textContent).toContain('Name is required')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+    expect(input.getAttribute('aria-describedby')).toBe(alert!.id)
+    expect(alert!.id).not.toBe('')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('sets no invalid state on the name field before an error stands', async () => {
+    const { container } = await openModal()
+    const input = container.querySelector('#add-agent-name') as HTMLInputElement
+    expect(input.hasAttribute('aria-invalid')).toBe(false)
+    expect(input.hasAttribute('aria-describedby')).toBe(false)
+  })
+
   it('remounts the alert on a repeated identical error so it is announced again', async () => {
     const { container } = await openModal()
     await submitForm(container)
