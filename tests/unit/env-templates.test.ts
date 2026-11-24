@@ -24,9 +24,11 @@ function lineProblems(line: string): string[] {
     return [`not a KEY= line: ${JSON.stringify(line)}`]
   }
   const value = line.slice(line.indexOf('=') + 1)
-  // A whitespace-then-# inside the value is read back verbatim by compose.
-  if (/\s#/.test(value)) {
-    return [`value carries a whitespace-then-# tail compose keeps verbatim: ${JSON.stringify(line)}`]
+  // No inline comments at all: a value that starts with # ("KEY=#c", "KEY=   # c")
+  // is read by compose as the value, and a "KEY=val # c" tail is banned too so
+  // the template keeps one form.
+  if (/^\s*#|\s#/.test(value)) {
+    return [`value starts with # or carries an inline comment: ${JSON.stringify(line)}`]
   }
   return []
 }
@@ -47,8 +49,9 @@ function templateVars(file: string): Map<string, string> {
 }
 
 describe('the checker', () => {
-  it('rejects a whitespace-then-# tail after the = (both shapes compose reads as the value)', () => {
+  it('rejects a value that starts with # and any inline comment tail', () => {
     expect(lineProblems('KEY=   # c')).not.toEqual([])
+    expect(lineProblems('KEY=#c')).not.toEqual([])
     expect(lineProblems('KEY=val # c')).not.toEqual([])
   })
 
