@@ -6,7 +6,7 @@ routes). See `.env.example` for a copyable template.
 ```env
 # Required (enforced only when NODE_ENV=production; development falls back to insecure defaults)
 ADMIN_PASSWORD=             # plaintext, or use ADMIN_PASSWORD_HASH (bcrypt)
-JWT_SECRET=                 # random 32+ char string
+JWT_SECRET=                 # required in production and at least 32 characters; generate one with openssl rand -hex 32
 
 # Optional
 AGENT_TOKENS=token1,token2  # static tokens, shared and not bound to an agentId: a holder can connect as any agent except one whose agentId is bound to a persisted token, which is refused (per-agent tokens from the Settings UI are bound to one agentId on first use, see docs/AGENT-PROTOCOL.md)
@@ -37,7 +37,13 @@ these files. One caveat: when a key is set in both the process environment
 and a `.env` file, the process value is kept, but `@next/env` expands a `$`
 in it (`dotenv-expand`), so `pa$word` becomes `pa`. Escape it as `\$` or set
 the key in one place only. For `npm start` set `JWT_SECRET` and
-`ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH`. `npm start` runs in production
+`ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH`. `JWT_SECRET` must be at least 32
+characters in production: the startup check and the first signing both refuse
+an absent, empty, whitespace-only or shorter value, with a message that names
+the variable and the minimum but never the value (the minimum counts the raw
+value; only a whitespace-only value counts as absent). Generate one with
+`openssl rand -hex 32`. Outside production a too-short secret only warns.
+`npm start` runs in production
 mode: when `NODE_ENV` is unset or empty, the server entry sets it to
 `production` (it recognises the start script through npm's
 `npm_lifecycle_event`, so this works on Windows shells too), the startup

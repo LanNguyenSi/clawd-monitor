@@ -61,7 +61,7 @@ those constants are read (after the `.env` files were loaded).
    `src/lib/ws-upgrade.ts`, which upgrades the path `/api/agents/ws`
    (`src/lib/ws-upgrade.ts:28#"AGENT_WS_PATH"`). Next is handed a second,
    never-listening server through its `httpServer` option
-   (`server.ts:36#"httpServer: nextServer"`), because Next attaches its own
+   (`server.ts:47#"httpServer: nextServer"`), because Next attaches its own
    `upgrade` listener to the server of the first request it serves, and
    that listener ends `/api/agents/ws` (it matches the dynamic route
    `/api/agents/[agentId]`); with it on the real server, agent upgrades
@@ -69,7 +69,7 @@ those constants are read (after the `.env` files were loaded).
    destroyed in production
    (`src/lib/ws-upgrade.ts:35#"socket.destroy()"`); in development it is
    replayed on Next's server so HMR keeps its socket
-   (`server.ts:62#"nextServer.emit"`).
+   (`server.ts:73#"nextServer.emit"`).
 2. Before that, a socket is held to limits in `src/lib/agent-ws-limits.ts`
    until it authenticates. At most 32 such sockets exist at once, 4 per client
    key and 16 per IPv6 /48; the next is closed with 1013

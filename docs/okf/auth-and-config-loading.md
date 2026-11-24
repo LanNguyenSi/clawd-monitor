@@ -70,11 +70,11 @@ process environment when the same key appears in a file (the key is
 expanded, not overridden). After that import:
 
 - `server.ts` reads `NODE_ENV`, `PORT` and `HOSTNAME`
-  (`server.ts:12-14#"process.env.HOSTNAME"`) and runs the startup check on
+  (`server.ts:13-15#"process.env.HOSTNAME"`) and runs the startup check on
   `JWT_SECRET`, `ADMIN_PASSWORD`, `ADMIN_PASSWORD_HASH` and, in development
-  only, `AGENT_TOKENS` (`server.ts:17-28#"AGENT_TOKENS not set"`) before it
+  only, `AGENT_TOKENS` (`server.ts:20-39#"AGENT_TOKENS not set"`) before it
   calls
-  `next({ dev, hostname, port, httpServer: nextServer })` (`server.ts:36#"next({ dev, hostname, port"`).
+  `next({ dev, hostname, port, httpServer: nextServer })` (`server.ts:47#"next({ dev, hostname, port"`).
 - Its static import of the WebSocket handler (`server.ts:7#"handleAgentConnection"`)
   evaluates three more module-level reads: `AGENT_TOKENS`
   (`src/lib/agent-ws-handler.ts:10-13#".filter(Boolean)"`), `AGENT_TTL_MS`
@@ -187,7 +187,7 @@ production branch: with nothing configured it compares against `admin`
 (`src/app/api/auth/change-password/route.ts:69-70#"safeEqual(candidate, 'admin')"`),
 and the plain and dev-default comparisons also go through `safeEqual`. In
 production the startup check exits when neither `ADMIN_PASSWORD` nor
-`ADMIN_PASSWORD_HASH` is set (`server.ts:20-23#"process.exit(1)"`), so this
+`ADMIN_PASSWORD_HASH` is set (`server.ts:23-25#"process.exit(1)"`), so this
 fallback is reached only in development. The check sits behind its own limiter
 instance, described below. It stores a bcrypt hash with cost 12
 (`src/app/api/auth/change-password/route.ts:89#"writePasswordConfig({ hash: newHash })"`).
@@ -253,7 +253,7 @@ cannot see the TCP peer (Next 15 gives `NextRequest` no `ip`, and its own
 custom server wraps its request listener in `withPeerAddress`, which writes the
 socket's remote address into `x-clawd-peer-addr` for every request before
 Next.js sees it, replacing a client-sent value
-(`server.ts:44-47#"withPeerAddress"`). `TRUSTED_PROXY_HOPS` is read at request
+(`server.ts:54-55#"withPeerAddress"`). `TRUSTED_PROXY_HOPS` is read at request
 time in the route graph: `0`, unset or empty uses that peer address and ignores
 `X-Forwarded-For`; `N >= 1` uses the N-th entry from the right of
 `X-Forwarded-For` (the list needs at least N entries; only the last N count),
@@ -271,19 +271,25 @@ which wins over `.env` and `.env.runtime`.
 - The token is a JWT with `sub: 'admin'`
   (`src/app/api/auth/route.ts:77#"generateToken({ sub: 'admin' })"`), signed
   with `JWT_SECRET` and valid for 24 hours
-  (`src/lib/auth.ts:28-29#"expiresIn: JWT_EXPIRES"`).
+  (`src/lib/auth.ts:52-53#"expiresIn: JWT_EXPIRES"`).
 - The secret is read on first use and cached for the life of the process
-  (`src/lib/auth.ts:8#"if (_jwtSecret) return _jwtSecret"`). Without
-  `JWT_SECRET`, signing throws in production and verification returns no
-  session (`src/lib/auth.ts:10-12#"throw new Error"`); otherwise both use a
-  hard-coded dev secret (`src/lib/auth.ts:14-16#"return _jwtSecret"`).
+  (`src/lib/auth.ts:25#"if (_jwtSecret) return _jwtSecret"`). One rule,
+  `jwtSecretProblem()` (`src/lib/auth.ts:13#"export function jwtSecretProblem"`),
+  shared with the startup check: absent, empty or whitespace-only is
+  required; otherwise the raw length must be at least 32 characters, and the
+  message never contains the secret. A secret failing the rule makes signing
+  throw in production with that message and verification return no session
+  (`src/lib/auth.ts:27-30#"throw new Error"`) and the startup check exit 1;
+  in development a too-short secret is used
+  with a warning, and a missing one falls back to a hard-coded dev secret
+  (`src/lib/auth.ts:37-39#"return _jwtSecret"`).
 - Login sets the cookie `token`: `httpOnly`, `secure` only when
   `NODE_ENV=production`, `sameSite: 'lax'`, `maxAge` 24 hours, `path: '/'`
   (`src/app/api/auth/route.ts:85#"path: '/'"`). `DELETE /api/auth`
   overwrites it with `maxAge: 0`
   (`src/app/api/auth/route.ts:97#"maxAge: 0"`).
 - `extractToken()` takes an `Authorization: Bearer` header first, then the
-  cookie (`src/lib/auth.ts:42-49#"if (cookie) return cookie.value"`).
+  cookie (`src/lib/auth.ts:64-73#"if (cookie) return cookie.value"`).
 
 `src/middleware.ts` only sets the per-request Content-Security-Policy and
 nonce and does no authentication. Every API route handler gates on

@@ -6,7 +6,7 @@
  * test-controlled JWT_SECRET is picked up cleanly.
  */
 
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import jwt from 'jsonwebtoken'
 import type { NextRequest } from 'next/server'
 
@@ -159,65 +159,127 @@ describe('isAuthenticated', () => {
   })
 })
 
-// ── getJwtSecret – production guard (lines 11-12 of auth.ts) ─────────────────
+// ── getJwtSecret – production guard (the JWT_SECRET rule of auth.ts) ─────────
 //
-// When JWT_SECRET is absent in production the module must throw immediately.
-// _jwtSecret is memoised, so a vi.resetModules() + fresh import is required.
+// In production getJwtSecret uses jwtSecretProblem(): absent, empty,
+// whitespace-only or shorter than 32 characters throws; 32 and 64 work.
+// _jwtSecret is memoised, so a vi.resetModules() + fresh import is required
+// per input.
 
-describe('getJwtSecret – production: throws when JWT_SECRET is absent', () => {
-  let prodGenerateToken: (payload: { sub: string }) => string
+const LEAK_SECRET_31 = 'x'.repeat(31) // exactly one below the minimum
+const OK_SECRET_32 = 'y'.repeat(32)
+const OK_SECRET_64 = 'z'.repeat(64)
 
-  beforeAll(async () => {
-    // Set production env WITHOUT a JWT_SECRET (empty string → falsy).
+describe('getJwtSecret – production: the JWT_SECRET rule, input by input', () => {
+  async function loadProduction(jwtSecret: string | undefined) {
     vi.stubEnv('NODE_ENV', 'production')
-    vi.stubEnv('JWT_SECRET', '')
+    vi.stubEnv('JWT_SECRET', jwtSecret)
     vi.resetModules()
     const mod = await import('@/lib/auth')
-    prodGenerateToken = mod.generateToken
-  })
+    return mod.generateToken as (payload: { sub: string }) => string
+  }
 
   afterAll(() => {
     vi.unstubAllEnvs()
     vi.resetModules()
   })
 
-  it('throws with the expected message when JWT_SECRET is absent in production', () => {
-    expect(() => prodGenerateToken({ sub: 'u' }))
-      .toThrow(/JWT_SECRET environment variable is required in production/)
+  it.each([
+    ['absent', undefined],
+    ['empty', ''],
+    ['whitespace-only', '   '],
+  ])('throws with the required message when the secret is %s', async (_name, value) => {
+    const gen = await loadProduction(value)
+    expect(() => gen({ sub: 'u' })).toThrow(/JWT_SECRET environment variable is required in production/)
+  })
+
+  it('throws a message naming the minimum for a 31-character secret, without the value', async () => {
+    const gen = await loadProduction(LEAK_SECRET_31)
+    let message = ''
+    try {
+      gen({ sub: 'u' })
+    } catch (e) {
+      message = (e as Error).message
+    }
+    expect(message).toContain('JWT_SECRET')
+    expect(message).toContain('at least 32')
+    expect(message).not.toContain(LEAK_SECRET_31)
+    expect(message).not.toContain('x'.repeat(8))
+  })
+
+  it.each([
+    ['32 characters', OK_SECRET_32],
+    ['64 characters', OK_SECRET_64],
+  ])('works in production with a %s secret', async (_name, value) => {
+    const gen = await loadProduction(value)
+    const token = gen({ sub: 'ok' })
+    expect(jwt.verify(token, value)).toMatchObject({ sub: 'ok' })
   })
 })
 
-// ── getJwtSecret – dev default (lines 14-16 of auth.ts) ──────────────────────
+// ── getJwtSecret – development: warnings, never a throw ──────────────────────
 //
-// When JWT_SECRET is absent outside production the module uses the hardcoded
-// dev fallback secret and does NOT throw. generateToken + verifyToken must
-// still round-trip.
+// Outside production the dev default keeps working when the secret is absent,
+// empty or whitespace-only, and a present-but-too-short secret is accepted
+// with a warning (it is the one actually used for signing).
 
-describe('getJwtSecret – non-production: uses dev default when JWT_SECRET is absent', () => {
-  let devGenerateToken: (payload: { sub: string }) => string
-  let devVerifyToken: (token: string) => { sub: string } | null
-
-  beforeAll(async () => {
-    vi.stubEnv('NODE_ENV', 'test') // already the vitest default, but explicit is clearer
-    vi.stubEnv('JWT_SECRET', '')
+describe('getJwtSecret – development: accepts everything, warns when below the rule', () => {
+  async function loadDev(jwtSecret: string | undefined) {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('JWT_SECRET', jwtSecret)
     vi.resetModules()
     const mod = await import('@/lib/auth')
-    devGenerateToken = mod.generateToken
-    devVerifyToken = mod.verifyToken as (token: string) => { sub: string } | null
-  })
+    return {
+      generateToken: mod.generateToken as (payload: { sub: string }) => string,
+      verifyToken: mod.verifyToken as (token: string) => { sub: string } | null,
+    }
+  }
 
-  afterAll(() => {
+  let warn: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    vi.mocked(warn).mockRestore()
     vi.unstubAllEnvs()
     vi.resetModules()
   })
 
-  it('does not throw and generates a token with the dev default secret', () => {
-    expect(() => devGenerateToken({ sub: 'dev-user' })).not.toThrow()
+  it.each([
+    ['absent', undefined],
+    ['empty', ''],
+    ['whitespace-only', '   '],
+  ])('uses the dev default without throwing when the secret is %s', async (_name, value) => {
+    const { generateToken, verifyToken } = await loadDev(value)
+    const token = generateToken({ sub: 'dev' })
+    expect(verifyToken(token)?.sub).toBe('dev')
+    expect(jwt.verify(token, 'dev-secret-change-in-production')).toMatchObject({ sub: 'dev' })
+    expect(console.warn).toHaveBeenCalled()
   })
 
-  it('verifyToken round-trips a token generated with the dev default secret', () => {
-    const token = devGenerateToken({ sub: 'dev-user' })
-    const payload = devVerifyToken(token)
-    expect(payload?.sub).toBe('dev-user')
+  it('accepts and uses a 31-character secret, warning with the minimum but not the value', async () => {
+    const { generateToken } = await loadDev(LEAK_SECRET_31)
+    const token = generateToken({ sub: 'dev' })
+    expect(jwt.verify(token, LEAK_SECRET_31)).toMatchObject({ sub: 'dev' })
+    const warnings = vi.mocked(console.warn).mock.calls.flat().join('\n')
+    expect(warnings).toContain('JWT_SECRET')
+    expect(warnings).toContain('32')
+    expect(warnings).not.toContain(LEAK_SECRET_31)
+  })
+
+  it('accepts a 32-character secret without a JWT warning', async () => {
+    const { generateToken } = await loadDev(OK_SECRET_32)
+    const token = generateToken({ sub: 'dev' })
+    expect(jwt.verify(token, OK_SECRET_32)).toMatchObject({ sub: 'dev' })
+    const warnings = vi.mocked(console.warn).mock.calls.flat().join('\n')
+    expect(warnings).not.toContain('JWT_SECRET')
+  })
+
+  it('accepts a 64-character secret without a JWT warning', async () => {
+    const { generateToken } = await loadDev(OK_SECRET_64)
+    const token = generateToken({ sub: 'dev' })
+    expect(jwt.verify(token, OK_SECRET_64)).toMatchObject({ sub: 'dev' })
+    const warnings = vi.mocked(console.warn).mock.calls.flat().join('\n')
+    expect(warnings).not.toContain('JWT_SECRET')
   })
 })
