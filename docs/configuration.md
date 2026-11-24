@@ -429,6 +429,28 @@ second command starts the new image. This is a manual maintenance step, not
 part of the relay flow, and it costs a full uncached build (minutes, not
 seconds).
 
+## Rollback (agent-relay)
+
+`.relay.yml` sets `rollback: true`, `health: /` and
+`compose_file: docker-compose.traefik.yml`. When a deploy's build, `up` or
+health check fails, agent-relay resets the checkout to the previous commit,
+rebuilds and restarts the stack with `docker-compose.traefik.yml`, and checks
+the restored stack again. The health check requests `/` from inside the running
+container and needs a 2xx answer. The rollback only resets the git
+checkout and rebuilds the containers: the data volume and the host env files
+(`.env`, `.env.runtime`) are not touched, so a rollback restores neither; see
+"Backup and restore of the data volume". The exact steps, the post-rollback
+health check and the manual rollback endpoint are described in agent-relay's
+[integration doc](https://github.com/LanNguyenSi/agent-relay/blob/master/docs/integration.md).
+
+If the relay cannot recover, roll back by hand on the server, in the app
+directory:
+
+```bash
+git reset --hard <prev>     # the commit to return to, e.g. from git log
+docker compose -f docker-compose.traefik.yml up -d --build
+```
+
 ## CLAWD_DIR under Docker
 
 `CLAWD_DIR` is read by the Alert History route (`memory/smart-alert-state.json`,
@@ -604,6 +626,20 @@ docker compose -f docker-compose.traefik.yml start
 The archive holds password and token hashes; store it like a secret. The
 same two commands migrate data between the volumes of the two compose files
 (see Switching compose files). Run the backup from cron for regular copies.
+
+The volume is not the whole host state. The compose files also read `.env` and
+`.env.runtime` from the app directory (`ADMIN_PASSWORD_HASH`, `JWT_SECRET`,
+`DOMAIN`, ...). Both are git-ignored, so neither a `git pull` nor a clone
+brings them back, and a rollback does not restore them. Back them up together
+with the volume and give the copies the same protection as the archive, since
+they hold secrets. Next to the cron line, for example:
+
+```bash
+cp -p .env .env.runtime /path/to/backup/   # only the files that exist
+```
+
+On restore, put `.env` and `.env.runtime` back into the app directory before
+the `docker compose up` that starts the stack.
 
 ## Troubleshooting
 
