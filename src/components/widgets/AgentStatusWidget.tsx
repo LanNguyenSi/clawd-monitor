@@ -116,7 +116,7 @@ export function AgentStatusWidget() {
               </div>
               <div className="flex items-center justify-between gap-2">
                 {s.lastMessage && (
-                  <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate max-w-[70%]">{s.lastMessage}</span>
+                  <span title={s.lastMessage} className="text-xs text-zinc-500 dark:text-zinc-400 truncate max-w-[70%]">{s.lastMessage}</span>
                 )}
                 <span className="text-xs text-zinc-500 dark:text-zinc-400 tabular-nums shrink-0 ml-auto">
                   {formatAge(s.lastActiveAt)}

@@ -109,12 +109,12 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
       {/* Mobile layout controls */}
       {mobileMenuOpen && (
         <div id="mobile-layout-controls" className="md:hidden border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-4 py-3">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {onToggleEditMode && (
               <button
                 onClick={onToggleEditMode}
                 aria-pressed={!!editMode}
-                className={`text-xs px-2 py-1 rounded-sm transition-colors border ${
+                className={`text-xs px-2 py-1 rounded-sm whitespace-nowrap transition-colors border ${
                   editMode
                     ? 'border-indigo-500/40 bg-indigo-500/10 text-indigo-600 dark:border-indigo-600/40 dark:bg-indigo-600/10 dark:text-indigo-400'
                     : 'border-zinc-300 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400'
@@ -127,7 +127,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
             {onResetLayout && (
               <button
                 onClick={onResetLayout}
-                className="text-xs px-2 py-1 rounded-sm border border-zinc-300 text-zinc-600 dark:border-zinc-800 dark:text-zinc-400"
+                className="text-xs px-2 py-1 rounded-sm whitespace-nowrap border border-zinc-300 text-zinc-600 dark:border-zinc-800 dark:text-zinc-400"
               >
                 Reset layout
               </button>
@@ -157,7 +157,7 @@ export function Navbar({ cols, onColsChange, editMode, onToggleEditMode, onAddWi
 
             <button
               onClick={() => setAddAgentOpen(true)}
-              className="text-xs px-2.5 py-1 rounded-sm border border-zinc-300 text-zinc-600 dark:border-zinc-800 dark:text-zinc-400"
+              className="text-xs px-2.5 py-1 rounded-sm whitespace-nowrap border border-zinc-300 text-zinc-600 dark:border-zinc-800 dark:text-zinc-400"
             >
               + Add Agent
             </button>

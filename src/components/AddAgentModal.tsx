@@ -259,7 +259,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
         </div>
 
         {step === 'name' && (
-          <form onSubmit={handleGenerate} className="px-6 py-5 space-y-4">
+          <form onSubmit={handleGenerate} noValidate className="px-6 py-5 space-y-4">
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Generate a fresh agent token and get a paste-ready installer command for the host you want to monitor.
             </p>
@@ -275,6 +275,8 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. lava-vps-01"
                 required
+                aria-invalid={error === 'Name is required' ? true : undefined}
+                aria-describedby={error === 'Name is required' ? 'add-agent-name-error' : undefined}
                 className="w-full bg-zinc-50 border border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800 rounded-sm px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
               />
               <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5">
@@ -287,7 +289,7 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
               </p>
             )}
             {error && (
-              <p role="alert" key={attempt} className="text-sm text-red-700 dark:text-red-400">{error}</p>
+              <p role="alert" key={attempt} id="add-agent-name-error" className="text-sm text-red-700 dark:text-red-400">{error}</p>
             )}
             <div className="flex justify-end gap-2 pt-2">
               <button
