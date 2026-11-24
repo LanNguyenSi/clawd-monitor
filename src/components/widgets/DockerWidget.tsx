@@ -72,7 +72,8 @@ export function DockerWidget() {
           {containers.map((c) => (
             <div key={c.id} className="px-3 py-2 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/20 transition-colors">
               <div className="flex items-center gap-2">
-                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATE_DOT[c.state] ?? STATE_DOT.unknown}`} />
+                <div aria-hidden="true" className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATE_DOT[c.state] ?? STATE_DOT.unknown}`} />
+                <span className="sr-only">{STATE_DOT[c.state] ? c.state : 'unknown'}</span>
                 <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200 truncate flex-1">{c.name}</span>
                 {restartBadge(c.restarts) && (
                   <span className="text-xs text-orange-700 dark:text-orange-400 shrink-0" title={restartBadge(c.restarts)!.title}>{restartBadge(c.restarts)!.text}</span>

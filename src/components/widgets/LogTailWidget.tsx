@@ -110,7 +110,7 @@ export function LogTailWidget() {
           aria-label="Log source"
           value={source}
           onChange={(e) => setSource(e.target.value as LogSource)}
-          className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300"
+          className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 min-h-6 text-zinc-700 dark:text-zinc-300"
         >
           <option value="openclaw">OpenClaw</option>
           {!activeAgentId && <option value="docker">Docker</option>}
@@ -122,7 +122,7 @@ export function LogTailWidget() {
             aria-label="Docker container"
             value={container}
             onChange={(e) => { setContainer(e.target.value); connect('docker', e.target.value, activeAgentId) }}
-            className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 max-w-40"
+            className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 min-h-6 text-zinc-700 dark:text-zinc-300 max-w-40"
           >
             <option value="">Select container…</option>
             {(containerData?.containers ?? []).map((name) => (
@@ -142,7 +142,7 @@ export function LogTailWidget() {
         {/* Auto-scroll toggle */}
         <button
           onClick={() => setAutoScroll((v) => !v)}
-          className={`text-xs px-2 py-0.5 rounded-sm transition-colors ${
+          className={`text-xs px-2 py-0.5 min-h-6 inline-flex items-center rounded-sm transition-colors ${
             autoScroll ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-600/20 dark:text-indigo-400' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
           }`}
         >

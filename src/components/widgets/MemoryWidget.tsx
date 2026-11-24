@@ -118,7 +118,7 @@ export function MemoryWidget() {
           aria-label="Memory file"
           value={selectedFile}
           onChange={(e) => setSelectedFile(e.target.value as MemFile)}
-          className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 flex-1"
+          className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 min-h-6 text-zinc-700 dark:text-zinc-300 flex-1"
         >
           {(Object.entries(FILE_LABELS) as [MemFile, string][]).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
@@ -127,7 +127,7 @@ export function MemoryWidget() {
 
         <button
           onClick={() => void mutate()}
-          className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 px-1"
+          className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 min-w-6 min-h-6 inline-flex items-center justify-center"
           title="Refresh"
         >
           ↻
