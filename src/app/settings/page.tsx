@@ -124,6 +124,11 @@ function SettingsInner() {
         setGenerateError(`Could not generate token "${name}": network error. Your input is kept; reload to check whether the token was created before trying again.`)
         return
       }
+      if (res.status === 401) {
+        // Session expired: the typed name is lost with the page.
+        router.replace('/login')
+        return
+      }
       if (!res.ok) {
         setGenerateError(`Could not generate token "${name}" (HTTP ${res.status}). No token is shown and your input is kept; try again.`)
         return
@@ -143,6 +148,10 @@ function SettingsInner() {
     setRevokingId(t.id)
     try {
       const res = await fetch(`/api/settings/tokens/${t.id}`, { method: 'DELETE' })
+      if (res.status === 401) {
+        router.replace('/login')
+        return
+      }
       if (!res.ok) {
         setListError(`Could not revoke token "${t.name}" (HTTP ${res.status}). The token list was not changed; reload to see its current state.`)
         return
@@ -172,6 +181,10 @@ function SettingsInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: editName.trim() }),
       })
+      if (res.status === 401) {
+        router.replace('/login')
+        return
+      }
       if (!res.ok) {
         setListError(`Could not rename token "${t.name}" (HTTP ${res.status}). The name was not changed; your edit is still open.`)
         return
