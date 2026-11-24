@@ -25,6 +25,8 @@ PORT=3000                   # listen port (server.ts default); applies only outs
 HOSTNAME=0.0.0.0            # listen address (server.ts default); applies only outside Docker (npm run dev / npm start): both compose files pin HOSTNAME=0.0.0.0
 ```
 
+The inline comments in the block above are explanatory only: in a real `.env` file every comment goes on its own line, because for a key with no value docker compose reads the comment as the value (`KEY=   # comment` sets `# comment`).
+
 When running outside Docker (`npm run dev`, `npm start`), the custom server
 loads `.env` and `.env.local` (and the mode-specific variants Next.js knows)
 into the process environment before it reads any configuration, so a value
