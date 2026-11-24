@@ -95,7 +95,7 @@ export function SessionLogWidget() {
           aria-label="Session"
           value={selectedSession}
           onChange={(e) => setSelectedSession(e.target.value)}
-          className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 text-zinc-700 dark:text-zinc-300 flex-1 min-w-0"
+          className="text-xs bg-zinc-100 border border-zinc-200 dark:bg-zinc-800 dark:border-zinc-700 rounded-sm px-1.5 py-0.5 min-h-6 text-zinc-700 dark:text-zinc-300 flex-1 min-w-0"
         >
           {sessions.length === 0 && <option value="">No sessions</option>}
           {sessions.map((s) => (
@@ -108,7 +108,7 @@ export function SessionLogWidget() {
         </select>
         <button
           onClick={() => setAutoScroll((v) => !v)}
-          className={`text-xs px-1.5 py-0.5 rounded-sm shrink-0 transition-colors ${
+          className={`text-xs px-1.5 py-0.5 min-w-6 min-h-6 inline-flex items-center justify-center rounded-sm shrink-0 transition-colors ${
             autoScroll
               ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-600/20 dark:text-indigo-400'
               : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'

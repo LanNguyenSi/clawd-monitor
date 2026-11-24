@@ -101,7 +101,8 @@ export function CronWidget() {
             <div key={job.id} className="px-3 py-2 hover:bg-zinc-100/50 dark:hover:bg-zinc-800/20 transition-colors">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${job.enabled ? 'bg-green-500' : 'bg-zinc-400 dark:bg-zinc-600'}`} />
+                  <div aria-hidden="true" className={`w-1.5 h-1.5 rounded-full shrink-0 ${job.enabled ? 'bg-green-500' : 'bg-zinc-400 dark:bg-zinc-600'}`} />
+                  <span className="sr-only">{job.enabled ? 'enabled' : 'disabled'}</span>
                   <span className="text-xs text-zinc-800 dark:text-zinc-200 truncate">{job.name ?? job.id.slice(0, 12)}</span>
                 </div>
               </div>
