@@ -150,3 +150,15 @@ describe('server.ts production startup check', () => {
     expect(run.out).not.toContain('JWT_SECRET')
   }, 60_000)
 })
+
+describe('server.ts development startup check', () => {
+  it('warns about a short JWT_SECRET without its value', async () => {
+    // The warning is printed at the top of server.ts, before Next.js prepares,
+    // so a short deadline is enough. What the child does afterwards (it fails
+    // without a Next.js project in its scratch cwd) is not asserted.
+    const run = await runServer({ NODE_ENV: 'development', PORT: '0', JWT_SECRET: SHORT31 }, 5_000)
+    expect(run.out).toContain(`[startup] JWT_SECRET must be at least ${JWT_SECRET_MIN_LENGTH} characters`)
+    expect(run.out).toContain('accepted in development')
+    expect(run.out).not.toContain(SHORT31)
+  }, 30_000)
+})
