@@ -46,8 +46,8 @@ RUN addgroup --system --gid 1001 nodejs && \
 # The directory itself must be writable by the app user, not only the files.
 RUN mkdir -p /data && chown nextjs:nodejs /data
 
-# Copy Next.js build output
-COPY --from=builder /app/.next ./.next
+# Copy Next.js build output, --chown like dist below (next start writes .next/cache).
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
