@@ -160,16 +160,23 @@ one that is set:
 4. None set: login returns HTTP 500 when `NODE_ENV=production`; in development
    the password `admin` is accepted.
 
-**Length limit.** bcrypt hashes only the first 72 bytes of a password.
-`POST /api/auth/change-password` therefore refuses a new password longer than 72
-bytes in UTF-8 (HTTP 400, the settings form shows the message) instead of
-storing it truncated; the limit counts bytes, so non-ASCII characters count 2
-to 4 each (24 characters of 3 bytes fit, 25 do not). It does not apply to
-`ADMIN_PASSWORD` (plaintext, compared in full and not truncated). An
-`ADMIN_PASSWORD_HASH` made from a password longer than 72 bytes (for example
-with `htpasswd` or a bcrypt library that does not refuse it) accepts any
-password that starts with the same first 72 bytes: the part after byte 72 is
-not checked at login. Hash a password of at most 72 bytes.
+**Length limits.** `POST /api/auth/change-password` enforces two bounds on a
+new password: at least 8 characters (HTTP 400, "Password must be at least 8
+characters", checked before the byte rule) and at most 72 bytes in UTF-8
+(HTTP 400, the settings form shows the message). The minimum counts
+characters, the maximum counts bytes, so non-ASCII characters count 2 to 4
+bytes each against the upper bound (24 characters of 3 bytes fit, 25 do not).
+Neither bound is a login rule: `POST /api/auth` checks no password length, so
+an `ADMIN_PASSWORD` shorter than 8 characters, or an `ADMIN_PASSWORD_HASH`
+made from a shorter password, still logs in; the minimum applies only to a
+new password being chosen. The byte bound exists because bcrypt hashes only
+the first 72 bytes, so a longer new password would be stored truncated and is
+refused instead. The byte bound does not apply to `ADMIN_PASSWORD` (plaintext,
+compared in full and not truncated). An `ADMIN_PASSWORD_HASH` made from a
+password longer than 72 bytes (for example with `htpasswd` or a bcrypt library
+that does not refuse it) accepts any password that starts with the same first
+72 bytes: the part after byte 72 is not checked at login. Hash a password of
+at most 72 bytes.
 
 A successful login sets a session cookie holding a JWT that is valid for 24
 hours. The flowchart shows the same order and where a Settings change is
