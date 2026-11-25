@@ -396,6 +396,24 @@ describe('Dockerfile data directory', () => {
   })
 })
 
+describe('Dockerfile .next copy ownership', () => {
+  const lines = readFileSync(resolve(ROOT, 'Dockerfile'), 'utf8').split('\n')
+  const at = (re: RegExp) => lines.findIndex((l) => re.test(l))
+  const runner = lines.findIndex((l) => /^FROM .* AS runner$/.test(l))
+  const userIdx = at(/^USER nextjs$/)
+  const nextCopy = at(/^COPY --from=builder --chown=nextjs:nodejs \/app\/\.next \.\/\.next$/)
+
+  it('copies .next to the app user, so next start can create and write .next/cache', () => {
+    // A plain COPY leaves .next (and a .next/cache already inside it) root-owned.
+    // `next start` runs as nextjs and writes the image optimization cache under
+    // .next/cache, so without the --chown every /_next/image request fails
+    // EACCES. The whole copy goes to the app user (the form that also covers a
+    // cache directory shipped by the build), same as the dist copy below it.
+    expect(nextCopy).toBeGreaterThan(runner)
+    expect(userIdx).toBeGreaterThan(nextCopy)
+  })
+})
+
 describe('Dockerfile Docker CLI apt source', () => {
   const text = readFileSync(resolve(ROOT, 'Dockerfile'), 'utf8')
   const lines = text.split('\n')

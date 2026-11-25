@@ -82,6 +82,20 @@ describe('ci docker-image job', () => {
     expect(script.indexOf('trap cleanup EXIT')).toBeLessThan(script.indexOf('docker volume create'))
     expect(script.indexOf('docker volume create')).toBeLessThan(script.indexOf('docker run -d'))
   })
+
+  it('checks after the start smoke that the image user can write .next/cache', () => {
+    // next start runs as the image user and creates .next/cache on first use;
+    // a .next copy that lost its --chown lets the server run but fails every
+    // /_next/image request with EACCES, which the health smoke cannot see.
+    const names = job.steps.map((s) => s.name)
+    const idx = names.indexOf('Image user can write .next/cache')
+    expect(idx).toBeGreaterThan(names.indexOf('Image starts and answers /api/health'))
+    const run = job.steps[idx].run ?? ''
+    expect(run).toContain('docker run --rm --entrypoint sh "$IMAGE"')
+    expect(run).toContain("'mkdir -p .next/cache/images && test -w .next/cache/images'")
+    // A --user override would test root's write permission, not the app user's.
+    expect(run).not.toMatch(/--user\b/)
+  })
 })
 
 describe('package.json', () => {

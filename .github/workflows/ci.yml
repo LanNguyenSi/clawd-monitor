@@ -174,3 +174,11 @@ jobs:
             exit 1
           fi
           echo "health smoke ok after $((SECONDS - start))s: $(cat "$body")"
+
+      - name: Image user can write .next/cache
+        # `next start` runs as the image user (nextjs) and writes the image
+        # optimization cache under /app/.next/cache; a root-owned .next copy
+        # makes /_next/image fail with EACCES. The run inherits the image's
+        # USER and workdir, so no --user override: as root this would pass
+        # while the server still fails.
+        run: docker run --rm --entrypoint sh "$IMAGE" -c 'mkdir -p .next/cache/images && test -w .next/cache/images'
