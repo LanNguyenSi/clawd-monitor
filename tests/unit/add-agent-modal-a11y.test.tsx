@@ -205,6 +205,29 @@ describe('AddAgentModal focus trap', () => {
     expect(fwdEvent.defaultPrevented).toBe(true)
   })
 
+  it('ignores Escape on the snippet step: the token stays until Done is clicked', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ token: 'tok-abc123', name: 'test-agent' }),
+      })),
+    )
+    const { container } = await openModal()
+    const input = container.querySelector<HTMLInputElement>('#add-agent-name')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'test-agent')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await submitForm(container)
+    await act(async () => {
+      await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    })
+    await key(window, 'Escape')
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+  })
+
   it('each Copy button copies exactly its own text: the token, step 1 or step 2', async () => {
     vi.stubGlobal(
       'fetch',
