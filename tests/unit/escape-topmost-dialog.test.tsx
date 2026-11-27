@@ -3,14 +3,18 @@
  * Escape closes only the topmost dialog: with the shortcuts overlay open
  * above the Add agent modal, one Escape closes the overlay and hands focus
  * back to the modal control that had it, a second Escape closes the modal.
- * Both window listeners are registered in either order (the overlay
+ * Both window listeners run in either order at Escape time. The overlay
  * re-registers its listener whenever its callbacks or its open state
- * change, so its position relative to the modal's is not fixed).
+ * change (so it is registered after the modal's once '?' opened it), and
+ * the modal re-registers its own whenever its onClose identity changes
+ * (any re-render of its parent). The "overlay first" case therefore
+ * re-renders the modal's parent after '?' opened the overlay, which puts
+ * the modal's listener last.
  */
 import { describe, it, expect, afterEach } from 'vitest'
 import { useState } from 'react'
 import { act } from 'react'
-import { mount, unmountAll, key, createElement as h } from './dom-helpers'
+import { mount, unmountAll, key, click, createElement as h } from './dom-helpers'
 import { AddAgentModal } from '@/components/AddAgentModal'
 import { KeyboardShortcuts } from '@/components/KeyboardShortcuts'
 
@@ -18,7 +22,19 @@ const noop = () => {}
 
 function Modal() {
   const [open, setOpen] = useState(true)
-  return h(AddAgentModal, { open, onClose: () => setOpen(false) })
+  const [, setTick] = useState(0)
+  // The inline onClose changes identity on every render, so a re-render
+  // (the button outside the dialog) re-registers the modal's listener.
+  return h(
+    'div',
+    null,
+    h('button', { id: 'rerender', onClick: () => setTick((n) => n + 1) }, 'rerender'),
+    h(AddAgentModal, { open, onClose: () => setOpen(false) }),
+  )
+}
+
+async function rerenderModal() {
+  await click(document.querySelector('#rerender')!)
 }
 
 const overlayEl = (props: { onToggleTheme?: () => void } = {}) =>
@@ -41,25 +57,30 @@ async function pressEscape(): Promise<KeyboardEvent> {
   return event
 }
 
-/** Modal first, then overlay: the overlay's listener is registered last. */
-async function modalThenOverlay() {
-  await mount(h(Modal))
-  await settle()
-  await mount(overlayEl())
-}
-
-/** Overlay first, then modal: the modal's listener is registered last. */
-async function overlayThenModal() {
-  await mount(overlayEl())
-  await mount(h(Modal))
-  await settle()
-}
-
 /** Focus a non-text control of the modal and open the overlay with `?`. */
 async function openOverlayOverModal() {
   const cancel = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === 'Cancel')!
   cancel.focus()
   await key(cancel, '?')
+  return cancel
+}
+
+/** The overlay's listener is registered last (it re-registered when '?' opened it). */
+async function modalThenOverlay() {
+  await mount(h(Modal))
+  await settle()
+  await mount(overlayEl())
+  return openOverlayOverModal()
+}
+
+/** The modal's listener is registered last: its parent re-renders after the overlay opened. */
+async function overlayThenModal() {
+  await mount(overlayEl())
+  await mount(h(Modal))
+  await settle()
+  const cancel = await openOverlayOverModal()
+  await rerenderModal()
+  cancel.focus()
   return cancel
 }
 
@@ -73,8 +94,7 @@ describe.each([
   ['overlay registered first, modal last', overlayThenModal],
 ])('overlay above the modal (%s)', (_name, setup) => {
   it('first Escape closes only the overlay and focus returns to the modal control; second Escape closes the modal', async () => {
-    await setup()
-    const cancel = await openOverlayOverModal()
+    const cancel = await setup()
     expect(dialogs()).toHaveLength(2)
 
     const first = await pressEscape()
