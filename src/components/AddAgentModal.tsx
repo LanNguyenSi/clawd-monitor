@@ -119,19 +119,20 @@ export function AddAgentModal({ open, onClose, onTokenCreated }: Props) {
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && step === 'name') {
-        onClose()
-        return
-      }
-      if (e.key !== 'Tab') return
-      // Another handler already took this Tab (for example the trap of
-      // an overlay opened on top of this dialog), or focus sits in a
-      // different modal: leave it alone instead of pulling focus back
+      if (e.key !== 'Escape' && e.key !== 'Tab') return
+      // Another handler already took this key (for example the Escape
+      // or the Tab trap of an overlay opened on top of this dialog), or
+      // focus sits in a different modal: leave it alone, so Escape
+      // closes only the topmost dialog and Tab does not pull focus back
       // into this dialog behind it.
       if (e.defaultPrevented) return
       const focused = document.activeElement
       const otherModal = focused instanceof Element ? focused.closest('[aria-modal="true"]') : null
       if (otherModal && otherModal !== dialogRef.current) return
+      if (e.key === 'Escape') {
+        if (step === 'name') onClose()
+        return
+      }
       const items = dialogRef.current
         ? Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE))
         : []

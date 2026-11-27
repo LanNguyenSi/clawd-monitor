@@ -75,14 +75,20 @@ export function KeyboardShortcuts({ onRefresh, onToggleTheme, onToggleEditMode }
           setShowHelp((v) => !v)
           break
         case 'Escape':
-          setShowHelp(false)
+          // Only an Escape that closes the help is consumed, so a dialog
+          // underneath (which skips a handled Escape) stays open and an
+          // Escape with the help closed reaches the other handlers.
+          if (showHelp) {
+            e.preventDefault()
+            setShowHelp(false)
+          }
           break
       }
     }
 
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [onRefresh, onToggleTheme, onToggleEditMode])
+  }, [showHelp, onRefresh, onToggleTheme, onToggleEditMode])
 
   if (!showHelp) return null
 
