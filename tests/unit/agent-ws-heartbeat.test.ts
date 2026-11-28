@@ -242,6 +242,18 @@ describe('several servers in one process', () => {
     }
   })
 
+  it('has no per-server interval: the shared timer uses the constant and an extra argument is a type error', async () => {
+    expect(vi.getTimerCount()).toBe(1) // the shared heartbeat timer of the server from beforeEach
+    const second = limits.createAgentWebSocketServer()
+    expect(vi.getTimerCount()).toBe(1) // joining the shared timer adds none
+    // @ts-expect-error startAgentHeartbeat takes only the server: the shared timer runs at AGENT_WS_PING_INTERVAL_MS
+    limits.startAgentHeartbeat(second, 1)
+    expect(vi.getTimerCount()).toBe(1) // the direct join adds none either
+    second.close()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(vi.getTimerCount()).toBe(1) // the first server is still open: the shared timer stays
+  })
+
   it('a server opened after the others closed starts the heartbeat again', async () => {
     wss.close()
     await vi.advanceTimersByTimeAsync(0)

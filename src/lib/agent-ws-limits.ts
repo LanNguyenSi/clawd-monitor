@@ -176,14 +176,14 @@ const heartbeatServers = new Set<WebSocketServer>()
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
 /**
- * Run the heartbeat every `intervalMs` while `wss` is open. The first open
- * server starts the one shared timer (its interval wins), later ones join it,
- * and the timer stops when the last server closes.
+ * Run the heartbeat while `wss` is open. The first open server starts the one
+ * shared timer, later ones join it, and the timer stops when the last server
+ * closes. The timer is shared, so every server ticks `AGENT_WS_PING_INTERVAL_MS`.
  */
-export function startAgentHeartbeat(wss: WebSocketServer, intervalMs: number = AGENT_WS_PING_INTERVAL_MS): void {
+export function startAgentHeartbeat(wss: WebSocketServer): void {
   heartbeatServers.add(wss)
   if (heartbeatTimer === null) {
-    heartbeatTimer = setInterval(runAgentHeartbeat, intervalMs)
+    heartbeatTimer = setInterval(runAgentHeartbeat, AGENT_WS_PING_INTERVAL_MS)
     heartbeatTimer.unref?.()
   }
   wss.once('close', () => {
