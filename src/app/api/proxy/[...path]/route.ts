@@ -6,9 +6,30 @@ interface Props {
   params: Promise<{ path: string[] }>
 }
 
+// The catch-all runs on the dashboard origin, so an upstream-chosen content
+// type must never reach the response (a served HTML or SVG document would run
+// on this origin). JSON answers stay JSON; every other type (or none) becomes
+// inert text the browser downloads instead of rendering.
+function proxiedHeaders(upstreamType: string | null): Headers {
+  const subtype = (upstreamType ?? '').split(';')[0].trim().toLowerCase()
+  const isJson = /^application\/(json|[\w.+-]+\+json)$/.test(subtype)
+  const headers = new Headers()
+  if (isJson) {
+    headers.set('Content-Type', 'application/json; charset=utf-8')
+  } else {
+    headers.set('Content-Type', 'text/plain; charset=utf-8')
+    headers.set('Content-Disposition', 'attachment')
+  }
+  headers.set('X-Content-Type-Options', 'nosniff')
+  return headers
+}
+
 async function handler(req: NextRequest, { params }: Props) {
   if (!isAuthenticated(req)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401, headers: { 'X-Content-Type-Options': 'nosniff' } },
+    )
   }
 
   const { path } = await params
@@ -39,15 +60,18 @@ async function handler(req: NextRequest, { params }: Props) {
     const data = await res.text()
     return new NextResponse(data, {
       status: res.status,
-      headers: { 'Content-Type': res.headers.get('content-type') ?? 'application/json' },
+      headers: proxiedHeaders(res.headers.get('content-type')),
     })
   } catch (err) {
     if (err instanceof GatewayUrlError) {
-      return NextResponse.json({ error: err.message }, { status: 400 })
+      return NextResponse.json(
+        { error: err.message },
+        { status: 400, headers: { 'X-Content-Type-Options': 'nosniff' } },
+      )
     }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Gateway error' },
-      { status: 502 }
+      { status: 502, headers: { 'X-Content-Type-Options': 'nosniff' } },
     )
   }
 }
