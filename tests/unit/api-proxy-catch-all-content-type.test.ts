@@ -99,7 +99,13 @@ describe('AC 2, every other or missing upstream type is an inert text download',
     expect(await res.text()).toBe('no type here')
   })
 
-  it.each(['application/jsonx', 'application/json+xml', 'text/json', 'application/ld']) (
+  it.each([
+    'application/jsonx',
+    'application/json+xml',
+    'text/json',
+    'text/application/json',
+    'xapplication/json',
+  ])(
     '%s is not JSON and is served as a text download',
     async (type) => {
       upstream(200, type, 'x')
